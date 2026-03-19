@@ -49,6 +49,8 @@ func main() {
 		initCmd(),
 		pickupCmd(),
 		workCmd(),
+		doneCmd(),
+		statusCmd(),
 		repoCmd(),
 		worktreeCmd(),
 		checkpointCmd(),

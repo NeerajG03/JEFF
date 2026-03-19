@@ -62,3 +62,33 @@ func TestRemoveRepoNotRegistered(t *testing.T) {
 		t.Error("expected error for unregistered repo")
 	}
 }
+
+func TestSyncRepoNotRegistered(t *testing.T) {
+	home := tempHome(t)
+	cfg := &Config{Repos: make(map[string]*RepoConfig), Home: home}
+	err := SyncRepo(cfg, "nonexistent")
+	if err == nil {
+		t.Error("expected error for unregistered repo")
+	}
+}
+
+func TestSyncRepoMissingDir(t *testing.T) {
+	home := tempHome(t)
+	cfg := &Config{
+		Repos: map[string]*RepoConfig{"backend": {URL: "https://example.com/backend.git"}},
+		Home:  home,
+	}
+	err := SyncRepo(cfg, "backend")
+	if err == nil {
+		t.Error("expected error for missing repo dir")
+	}
+}
+
+func TestSyncAllReposEmpty(t *testing.T) {
+	home := tempHome(t)
+	cfg := &Config{Repos: make(map[string]*RepoConfig), Home: home}
+	results := SyncAllRepos(cfg)
+	if len(results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(results))
+	}
+}

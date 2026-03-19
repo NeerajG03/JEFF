@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/NeerajG03/JEFF"
 	"github.com/spf13/cobra"
@@ -12,7 +13,7 @@ func repoCmd() *cobra.Command {
 		Use:   "repo",
 		Short: "Manage registered codebases",
 	}
-	cmd.AddCommand(repoAddCmd(), repoListCmd(), repoRemoveCmd(), repoPostSetupCmd())
+	cmd.AddCommand(repoAddCmd(), repoListCmd(), repoRemoveCmd(), repoPostSetupCmd(), repoSyncCmd())
 	return cmd
 }
 
@@ -72,6 +73,37 @@ func repoRemoveCmd() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&deleteFiles, "delete", false, "Also delete the cloned files")
+	return cmd
+}
+
+func repoSyncCmd() *cobra.Command {
+	var repoName string
+
+	cmd := &cobra.Command{
+		Use:   "sync",
+		Short: "Pull latest main from origin for all repos (or --repo for one)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if repoName != "" {
+				if err := jeff.SyncRepo(cfg, repoName); err != nil {
+					return err
+				}
+				fmt.Printf("Synced %s\n", repoName)
+				return nil
+			}
+
+			results := jeff.SyncAllRepos(cfg)
+			for name, err := range results {
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "%-20s failed: %v\n", name, err)
+				} else {
+					fmt.Printf("%-20s synced\n", name)
+				}
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&repoName, "repo", "", "Sync a specific repo only")
 	return cmd
 }
 

@@ -91,6 +91,53 @@ func SetPostSetup(cfg *Config, repoName, scriptPath string) error {
 	return SaveConfig(cfg)
 }
 
+// SyncRepo pulls latest main from origin for a single repo.
+func SyncRepo(cfg *Config, name string) error {
+	if _, exists := cfg.Repos[name]; !exists {
+		return fmt.Errorf("repo %q not registered", name)
+	}
+
+	repoDir := filepath.Join(cfg.Home, "repos", name)
+	if _, err := os.Stat(repoDir); err != nil {
+		return fmt.Errorf("repo dir not found: %s", repoDir)
+	}
+
+	// Fetch latest from origin.
+	fetch := exec.Command("git", "fetch", "origin")
+	fetch.Dir = repoDir
+	fetch.Stdout = os.Stdout
+	fetch.Stderr = os.Stderr
+	if err := fetch.Run(); err != nil {
+		return fmt.Errorf("git fetch %s: %w", name, err)
+	}
+
+	// Reset main to origin/main.
+	reset := exec.Command("git", "checkout", "main")
+	reset.Dir = repoDir
+	reset.Stdout = os.Stdout
+	reset.Stderr = os.Stderr
+	reset.Run() // ignore error if already on main
+
+	pull := exec.Command("git", "pull", "origin", "main", "--ff-only")
+	pull.Dir = repoDir
+	pull.Stdout = os.Stdout
+	pull.Stderr = os.Stderr
+	if err := pull.Run(); err != nil {
+		return fmt.Errorf("git pull %s: %w", name, err)
+	}
+
+	return nil
+}
+
+// SyncAllRepos pulls latest main for all registered repos.
+func SyncAllRepos(cfg *Config) map[string]error {
+	results := make(map[string]error)
+	for name := range cfg.Repos {
+		results[name] = SyncRepo(cfg, name)
+	}
+	return results
+}
+
 // repoNameFromURL extracts a short name from a git URL.
 // e.g., "https://github.com/org/backend.git" → "backend"
 func repoNameFromURL(url string) string {

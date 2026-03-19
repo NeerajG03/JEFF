@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/neerajg/gig"
+	"github.com/NeerajG03/gig"
 )
 
 // openGigStore opens the gig store using the configured or default gig home.

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/neerajg/gig"
+	"github.com/NeerajG03/gig"
 )
 
 func tempGigStore(t *testing.T) *gig.Store {

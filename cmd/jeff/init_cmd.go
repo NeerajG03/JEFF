@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/neerajg/JEFF"
-	jeffembed "github.com/neerajg/JEFF/embed"
+	"github.com/NeerajG03/JEFF"
+	jeffembed "github.com/NeerajG03/JEFF/embed"
 	"github.com/spf13/cobra"
 )
 

@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/neerajg/JEFF"
+	"github.com/NeerajG03/JEFF"
 	"github.com/spf13/cobra"
 )
 

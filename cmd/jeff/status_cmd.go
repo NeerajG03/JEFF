@@ -6,8 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/neerajg/JEFF/workspace"
-	"github.com/neerajg/gig"
+	"github.com/NeerajG03/JEFF/workspace"
+	"github.com/NeerajG03/gig"
 	"github.com/spf13/cobra"
 )
 

@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/neerajg/JEFF"
-	jeffembed "github.com/neerajg/JEFF/embed"
-	"github.com/neerajg/JEFF/persona"
-	"github.com/neerajg/JEFF/workspace"
-	"github.com/neerajg/gig"
+	"github.com/NeerajG03/JEFF"
+	jeffembed "github.com/NeerajG03/JEFF/embed"
+	"github.com/NeerajG03/JEFF/persona"
+	"github.com/NeerajG03/JEFF/workspace"
+	"github.com/NeerajG03/gig"
 	"github.com/spf13/cobra"
 )
 

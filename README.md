@@ -120,7 +120,7 @@ jeff pickup gig-ab12 --persona jock    # build mode (default)
 ## Requirements
 
 - [gig](https://github.com/NeerajG03/gig) — task management (installed automatically as Go dependency)
-- [Claude Code](https://claude.ai/claude-code) or [opencode](https://github.com/opencode-ai/opencode) — agent tool
+- [Claude Code](https://claude.com/product/claude-code) or [opencode](https://github.com/anomalyco/opencode) — agent tool
 - Git
 
 ## License

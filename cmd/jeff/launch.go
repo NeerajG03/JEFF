@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/neerajg/JEFF"
+	"github.com/NeerajG03/JEFF"
 )
 
 // launchAgent starts the configured agent tool in the given directory.

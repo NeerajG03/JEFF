@@ -1,6 +1,6 @@
 package jeff
 
-import "github.com/neerajg/gig"
+import "github.com/NeerajG03/gig"
 
 // JEFF custom attribute keys.
 const (

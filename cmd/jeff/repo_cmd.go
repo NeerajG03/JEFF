@@ -84,20 +84,17 @@ func repoSyncCmd() *cobra.Command {
 		Short: "Pull latest main from origin for all repos (or --repo for one)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if repoName != "" {
-				if err := jeff.SyncRepo(cfg, repoName); err != nil {
+				r, err := jeff.SyncRepo(cfg, repoName)
+				if err != nil {
 					return err
 				}
-				fmt.Printf("Synced %s\n", repoName)
+				printSyncResult(r)
 				return nil
 			}
 
 			results := jeff.SyncAllRepos(cfg)
-			for name, err := range results {
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "%-20s failed: %v\n", name, err)
-				} else {
-					fmt.Printf("%-20s synced\n", name)
-				}
+			for _, r := range results {
+				printSyncResult(r)
 			}
 			return nil
 		},
@@ -105,6 +102,16 @@ func repoSyncCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&repoName, "repo", "", "Sync a specific repo only")
 	return cmd
+}
+
+func printSyncResult(r *jeff.SyncResult) {
+	if r.Err != nil {
+		fmt.Fprintf(os.Stderr, "%-20s failed: %v\n", r.Name, r.Err)
+	} else if r.Updated {
+		fmt.Printf("%-20s updated (%d new commits)\n", r.Name, r.Behind)
+	} else {
+		fmt.Printf("%-20s already up to date\n", r.Name)
+	}
 }
 
 func repoPostSetupCmd() *cobra.Command {

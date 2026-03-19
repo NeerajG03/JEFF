@@ -66,7 +66,7 @@ func TestRemoveRepoNotRegistered(t *testing.T) {
 func TestSyncRepoNotRegistered(t *testing.T) {
 	home := tempHome(t)
 	cfg := &Config{Repos: make(map[string]*RepoConfig), Home: home}
-	err := SyncRepo(cfg, "nonexistent")
+	_, err := SyncRepo(cfg, "nonexistent")
 	if err == nil {
 		t.Error("expected error for unregistered repo")
 	}
@@ -78,7 +78,7 @@ func TestSyncRepoMissingDir(t *testing.T) {
 		Repos: map[string]*RepoConfig{"backend": {URL: "https://example.com/backend.git"}},
 		Home:  home,
 	}
-	err := SyncRepo(cfg, "backend")
+	_, err := SyncRepo(cfg, "backend")
 	if err == nil {
 		t.Error("expected error for missing repo dir")
 	}
@@ -90,5 +90,18 @@ func TestSyncAllReposEmpty(t *testing.T) {
 	results := SyncAllRepos(cfg)
 	if len(results) != 0 {
 		t.Errorf("expected 0 results, got %d", len(results))
+	}
+}
+
+func TestSyncResultFields(t *testing.T) {
+	r := &SyncResult{Name: "backend", Behind: 3, Updated: true}
+	if r.Name != "backend" {
+		t.Errorf("expected backend, got %s", r.Name)
+	}
+	if !r.Updated {
+		t.Error("expected updated to be true")
+	}
+	if r.Behind != 3 {
+		t.Errorf("expected 3 behind, got %d", r.Behind)
 	}
 }

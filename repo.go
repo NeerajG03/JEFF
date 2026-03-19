@@ -91,49 +91,71 @@ func SetPostSetup(cfg *Config, repoName, scriptPath string) error {
 	return SaveConfig(cfg)
 }
 
+// SyncResult holds the outcome of syncing a repo.
+type SyncResult struct {
+	Name    string
+	Behind  int
+	Updated bool
+	Err     error
+}
+
 // SyncRepo pulls latest main from origin for a single repo.
-func SyncRepo(cfg *Config, name string) error {
+func SyncRepo(cfg *Config, name string) (*SyncResult, error) {
+	result := &SyncResult{Name: name}
+
 	if _, exists := cfg.Repos[name]; !exists {
-		return fmt.Errorf("repo %q not registered", name)
+		return nil, fmt.Errorf("repo %q not registered", name)
 	}
 
 	repoDir := filepath.Join(cfg.Home, "repos", name)
 	if _, err := os.Stat(repoDir); err != nil {
-		return fmt.Errorf("repo dir not found: %s", repoDir)
+		return nil, fmt.Errorf("repo dir not found: %s", repoDir)
 	}
 
 	// Fetch latest from origin.
 	fetch := exec.Command("git", "fetch", "origin")
 	fetch.Dir = repoDir
-	fetch.Stdout = os.Stdout
-	fetch.Stderr = os.Stderr
-	if err := fetch.Run(); err != nil {
-		return fmt.Errorf("git fetch %s: %w", name, err)
+	if out, err := fetch.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("git fetch %s: %s", name, string(out))
 	}
 
-	// Reset main to origin/main.
-	reset := exec.Command("git", "checkout", "main")
-	reset.Dir = repoDir
-	reset.Stdout = os.Stdout
-	reset.Stderr = os.Stderr
-	reset.Run() // ignore error if already on main
+	// Check how many commits behind.
+	revCount := exec.Command("git", "rev-list", "--count", "HEAD..origin/main")
+	revCount.Dir = repoDir
+	countOut, err := revCount.Output()
+	if err == nil {
+		fmt.Sscanf(strings.TrimSpace(string(countOut)), "%d", &result.Behind)
+	}
+
+	if result.Behind == 0 {
+		return result, nil
+	}
+
+	// Checkout main and fast-forward.
+	checkout := exec.Command("git", "checkout", "main")
+	checkout.Dir = repoDir
+	checkout.Run() // ignore if already on main
 
 	pull := exec.Command("git", "pull", "origin", "main", "--ff-only")
 	pull.Dir = repoDir
-	pull.Stdout = os.Stdout
-	pull.Stderr = os.Stderr
-	if err := pull.Run(); err != nil {
-		return fmt.Errorf("git pull %s: %w", name, err)
+	if out, err := pull.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("git pull %s: %s", name, string(out))
 	}
 
-	return nil
+	result.Updated = true
+	return result, nil
 }
 
 // SyncAllRepos pulls latest main for all registered repos.
-func SyncAllRepos(cfg *Config) map[string]error {
-	results := make(map[string]error)
+func SyncAllRepos(cfg *Config) []*SyncResult {
+	var results []*SyncResult
 	for name := range cfg.Repos {
-		results[name] = SyncRepo(cfg, name)
+		r, err := SyncRepo(cfg, name)
+		if err != nil {
+			results = append(results, &SyncResult{Name: name, Err: err})
+		} else {
+			results = append(results, r)
+		}
 	}
 	return results
 }

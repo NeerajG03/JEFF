@@ -32,6 +32,20 @@ func initCmd() *cobra.Command {
 				home = filepath.Join(h, ".jeff")
 			}
 
+			// Check if JEFF is already initialized elsewhere.
+			existing, err := jeff.ResolveHome()
+			if err == nil && existing != home {
+				if _, err := os.Stat(existing); err == nil {
+					return fmt.Errorf("JEFF is already initialized at %s\nTo reinitialize here, first remove the global pointer: rm ~/.config/jeff/home", existing)
+				}
+			}
+
+			// Check if this location is already initialized.
+			if _, err := os.Stat(jeff.ConfigPath(home)); err == nil {
+				fmt.Printf("JEFF already initialized at %s (skipping)\n", home)
+				return nil
+			}
+
 			// Create directory structure.
 			dirs := []string{
 				home,

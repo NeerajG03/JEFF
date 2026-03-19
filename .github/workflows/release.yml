@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to re-release (e.g. v0.1.0-beta)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run Tests
+        run: go test ./... -count=1
+
+      - name: Create or Update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if gh release view "$TAG" &>/dev/null; then
+            gh release delete "$TAG" --yes
+          fi
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes
+
+      - name: Update Homebrew Tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          VERSION="${TAG#v}"
+
+          # Skip homebrew for pre-release tags
+          if echo "$TAG" | grep -qE '(alpha|beta|rc)'; then
+            echo "Pre-release tag, skipping homebrew update"
+            exit 0
+          fi
+
+          SHA=$(curl -sL "https://github.com/NeerajG03/JEFF/archive/refs/tags/${TAG}.tar.gz" | sha256sum | awk '{print $1}')
+
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/NeerajG03/homebrew-tap.git" tap
+
+          cat > tap/Formula/jeff.rb << EOF
+          class Jeff < Formula
+            desc "Agent workspace manager built on gig"
+            homepage "https://github.com/NeerajG03/JEFF"
+            url "https://github.com/NeerajG03/JEFF/archive/refs/tags/${TAG}.tar.gz"
+            sha256 "${SHA}"
+            license "MIT"
+
+            depends_on "go" => :build
+
+            def install
+              ldflags = "-s -w -X main.version=#{version}"
+              system "go", "build", *std_go_args(ldflags:), "./cmd/jeff/"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/jeff --version")
+            end
+          end
+          EOF
+
+          sed -i 's/^          //' tap/Formula/jeff.rb
+
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/jeff.rb
+          git diff --cached --quiet && echo "No changes" || (git commit -m "Update jeff to ${VERSION}" && git push)

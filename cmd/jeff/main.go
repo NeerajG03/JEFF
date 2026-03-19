@@ -47,6 +47,9 @@ func main() {
 
 	rootCmd.AddCommand(
 		initCmd(),
+		repoCmd(),
+		worktreeCmd(),
+		checkpointCmd(),
 		completionCmd(),
 	)
 

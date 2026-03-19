@@ -4,14 +4,24 @@ Agent workspace manager built on [gig](https://github.com/NeerajG03/gig). JEFF g
 
 ## Install
 
+### Homebrew (macOS/Linux)
+
 ```bash
 brew install NeerajG03/tap/jeff
 ```
 
-Or build from source:
+### Go
 
 ```bash
-go install github.com/neerajg/JEFF/cmd/jeff@latest
+go install github.com/NeerajG03/JEFF/cmd/jeff@latest
+```
+
+### From source
+
+```bash
+git clone https://github.com/NeerajG03/JEFF.git
+cd JEFF
+go build -o jeff ./cmd/jeff/
 ```
 
 ## Quick Start

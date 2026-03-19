@@ -56,12 +56,6 @@ jobs:
           TAG="${{ steps.tag.outputs.tag }}"
           VERSION="${TAG#v}"
 
-          # Skip homebrew for pre-release tags
-          if echo "$TAG" | grep -qE '(alpha|beta|rc)'; then
-            echo "Pre-release tag, skipping homebrew update"
-            exit 0
-          fi
-
           SHA=$(curl -sL "https://github.com/NeerajG03/JEFF/archive/refs/tags/${TAG}.tar.gz" | sha256sum | awk '{print $1}')
 
           git clone "https://x-access-token:${TAP_TOKEN}@github.com/NeerajG03/homebrew-tap.git" tap

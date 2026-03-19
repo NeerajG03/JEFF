@@ -1,4 +1,4 @@
-// Package embed provides the default CLAUDE.md shipped with the binary.
+// Package embed provides default files shipped with the binary.
 package embed
 
 import (
@@ -10,6 +10,9 @@ import (
 
 //go:embed CLAUDE.md
 var DefaultClaudeMD string
+
+//go:embed claude-settings.json
+var DefaultClaudeSettings string
 
 // WriteClaudeMD writes the default CLAUDE.md to the target directory.
 // If the file already exists, it is left untouched (user may have edited it).

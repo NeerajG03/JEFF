@@ -53,6 +53,8 @@ func initCmd() *cobra.Command {
 				filepath.Join(home, "tasks"),
 				filepath.Join(home, "worktrees"),
 				filepath.Join(home, "exports"),
+				filepath.Join(home, ".claude"),
+				filepath.Join(home, ".opencode"),
 			}
 			for _, d := range dirs {
 				if err := os.MkdirAll(d, 0o755); err != nil {
@@ -74,6 +76,12 @@ func initCmd() *cobra.Command {
 				return fmt.Errorf("write CLAUDE.md: %w", err)
 			}
 
+			// Write default agent settings files if missing.
+			writeIfMissing(filepath.Join(home, ".claude", "settings.json"), jeffembed.DefaultClaudeSettings)
+			writeIfMissing(filepath.Join(home, ".claude", "settings.local.json"), "{}\n")
+			writeIfMissing(filepath.Join(home, ".opencode", "settings.json"), "{}\n")
+			writeIfMissing(filepath.Join(home, ".opencode", "settings.local.json"), "{}\n")
+
 			// Write global pointer so `jeff` always finds home.
 			if err := jeff.WriteHomePointer(home); err != nil {
 				return fmt.Errorf("write home pointer: %w", err)
@@ -92,3 +100,12 @@ func initCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&here, "here", false, "Initialize in current directory instead of ~/.jeff/")
 	return cmd
 }
+
+// writeIfMissing writes content to path only if the file doesn't exist.
+func writeIfMissing(path, content string) {
+	if _, err := os.Stat(path); err == nil {
+		return
+	}
+	os.WriteFile(path, []byte(content), 0o644)
+}
+

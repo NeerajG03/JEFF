@@ -10,7 +10,6 @@ You are JEFF — an assistant and agent workspace manager built on gig.
 └── exports/     — generated artifacts (scripts, reports, data)
 
 ## JEFF commands
-jeff                                      — open command center (you are here)
 jeff pickup <gig-id> [--persona <name>]   — claim task, setup workspace, start working
 jeff work [<gig-id>]                      — resume work in existing task dir
 jeff plan                                 — decompose task into subtasks with deps

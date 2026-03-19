@@ -23,7 +23,7 @@ func initCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("get cwd: %w", err)
 				}
-				home = filepath.Join(cwd, ".jeff")
+				home = filepath.Join(cwd, "jeff")
 			} else {
 				h, err := os.UserHomeDir()
 				if err != nil {

@@ -9,7 +9,8 @@ import (
 
 // WorktreeAdd creates a git worktree for the given repo and branch under
 // jeffHome/worktrees/<repo>/<branch>/, then symlinks it into the task directory.
-func WorktreeAdd(jeffHome, repoName, branch, taskDir string) (string, error) {
+// If postSetup is non-empty, it is executed as a shell script with src_dir and dest_dir args.
+func WorktreeAdd(jeffHome, repoName, branch, taskDir, postSetup string) (string, error) {
 	repoDir := filepath.Join(jeffHome, "repos", repoName)
 	if _, err := os.Stat(repoDir); err != nil {
 		return "", fmt.Errorf("repo %q not found at %s", repoName, repoDir)
@@ -43,10 +44,27 @@ func WorktreeAdd(jeffHome, repoName, branch, taskDir string) (string, error) {
 		}
 	}
 
+	// Run post-setup script if configured.
+	if postSetup != "" {
+		if err := runPostSetup(postSetup, repoDir, wtDir); err != nil {
+			return wtDir, fmt.Errorf("post-setup script: %w", err)
+		}
+	}
+
 	if taskDir != "" {
 		return wtDir, symlinkIntoTask(taskDir, repoName, wtDir)
 	}
 	return wtDir, nil
+}
+
+// runPostSetup executes a user-provided script after worktree creation.
+// The script receives src_dir (repo clone) and dest_dir (worktree) as arguments.
+func runPostSetup(script, srcDir, destDir string) error {
+	cmd := exec.Command("sh", script, srcDir, destDir)
+	cmd.Dir = destDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 // WorktreeRemove removes a git worktree and its symlink.

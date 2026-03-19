@@ -42,8 +42,10 @@ func TestSaveAndLoadConfig(t *testing.T) {
 
 	cfg := &Config{
 		Agent: AgentOpenCode,
-		Repos: map[string]string{"backend": "https://github.com/org/backend.git"},
-		Home:  home,
+		Repos: map[string]*RepoConfig{
+			"backend": {URL: "https://github.com/org/backend.git", PostSetup: "./setup.sh"},
+		},
+		Home: home,
 	}
 
 	if err := SaveConfig(cfg); err != nil {
@@ -57,8 +59,11 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	if loaded.Agent != AgentOpenCode {
 		t.Errorf("expected opencode, got %s", loaded.Agent)
 	}
-	if loaded.Repos["backend"] != "https://github.com/org/backend.git" {
-		t.Errorf("expected backend repo URL, got %q", loaded.Repos["backend"])
+	if loaded.Repos["backend"] == nil || loaded.Repos["backend"].URL != "https://github.com/org/backend.git" {
+		t.Errorf("expected backend repo URL")
+	}
+	if loaded.Repos["backend"].PostSetup != "./setup.sh" {
+		t.Errorf("expected post_setup, got %q", loaded.Repos["backend"].PostSetup)
 	}
 }
 

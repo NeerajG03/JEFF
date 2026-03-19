@@ -10,9 +10,10 @@ import (
 
 // Repo represents a registered codebase.
 type Repo struct {
-	Name string // short name (e.g., "backend")
-	URL  string // clone URL
-	Path string // absolute path to the clone
+	Name      string // short name (e.g., "backend")
+	URL       string // clone URL
+	Path      string // absolute path to the clone
+	PostSetup string // post-setup script path (optional)
 }
 
 // AddRepo registers and clones a codebase into JEFF_HOME/repos/.
@@ -41,7 +42,7 @@ func AddRepo(cfg *Config, url, name string) (*Repo, error) {
 		return nil, fmt.Errorf("git clone: %w", err)
 	}
 
-	cfg.Repos[name] = url
+	cfg.Repos[name] = &RepoConfig{URL: url}
 	if err := SaveConfig(cfg); err != nil {
 		return nil, fmt.Errorf("save config: %w", err)
 	}
@@ -69,24 +70,32 @@ func RemoveRepo(cfg *Config, name string, deleteFiles bool) error {
 // ListRepos returns all registered repos.
 func ListRepos(cfg *Config) []*Repo {
 	var repos []*Repo
-	for name, url := range cfg.Repos {
+	for name, rc := range cfg.Repos {
 		repos = append(repos, &Repo{
-			Name: name,
-			URL:  url,
-			Path: filepath.Join(cfg.Home, "repos", name),
+			Name:      name,
+			URL:       rc.URL,
+			Path:      filepath.Join(cfg.Home, "repos", name),
+			PostSetup: rc.PostSetup,
 		})
 	}
 	return repos
 }
 
+// SetPostSetup sets the post-setup script for a repo.
+func SetPostSetup(cfg *Config, repoName, scriptPath string) error {
+	rc, exists := cfg.Repos[repoName]
+	if !exists {
+		return fmt.Errorf("repo %q not registered", repoName)
+	}
+	rc.PostSetup = scriptPath
+	return SaveConfig(cfg)
+}
+
 // repoNameFromURL extracts a short name from a git URL.
 // e.g., "https://github.com/org/backend.git" → "backend"
 func repoNameFromURL(url string) string {
-	// Strip trailing .git
 	url = strings.TrimSuffix(url, ".git")
-	// Strip trailing slashes
 	url = strings.TrimRight(url, "/")
-	// Take last path segment
 	if i := strings.LastIndex(url, "/"); i >= 0 {
 		return url[i+1:]
 	}

@@ -12,7 +12,7 @@ func repoCmd() *cobra.Command {
 		Use:   "repo",
 		Short: "Manage registered codebases",
 	}
-	cmd.AddCommand(repoAddCmd(), repoListCmd(), repoRemoveCmd())
+	cmd.AddCommand(repoAddCmd(), repoListCmd(), repoRemoveCmd(), repoPostSetupCmd())
 	return cmd
 }
 
@@ -73,4 +73,20 @@ func repoRemoveCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&deleteFiles, "delete", false, "Also delete the cloned files")
 	return cmd
+}
+
+func repoPostSetupCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "post-setup <name> <script-path>",
+		Short: "Set a post-setup script for worktree creation",
+		Long:  "The script receives two arguments: src_dir (repo clone) and dest_dir (new worktree).",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := jeff.SetPostSetup(cfg, args[0], args[1]); err != nil {
+				return err
+			}
+			fmt.Printf("Set post-setup for %s → %s\n", args[0], args[1])
+			return nil
+		},
+	}
 }

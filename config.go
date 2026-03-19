@@ -9,19 +9,25 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// RepoConfig holds per-repo configuration.
+type RepoConfig struct {
+	URL        string `yaml:"url"`                    // clone URL
+	PostSetup  string `yaml:"post_setup,omitempty"`   // script run after worktree creation (receives src_dir, dest_dir)
+}
+
 // Config represents the jeff.yaml configuration file.
 type Config struct {
-	Agent    AgentTool         `yaml:"agent"`     // preferred agent tool
-	GigHome string            `yaml:"gig_home"`  // override gig home (empty = default)
-	Repos    map[string]string `yaml:"repos"`     // name → clone URL
-	Home     string            `yaml:"-"`         // resolved JEFF_HOME (not persisted in yaml)
+	Agent    AgentTool              `yaml:"agent"`     // preferred agent tool
+	GigHome string                 `yaml:"gig_home"`  // override gig home (empty = default)
+	Repos    map[string]*RepoConfig `yaml:"repos"`     // name → repo config
+	Home     string                 `yaml:"-"`         // resolved JEFF_HOME (not persisted in yaml)
 }
 
 // DefaultConfig returns a Config with sensible defaults.
 func DefaultConfig() Config {
 	return Config{
 		Agent: AgentClaudeCode,
-		Repos: make(map[string]string),
+		Repos: make(map[string]*RepoConfig),
 	}
 }
 
@@ -102,7 +108,7 @@ func LoadConfig(jeffHome string) (*Config, error) {
 		cfg.Agent = AgentClaudeCode
 	}
 	if cfg.Repos == nil {
-		cfg.Repos = make(map[string]string)
+		cfg.Repos = make(map[string]*RepoConfig)
 	}
 	cfg.Home = jeffHome
 	return &cfg, nil

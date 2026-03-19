@@ -63,7 +63,7 @@ func TestWorktreeListEmpty(t *testing.T) {
 
 func TestWorktreeAddMissingRepo(t *testing.T) {
 	home := tempJeffHome(t)
-	_, err := WorktreeAdd(home, "nonexistent", "feat-x", "")
+	_, err := WorktreeAdd(home, "nonexistent", "feat-x", "", "")
 	if err == nil {
 		t.Error("expected error for missing repo")
 	}

@@ -24,7 +24,12 @@ func worktreeAddCmd() *cobra.Command {
 		Short: "Create a git worktree and optionally symlink into task dir",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			wtDir, err := workspace.WorktreeAdd(cfg.Home, args[0], args[1], taskDir)
+			// Look up post-setup script from repo config.
+			var postSetup string
+			if rc, ok := cfg.Repos[args[0]]; ok && rc.PostSetup != "" {
+				postSetup = rc.PostSetup
+			}
+			wtDir, err := workspace.WorktreeAdd(cfg.Home, args[0], args[1], taskDir, postSetup)
 			if err != nil {
 				return err
 			}

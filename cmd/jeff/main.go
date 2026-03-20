@@ -54,6 +54,8 @@ func main() {
 		repoCmd(),
 		worktreeCmd(),
 		checkpointCmd(),
+		configCmd(),
+		openCmd(),
 		completionCmd(),
 	)
 

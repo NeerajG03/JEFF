@@ -18,6 +18,7 @@ type RepoConfig struct {
 // Config represents the jeff.yaml configuration file.
 type Config struct {
 	Agent   AgentTool              `yaml:"agent"`              // preferred agent tool
+	IDE     IDE                    `yaml:"ide,omitempty"`      // preferred IDE (vscode, cursor, windsurf, nvim)
 	GigHome string                 `yaml:"gig_home"`           // override gig home (empty = default)
 	Repos   map[string]*RepoConfig `yaml:"repos"`              // name → repo config
 	Hooks   map[string]bool        `yaml:"hooks,omitempty"`    // hook name → enabled (nil = all enabled)
@@ -107,6 +108,9 @@ func LoadConfig(jeffHome string) (*Config, error) {
 
 	if !cfg.Agent.IsValid() {
 		cfg.Agent = AgentClaudeCode
+	}
+	if cfg.IDE != "" && !cfg.IDE.IsValid() {
+		cfg.IDE = IDEVSCode
 	}
 	if cfg.Repos == nil {
 		cfg.Repos = make(map[string]*RepoConfig)

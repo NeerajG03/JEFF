@@ -18,7 +18,7 @@ func gigInstructionsHook() *Hook {
 		Event:   "SessionStart",
 		Matcher: "*",
 		ClaudeScript: func(ctx HookContext) string {
-			return claudeSessionStartScript(gigInstructionsContext)
+			return claudeSessionStartStatic(gigInstructionsContext)
 		},
 		OpenCodeSnippet: func(ctx HookContext) string {
 			return jsStaticSnippet("gig-instructions", gigInstructionsContext)
@@ -34,7 +34,7 @@ func gigReadyTasksHook() *Hook {
 		Event:   "SessionStart",
 		Matcher: "*",
 		ClaudeScript: func(ctx HookContext) string {
-			return claudeSessionStartScript(`## Tasks ready for pickup
+			return claudeSessionStartDynamic(`## Tasks ready for pickup
 ` + "$(gig ready 2>/dev/null || echo '(no tasks)')")
 		},
 		OpenCodeSnippet: func(ctx HookContext) string {
@@ -51,7 +51,7 @@ func jeffReposHook() *Hook {
 		Event:   "SessionStart",
 		Matcher: "*",
 		ClaudeScript: func(ctx HookContext) string {
-			return claudeSessionStartScript(`## Registered repos
+			return claudeSessionStartDynamic(`## Registered repos
 ` + "$(jeff repo list 2>/dev/null | awk '{print $1}' || echo '(none)')")
 		},
 		OpenCodeSnippet: func(ctx HookContext) string {
@@ -68,7 +68,7 @@ func jeffInstructionsHook() *Hook {
 		Event:   "SessionStart",
 		Matcher: "*",
 		ClaudeScript: func(ctx HookContext) string {
-			return claudeSessionStartScript(jeffInstructionsContext)
+			return claudeSessionStartStatic(jeffInstructionsContext)
 		},
 		OpenCodeSnippet: func(ctx HookContext) string {
 			return jsStaticSnippet("jeff-instructions", jeffInstructionsContext)
@@ -76,9 +76,33 @@ func jeffInstructionsHook() *Hook {
 	}
 }
 
-// claudeSessionStartScript wraps content in a Claude Code SessionStart hook script.
-// The content can include shell expansions (e.g. $(gig ready)).
-func claudeSessionStartScript(content string) string {
+// claudeSessionStartStatic wraps static content (no shell expansion) in a
+// Claude Code SessionStart hook script. Uses a heredoc so backticks, single
+// quotes, and double quotes are all passed through literally.
+func claudeSessionStartStatic(content string) string {
+	return `#!/bin/bash
+set -euo pipefail
+
+INPUT=$(cat)
+
+read -r -d '' CONTEXT <<'HEREDOC' || true
+` + content + `
+HEREDOC
+
+jq -n \
+  --arg ctx "$CONTEXT" \
+  '{
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: $ctx
+    }
+  }'
+`
+}
+
+// claudeSessionStartDynamic wraps content with shell expansions (e.g. $(gig ready))
+// in a Claude Code SessionStart hook script. Uses double quotes so expansions are evaluated.
+func claudeSessionStartDynamic(content string) string {
 	return `#!/bin/bash
 set -euo pipefail
 

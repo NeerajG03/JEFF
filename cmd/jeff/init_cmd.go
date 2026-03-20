@@ -66,6 +66,7 @@ func initCmd() *cobra.Command {
 				filepath.Join(home, "tasks"),
 				filepath.Join(home, "worktrees"),
 				filepath.Join(home, "exports"),
+				filepath.Join(home, "scripts"),
 				filepath.Join(home, ".claude"),
 				filepath.Join(home, ".opencode"),
 			}

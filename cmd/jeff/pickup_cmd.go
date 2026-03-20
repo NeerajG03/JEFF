@@ -103,7 +103,7 @@ func pickupCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&personaName, "persona", "jock", "Persona template to use (captain, nerd, jock, scout)")
+	cmd.Flags().StringVar(&personaName, "persona", "", "Persona template to use (captain, nerd, jock, scout)")
 	cmd.Flags().StringSliceVar(&repos, "repos", nil, "Repos this task touches (creates worktrees)")
 	cmd.RegisterFlagCompletionFunc("persona", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return persona.Names(), cobra.ShellCompDirectiveNoFileComp

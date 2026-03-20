@@ -33,15 +33,17 @@ func initCmd() *cobra.Command {
 				home = filepath.Join(h, ".jeff")
 			}
 
-			// Check if JEFF is already initialized elsewhere.
+			// Check if JEFF is already initialized — either at the target
+			// location or anywhere the resolver can find.
 			existing, err := jeff.ResolveHome()
 			if err == nil && existing != home {
-				if _, err := os.Stat(existing); err == nil {
+				// Check if resolved home actually exists on disk.
+				if _, err := os.Stat(jeff.ConfigPath(existing)); err == nil {
 					return fmt.Errorf("JEFF is already initialized at %s\nTo reinitialize here, first remove the global pointer: rm ~/.config/jeff/home", existing)
 				}
 			}
 
-			// If already initialized, just re-sync hooks and exit.
+			// If target location already has jeff.yaml, just re-sync hooks.
 			if _, err := os.Stat(jeff.ConfigPath(home)); err == nil {
 				c, err := jeff.LoadConfig(home)
 				if err != nil {

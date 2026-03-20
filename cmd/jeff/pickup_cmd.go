@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/NeerajG03/JEFF"
-	jeffembed "github.com/NeerajG03/JEFF/embed"
+	"github.com/NeerajG03/JEFF/hooks"
 	"github.com/NeerajG03/JEFF/persona"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/NeerajG03/gig"
@@ -85,7 +85,19 @@ func pickupCmd() *cobra.Command {
 				return fmt.Errorf("write task CLAUDE.md: %w", err)
 			}
 
-			// 6. Launch agent tool in task directory.
+			// 6. Install task-level hooks (if any).
+			reg := hooks.DefaultRegistry()
+			mgr := hooks.NewManager(reg)
+			hctx := hooks.HookContext{JeffHome: cfg.Home, TargetDir: td.Path, GigHome: cfg.GigHome}
+			taskEnabled := hooks.EnabledForSource(cfg.Hooks, hooks.SourceTask, reg)
+			if len(taskEnabled) > 0 {
+				agent := hooks.AgentTool(cfg.Agent)
+				if err := mgr.Sync(td.Path, taskEnabled, agent, hctx); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: task hooks: %v\n", err)
+				}
+			}
+
+			// 7. Launch agent tool in task directory.
 			fmt.Fprintf(os.Stderr, "\nLaunching %s in %s...\n", cfg.Agent, td.Path)
 			return launchAgent(td.Path, cfg.Agent)
 		},
@@ -125,10 +137,6 @@ func writeTaskClaudeMD(taskDir string, task *gig.Task, personaName string) error
 		sb.WriteString(fmt.Sprintf("**Parent:** %s\n", task.ParentID))
 	}
 	sb.WriteString("\n")
-
-	// Append the default JEFF/gig reference.
-	sb.WriteString("---\n\n")
-	sb.WriteString(jeffembed.DefaultClaudeMD)
 
 	path := filepath.Join(taskDir, "CLAUDE.md")
 	return os.WriteFile(path, []byte(sb.String()), 0o644)

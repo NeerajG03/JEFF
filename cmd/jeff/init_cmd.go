@@ -7,6 +7,7 @@ import (
 
 	"github.com/NeerajG03/JEFF"
 	jeffembed "github.com/NeerajG03/JEFF/embed"
+	"github.com/NeerajG03/JEFF/hooks"
 	"github.com/spf13/cobra"
 )
 
@@ -40,9 +41,21 @@ func initCmd() *cobra.Command {
 				}
 			}
 
-			// Check if this location is already initialized.
+			// If already initialized, just re-sync hooks and exit.
 			if _, err := os.Stat(jeff.ConfigPath(home)); err == nil {
-				fmt.Printf("JEFF already initialized at %s (skipping)\n", home)
+				c, err := jeff.LoadConfig(home)
+				if err != nil {
+					return fmt.Errorf("load config: %w", err)
+				}
+				reg := hooks.DefaultRegistry()
+				mgr := hooks.NewManager(reg)
+				ctx := hooks.HookContext{JeffHome: home, TargetDir: home, GigHome: c.GigHome}
+				enabled := hooks.EnabledForSource(c.Hooks, hooks.SourceHome, reg)
+				agent := hooks.AgentTool(c.Agent)
+				if err := mgr.Sync(home, enabled, agent, ctx); err != nil {
+					return fmt.Errorf("sync hooks: %w", err)
+				}
+				fmt.Printf("JEFF already initialized at %s (hooks synced)\n", home)
 				return nil
 			}
 
@@ -72,7 +85,14 @@ func initCmd() *cobra.Command {
 			}
 
 			// Write default CLAUDE.md if missing.
-			if err := jeffembed.WriteClaudeMD(home, false); err != nil {
+			// Determine display path for the Home section.
+			var homePath string
+			if here {
+				homePath = "jeff/"
+			} else {
+				homePath = "~/.jeff/"
+			}
+			if err := jeffembed.WriteClaudeMD(home, homePath, false); err != nil {
 				return fmt.Errorf("write CLAUDE.md: %w", err)
 			}
 
@@ -81,6 +101,16 @@ func initCmd() *cobra.Command {
 			writeIfMissing(filepath.Join(home, ".claude", "settings.local.json"), "{}\n")
 			writeIfMissing(filepath.Join(home, ".opencode", "settings.json"), "{}\n")
 			writeIfMissing(filepath.Join(home, ".opencode", "settings.local.json"), "{}\n")
+
+			// Install hooks.
+			reg := hooks.DefaultRegistry()
+			mgr := hooks.NewManager(reg)
+			ctx := hooks.HookContext{JeffHome: home, TargetDir: home, GigHome: c.GigHome}
+			enabled := hooks.EnabledForSource(c.Hooks, hooks.SourceHome, reg)
+			agent := hooks.AgentTool(c.Agent)
+			if err := mgr.Sync(home, enabled, agent, ctx); err != nil {
+				return fmt.Errorf("install hooks: %w", err)
+			}
 
 			// Write global pointer so `jeff` always finds home.
 			if err := jeff.WriteHomePointer(home); err != nil {
@@ -93,6 +123,7 @@ func initCmd() *cobra.Command {
 			fmt.Println("  worktrees/  — git worktrees managed by: jeff worktree add")
 			fmt.Println("  exports/    — artifacts and generated files")
 			fmt.Println("  CLAUDE.md   — agent instructions (editable)")
+			fmt.Println("  hooks/      — session hooks (configure in jeff.yaml)")
 			return nil
 		},
 	}

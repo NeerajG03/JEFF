@@ -17,10 +17,11 @@ type RepoConfig struct {
 
 // Config represents the jeff.yaml configuration file.
 type Config struct {
-	Agent    AgentTool              `yaml:"agent"`     // preferred agent tool
-	GigHome string                 `yaml:"gig_home"`  // override gig home (empty = default)
-	Repos    map[string]*RepoConfig `yaml:"repos"`     // name → repo config
-	Home     string                 `yaml:"-"`         // resolved JEFF_HOME (not persisted in yaml)
+	Agent   AgentTool              `yaml:"agent"`              // preferred agent tool
+	GigHome string                 `yaml:"gig_home"`           // override gig home (empty = default)
+	Repos   map[string]*RepoConfig `yaml:"repos"`              // name → repo config
+	Hooks   map[string]bool        `yaml:"hooks,omitempty"`    // hook name → enabled (nil = all enabled)
+	Home    string                 `yaml:"-"`                  // resolved JEFF_HOME (not persisted in yaml)
 }
 
 // DefaultConfig returns a Config with sensible defaults.

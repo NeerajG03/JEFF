@@ -118,9 +118,9 @@ func TestExtractTaskID(t *testing.T) {
 		{"random-dir", "random-dir"},
 	}
 	for _, tt := range tests {
-		got := extractTaskID(tt.slug)
+		got := ExtractTaskID(tt.slug)
 		if got != tt.want {
-			t.Errorf("extractTaskID(%q) = %q, want %q", tt.slug, got, tt.want)
+			t.Errorf("ExtractTaskID(%q) = %q, want %q", tt.slug, got, tt.want)
 		}
 	}
 }

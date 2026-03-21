@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/NeerajG03/JEFF"
 	jeffembed "github.com/NeerajG03/JEFF/embed"
@@ -214,6 +217,29 @@ func configResetClaudeMDCmd() *cobra.Command {
 		Use:   "reset-claude-md",
 		Short: "Regenerate CLAUDE.md from default template",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Backup existing CLAUDE.md before overwriting.
+			src := filepath.Join(cfg.Home, "CLAUDE.md")
+			if _, err := os.Stat(src); err == nil {
+				home, err := os.UserHomeDir()
+				if err != nil {
+					return fmt.Errorf("get home dir: %w", err)
+				}
+				backupDir := filepath.Join(home, ".config", "jeff", "backups")
+				if err := os.MkdirAll(backupDir, 0o755); err != nil {
+					return fmt.Errorf("create backup dir: %w", err)
+				}
+				ts := time.Now().Format("20060102-150405")
+				backupPath := filepath.Join(backupDir, "CLAUDE.md."+ts)
+				data, err := os.ReadFile(src)
+				if err != nil {
+					return fmt.Errorf("read existing CLAUDE.md: %w", err)
+				}
+				if err := os.WriteFile(backupPath, data, 0o644); err != nil {
+					return fmt.Errorf("write backup: %w", err)
+				}
+				fmt.Printf("Backed up to %s\n", backupPath)
+			}
+
 			homePath := cfg.Home + "/"
 			if err := jeffembed.WriteClaudeMD(cfg.Home, homePath, true); err != nil {
 				return fmt.Errorf("reset CLAUDE.md: %w", err)

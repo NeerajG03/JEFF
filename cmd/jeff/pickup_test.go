@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -139,4 +140,223 @@ func TestWriteTaskClaudeMD_NoDescriptionOmitted(t *testing.T) {
 	if strings.Contains(content, "**Parent:**") {
 		t.Error("parent line should be omitted when empty")
 	}
+}
+
+func TestWriteTaskClaudeMD_NoWorktrees(t *testing.T) {
+	dir := t.TempDir()
+	task := &gig.Task{
+		ID:       "gig-aa11",
+		Title:    "No worktrees",
+		Priority: gig.P2,
+		Type:     gig.TypeTask,
+	}
+
+	if err := writeTaskClaudeMD(dir, task, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	content := string(data)
+
+	if strings.Contains(content, "## Workspace") {
+		t.Error("workspace section should not appear when there are no worktrees")
+	}
+}
+
+func TestWriteTaskClaudeMD_WithWorktrees(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create fake worktree targets and symlink them in.
+	wtFrontend := filepath.Join(t.TempDir(), "frontend", "gig-bb22")
+	os.MkdirAll(wtFrontend, 0o755)
+	os.Symlink(wtFrontend, filepath.Join(dir, "frontend"))
+
+	wtBackend := filepath.Join(t.TempDir(), "backend", "gig-bb22")
+	os.MkdirAll(wtBackend, 0o755)
+	os.Symlink(wtBackend, filepath.Join(dir, "backend"))
+
+	task := &gig.Task{
+		ID:       "gig-bb22",
+		Title:    "With worktrees",
+		Priority: gig.P1,
+		Type:     gig.TypeFeature,
+	}
+
+	if err := writeTaskClaudeMD(dir, task, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	content := string(data)
+
+	if !strings.Contains(content, "## Workspace") {
+		t.Fatal("missing workspace section")
+	}
+	if !strings.Contains(content, "frontend/") {
+		t.Error("missing frontend worktree")
+	}
+	if !strings.Contains(content, "backend/") {
+		t.Error("missing backend worktree")
+	}
+	if !strings.Contains(content, "(branch: gig-bb22)") {
+		t.Error("missing branch name")
+	}
+}
+
+func TestWriteTaskClaudeMD_WorktreeAddedLater(t *testing.T) {
+	dir := t.TempDir()
+	task := &gig.Task{
+		ID:       "gig-cc33",
+		Title:    "Incremental worktrees",
+		Priority: gig.P2,
+		Type:     gig.TypeTask,
+	}
+
+	// First write — no worktrees.
+	if err := writeTaskClaudeMD(dir, task, ""); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if strings.Contains(string(data), "## Workspace") {
+		t.Fatal("workspace section should not exist yet")
+	}
+
+	// Simulate adding a worktree symlink.
+	wtDir := filepath.Join(t.TempDir(), "api", "gig-cc33")
+	os.MkdirAll(wtDir, 0o755)
+	os.Symlink(wtDir, filepath.Join(dir, "api"))
+
+	// Rewrite — should now include workspace.
+	if err := writeTaskClaudeMD(dir, task, ""); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	content := string(data)
+
+	if !strings.Contains(content, "## Workspace") {
+		t.Fatal("missing workspace section after adding worktree")
+	}
+	if !strings.Contains(content, "api/") {
+		t.Error("missing api worktree")
+	}
+	if !strings.Contains(content, "(branch: gig-cc33)") {
+		t.Error("missing branch name")
+	}
+}
+
+func TestDetectPersona(t *testing.T) {
+	// No CLAUDE.md — should return "".
+	dir := t.TempDir()
+	if got := detectPersona(dir); got != "" {
+		t.Errorf("expected empty, got %q", got)
+	}
+
+	// Write with persona, then detect.
+	task := &gig.Task{ID: "gig-dd44", Title: "Detect test", Priority: gig.P2, Type: gig.TypeTask}
+	if err := writeTaskClaudeMD(dir, task, "jock"); err != nil {
+		t.Fatal(err)
+	}
+	if got := detectPersona(dir); got != "jock" {
+		t.Errorf("expected jock, got %q", got)
+	}
+
+	// Write without persona, should return "".
+	dir2 := t.TempDir()
+	if err := writeTaskClaudeMD(dir2, task, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := detectPersona(dir2); got != "" {
+		t.Errorf("expected empty, got %q", got)
+	}
+}
+
+func TestListWorktreeSymlinks_IgnoresRegularFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	// Regular file — should be ignored.
+	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("test"), 0o644)
+
+	// Regular dir — should be ignored.
+	os.MkdirAll(filepath.Join(dir, ".claude"), 0o755)
+
+	// Symlink — should be found.
+	wtDir := filepath.Join(t.TempDir(), "myrepo", "main")
+	os.MkdirAll(wtDir, 0o755)
+	os.Symlink(wtDir, filepath.Join(dir, "myrepo"))
+
+	result := listWorktreeSymlinks(dir)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 worktree, got %d", len(result))
+	}
+	if result[0].name != "myrepo" {
+		t.Errorf("expected name=myrepo, got %q", result[0].name)
+	}
+	if result[0].branch != "main" {
+		t.Errorf("expected branch=main, got %q", result[0].branch)
+	}
+}
+
+func TestWriteTaskClaudeMD_LabelsAndType(t *testing.T) {
+	dir := t.TempDir()
+	task := &gig.Task{
+		ID:       "gig-ee55",
+		Title:    "Full fields",
+		Priority: gig.P0,
+		Type:     gig.TypeBug,
+		Labels:   []string{"urgent", "backend"},
+		ParentID: "gig-parent",
+	}
+
+	if err := writeTaskClaudeMD(dir, task, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	content := string(data)
+
+	for _, want := range []string{"bug", "urgent, backend", "gig-parent", "P0"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("missing %q in CLAUDE.md", want)
+		}
+	}
+}
+
+func TestWriteWorkspaceLayout_TreeFormat(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create 3 worktrees to verify tree connectors.
+	for _, name := range []string{"frontend", "backend", "infra"} {
+		wtDir := filepath.Join(t.TempDir(), name, "gig-ff66")
+		os.MkdirAll(wtDir, 0o755)
+		os.Symlink(wtDir, filepath.Join(dir, name))
+	}
+
+	var sb strings.Builder
+	writeWorkspaceLayout(&sb, dir)
+	content := sb.String()
+
+	// Last entry should use └── connector.
+	lines := strings.Split(strings.TrimSpace(content), "\n")
+	lastTreeLine := ""
+	for _, l := range lines {
+		if strings.Contains(l, "/") && (strings.Contains(l, "├") || strings.Contains(l, "└")) {
+			lastTreeLine = l
+		}
+	}
+	if !strings.HasPrefix(lastTreeLine, "└── ") {
+		t.Errorf("last worktree should use └── connector, got %q", lastTreeLine)
+	}
+
+	// Non-last entries should use ├──.
+	midCount := 0
+	for _, l := range lines {
+		if strings.HasPrefix(l, "├── ") {
+			midCount++
+		}
+	}
+	if midCount != 2 {
+		t.Errorf("expected 2 ├── entries, got %d", midCount)
+	}
+
+	fmt.Println("Generated layout:\n" + content)
 }

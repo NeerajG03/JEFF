@@ -85,7 +85,7 @@ func List(jeffHome string) ([]*TaskDir, error) {
 			continue
 		}
 		// Extract task ID: everything before the first dash after the prefix pattern.
-		taskID := extractTaskID(e.Name())
+		taskID := ExtractTaskID(e.Name())
 		dirs = append(dirs, &TaskDir{
 			Path:   filepath.Join(tasksDir, e.Name()),
 			TaskID: taskID,
@@ -114,8 +114,11 @@ func makeSlug(taskID, title string) string {
 	return taskID + "-" + slug
 }
 
-// extractTaskID pulls the gig task ID from a slug (e.g., "gig-ab12-some-title" → "gig-ab12").
-func extractTaskID(slug string) string {
+// ExtractTaskID pulls the gig task ID from a slug or full path
+// (e.g., "gig-ab12-some-title" → "gig-ab12", "/path/to/tasks/gig-ab12-foo" → "gig-ab12").
+func ExtractTaskID(slugOrPath string) string {
+	// Use just the base name if a full path is given.
+	slug := filepath.Base(slugOrPath)
 	// Match gig-XXXX or gig-XXXX.N patterns at the start.
 	re := regexp.MustCompile(`^(gig-[a-z0-9]+(?:\.[0-9]+)*)`)
 	m := re.FindString(slug)

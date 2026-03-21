@@ -137,25 +137,22 @@ func jsDynamicSnippet(name, command string) string {
 
 const gigInstructionsContext = `## Gig Task Management
 
-You have access to ` + "`gig`" + ` — a CLI task tracker.
+` + "`gig`" + ` is a CLI task tracker. Use it to track progress and understand context.
 
-### Quick reference
-- ` + "`gig list [--tree]`" + `           — list open tasks
-- ` + "`gig show <id>`" + `              — task details + latest checkpoint
-- ` + "`gig ready [--id <parent>]`" + `  — what's available to pick up
-- ` + "`gig create \"<title>\"`" + `       — create a task
-- ` + "`gig update <id> --claim`" + `    — claim a task
-- ` + "`gig close <id>`" + `             — close a task
-- ` + "`gig comment <id> \"<text>\"`" + ` — add a comment
-- ` + "`gig comments <id>`" + `          — view comments
-- ` + "`gig checkpoints <id>`" + `       — view progress snapshots`
+- ` + "`gig show <id>`" + `                      — task details, checkpoint, deps, subtasks
+- ` + "`gig list [--tree]`" + `                  — tasks and their status
+- ` + "`gig create \"<title>\" [--parent <id>]`" + ` — create a task or subtask
+- ` + "`gig update <id> --claim`" + `            — claim a task (sets assignee + in_progress)
+- ` + "`gig update <id> --status <s>`" + `       — update status (open, in_progress, blocked)
+- ` + "`gig close <id>`" + `                     — mark done (children must be closed first)
+- ` + "`gig comment <id> \"<text>\"`" + `         — leave notes on a task
+- ` + "`gig checkpoint <id> --done \"...\"`" + `  — save a progress snapshot
+- ` + "`gig dep add <from> blocks <to>`" + `     — declare a dependency
+- ` + "`gig search \"<query>\"`" + `              — find tasks by title/description`
 
 const jeffInstructionsContext = `## JEFF Commands
 
-- ` + "`jeff pickup <gig-id> [--persona <name>]`" + ` — claim task, setup workspace, start working
-- ` + "`jeff work [<gig-id>]`" + `                     — resume work in existing task dir
 - ` + "`jeff checkpoint --done \"...\" [--next ...]`" + ` — save structured progress snapshot
-- ` + "`jeff worktree add <repo> <branch>`" + `        — create worktree, symlink to task dir
-- ` + "`jeff ship`" + `                                — push branches + create PRs
-- ` + "`jeff done [<gig-id>]`" + `                     — close task, cleanup workspace
-- ` + "`jeff status`" + `                              — overview of all active tasks`
+- ` + "`jeff worktree add <repo> <branch>`" + `        — create a worktree and symlink to task dir
+- ` + "`jeff ship`" + `                                — push branches + create PRs for all repos
+- ` + "`jeff status`" + `                              — overview of all active tasks and workspaces`

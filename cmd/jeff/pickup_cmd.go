@@ -112,7 +112,7 @@ func pickupCmd() *cobra.Command {
 }
 
 // writeTaskClaudeMD generates a CLAUDE.md for the task directory combining
-// persona instructions, task context, and JEFF/gig CLI reference.
+// persona instructions, task context, and workspace layout.
 func writeTaskClaudeMD(taskDir string, task *gig.Task, personaName string) error {
 	var sb strings.Builder
 
@@ -127,17 +127,119 @@ func writeTaskClaudeMD(taskDir string, task *gig.Task, personaName string) error
 
 	// Task context.
 	sb.WriteString("# Current Task\n\n")
-	sb.WriteString(fmt.Sprintf("**ID:** %s\n", task.ID))
-	sb.WriteString(fmt.Sprintf("**Title:** %s\n", task.Title))
+	sb.WriteString(fmt.Sprintf("- **ID:** %s\n", task.ID))
+	sb.WriteString(fmt.Sprintf("- **Title:** %s\n", task.Title))
 	if task.Description != "" {
-		sb.WriteString(fmt.Sprintf("**Description:** %s\n", task.Description))
+		sb.WriteString(fmt.Sprintf("- **Description:** %s\n", task.Description))
 	}
-	sb.WriteString(fmt.Sprintf("**Priority:** P%d\n", task.Priority))
+	sb.WriteString(fmt.Sprintf("- **Priority:** P%d\n", task.Priority))
+	sb.WriteString(fmt.Sprintf("- **Type:** %s\n", task.Type))
 	if task.ParentID != "" {
-		sb.WriteString(fmt.Sprintf("**Parent:** %s\n", task.ParentID))
+		sb.WriteString(fmt.Sprintf("- **Parent:** %s\n", task.ParentID))
+	}
+	if len(task.Labels) > 0 {
+		sb.WriteString(fmt.Sprintf("- **Labels:** %s\n", strings.Join(task.Labels, ", ")))
 	}
 	sb.WriteString("\n")
 
+	// Workspace layout with worktrees.
+	writeWorkspaceLayout(&sb, taskDir)
+
 	path := filepath.Join(taskDir, "CLAUDE.md")
 	return os.WriteFile(path, []byte(sb.String()), 0o644)
+}
+
+// refreshTaskClaudeMD regenerates the task CLAUDE.md, preserving the persona
+// that was used at pickup. Called after worktrees are added/removed.
+func refreshTaskClaudeMD(taskDir string, store *gig.Store, taskID string) error {
+	task, err := store.Get(taskID)
+	if err != nil {
+		return err
+	}
+
+	// Detect persona from existing CLAUDE.md (it's above the --- separator).
+	personaName := detectPersona(taskDir)
+
+	return writeTaskClaudeMD(taskDir, task, personaName)
+}
+
+// detectPersona reads the existing CLAUDE.md and returns the persona name
+// if one was used, or "" if none.
+func detectPersona(taskDir string) string {
+	data, err := os.ReadFile(filepath.Join(taskDir, "CLAUDE.md"))
+	if err != nil {
+		return ""
+	}
+	content := string(data)
+	// Persona content appears before "---" separator and before "# Current Task".
+	if !strings.Contains(content, "\n---\n") {
+		return ""
+	}
+	// Check each known persona.
+	for _, name := range persona.Names() {
+		p, err := persona.Get(name)
+		if err != nil {
+			continue
+		}
+		if strings.HasPrefix(content, p) {
+			return name
+		}
+	}
+	return ""
+}
+
+// writeWorkspaceLayout appends the workspace directory layout to sb,
+// showing symlinked worktrees and their branches.
+func writeWorkspaceLayout(sb *strings.Builder, taskDir string) {
+	worktrees := listWorktreeSymlinks(taskDir)
+	if len(worktrees) == 0 {
+		return
+	}
+
+	sb.WriteString("## Workspace\n\n")
+	sb.WriteString("```\n")
+	sb.WriteString(filepath.Base(taskDir) + "/\n")
+	for i, wt := range worktrees {
+		connector := "├── "
+		if i == len(worktrees)-1 {
+			connector = "└── "
+		}
+		sb.WriteString(connector + wt.name + "/")
+		if wt.branch != "" {
+			sb.WriteString("  (branch: " + wt.branch + ")")
+		}
+		sb.WriteString("\n")
+	}
+	sb.WriteString("```\n\n")
+}
+
+type worktreeInfo struct {
+	name   string // symlink name (repo name)
+	branch string // git branch name, if detectable
+}
+
+// listWorktreeSymlinks scans taskDir for symlinks (which are worktrees).
+func listWorktreeSymlinks(taskDir string) []worktreeInfo {
+	entries, err := os.ReadDir(taskDir)
+	if err != nil {
+		return nil
+	}
+
+	var result []worktreeInfo
+	for _, e := range entries {
+		fullPath := filepath.Join(taskDir, e.Name())
+		fi, err := os.Lstat(fullPath)
+		if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+			continue
+		}
+		target, err := os.Readlink(fullPath)
+		if err != nil {
+			continue
+		}
+		// Branch is the last component of the worktree path
+		// (jeff stores worktrees as worktrees/<repo>/<branch>).
+		branch := filepath.Base(target)
+		result = append(result, worktreeInfo{name: e.Name(), branch: branch})
+	}
+	return result
 }

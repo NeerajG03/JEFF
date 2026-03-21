@@ -56,12 +56,11 @@ func (m *Manager) Sync(targetDir string, enabled map[string]bool, agent AgentToo
 		installed[name] = true
 	}
 
-	// Install missing.
+	// Install or update all enabled hooks (always overwrite scripts
+	// so content updates propagate on sync).
 	for name := range enabled {
-		if !installed[name] {
-			if err := m.Install(name, targetDir, agent, ctx); err != nil {
-				return err
-			}
+		if err := m.Install(name, targetDir, agent, ctx); err != nil {
+			return err
 		}
 	}
 

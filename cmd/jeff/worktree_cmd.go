@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/spf13/cobra"
@@ -36,6 +37,18 @@ func worktreeAddCmd() *cobra.Command {
 			fmt.Printf("Worktree created: %s\n", wtDir)
 			if taskDir != "" {
 				fmt.Printf("Symlinked into: %s/%s\n", taskDir, args[0])
+
+				// Refresh task CLAUDE.md so it reflects the new worktree.
+				taskID := workspace.ExtractTaskID(taskDir)
+				if taskID != "" {
+					store, err := openGigStore()
+					if err == nil {
+						defer store.Close()
+						if err := refreshTaskClaudeMD(taskDir, store, taskID); err != nil {
+							fmt.Fprintf(os.Stderr, "Warning: refresh CLAUDE.md: %v\n", err)
+						}
+					}
+				}
 			}
 			return nil
 		},

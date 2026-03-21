@@ -258,22 +258,14 @@ func listWorktreeSymlinks(taskDir string) []worktreeInfo {
 	return result
 }
 
-// taskWithAttrs is the JSON shape piped to branch name scripts.
-type taskWithAttrs struct {
-	*gig.Task
-	Attrs map[string]string `json:"attrs,omitempty"`
-}
-
-// buildTaskJSON creates JSON for the task including custom attributes.
+// buildTaskJSON marshals a task (with attrs) to JSON for branch naming scripts.
+// Uses store.GetFull which populates the Attrs field — same output as gig show --json.
 func buildTaskJSON(store *gig.Store, task *gig.Task) []byte {
-	ta := taskWithAttrs{Task: task, Attrs: make(map[string]string)}
-	attrs, err := store.Attrs(task.ID)
-	if err == nil {
-		for _, a := range attrs {
-			ta.Attrs[a.Key] = a.Value
-		}
+	full, err := store.GetFull(task.ID)
+	if err != nil {
+		full = task
 	}
-	data, _ := json.Marshal(ta)
+	data, _ := json.Marshal(full)
 	return data
 }
 

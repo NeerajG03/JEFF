@@ -382,7 +382,7 @@ func TestBuildTaskJSON_IncludesAttrs(t *testing.T) {
 
 	data := buildTaskJSON(store, task)
 
-	var parsed taskWithAttrs
+	var parsed gig.Task
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -414,7 +414,7 @@ func TestBuildTaskJSON_NoAttrs(t *testing.T) {
 
 	data := buildTaskJSON(store, task)
 
-	var parsed taskWithAttrs
+	var parsed gig.Task
 	json.Unmarshal(data, &parsed)
 
 	if len(parsed.Attrs) != 0 {

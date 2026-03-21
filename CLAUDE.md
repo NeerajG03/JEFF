@@ -6,15 +6,16 @@ Agent workspace manager — Go CLI + SDK built on [gig](https://github.com/Neera
 
 ```
 JEFF/
-├── jeff.go             # Core types: AgentTool enum
+├── jeff.go             # Core types: AgentTool, IDE enums
 ├── config.go           # LoadConfig, SaveConfig, ResolveHome, RepoConfig
 ├── repo.go             # AddRepo, RemoveRepo, ListRepos, SetPostSetup
 ├── attrs.go            # EnsureAttrs — define JEFF custom attributes in gig
-├── embed/              # Embedded assets (CLAUDE.md, claude-settings.json)
+├── embed/              # Embedded assets (CLAUDE.md template, claude-settings.json)
+├── hooks/              # Hook system: registry, builtin hooks, claude/opencode delivery
 ├── persona/            # Embedded persona templates (captain, nerd, jock, scout)
-├── workspace/          # Task workspace + worktree management
+├── workspace/          # Task workspace + worktree management + branch naming
 ├── cmd/jeff/           # CLI (cobra) — thin wrapper over SDK
-├── docs/               # Detailed guides (testing, adding commands)
+├── docs/               # Guides (testing, adding commands, config reference)
 └── *_test.go           # Unit tests alongside source
 ```
 
@@ -44,14 +45,56 @@ Resolved via: `JEFF_HOME` env var → `~/.config/jeff/home` pointer → `~/.jeff
 ```
 JEFF_HOME/
 ├── CLAUDE.md           # agent instructions (editable, resettable)
-├── jeff.yaml           # config: agent tool, repos, post-setup scripts
+├── jeff.yaml           # config: agent, IDE, repos, hooks
 ├── .claude/            # Claude Code settings + hooks
 ├── .opencode/          # opencode settings
+├── hooks/              # hook scripts (managed by jeff)
+├── scripts/            # user scripts (branch naming, post-setup, etc.)
 ├── repos/              # registered codebases (git clones)
 ├── tasks/              # active task workspaces (ephemeral)
 ├── worktrees/          # centralized git worktrees (symlinked into tasks)
-└── exports/            # generated artifacts (scripts, reports, data)
+└── exports/            # generated artifacts
 ```
+
+## Config (jeff.yaml)
+
+```yaml
+agent: claude                      # "claude" or "opencode"
+ide: cursor                        # "vscode", "cursor", "windsurf", "nvim"
+gig_home: ""                       # override gig home (empty = default)
+repos:
+  backend:
+    url: https://github.com/org/backend.git
+    base_branch: origin/develop    # base for worktrees + PRs (default: origin/main)
+    branch_name: scripts/branch.sh # custom branch naming (receives task JSON on stdin)
+    post_setup: scripts/setup.sh   # runs after worktree creation
+hooks:
+  gig-ready-tasks: false           # nil map = all enabled, set false to disable
+```
+
+See `docs/config.md` for full reference.
+
+## Hooks
+
+Located in `hooks/` package. Four built-in hooks inject context at agent session start:
+
+| Hook | Content |
+|------|---------|
+| `gig-instructions` | gig CLI reference (agent-usable commands only) |
+| `gig-ready-tasks` | `gig ready` output (dynamic) |
+| `jeff-instructions` | jeff CLI reference (agent-usable commands only) |
+| `jeff-repos` | Registered repo list (dynamic) |
+
+Delivery: Claude Code gets bash scripts in `hooks/` + settings.json wiring. OpenCode gets a combined JS plugin.
+
+Key files: `hooks/hook.go` (types), `hooks/registry.go` (collection), `hooks/builtin.go` (definitions + content), `hooks/claude.go` (Claude delivery), `hooks/opencode.go` (OpenCode delivery), `hooks/manager.go` (orchestrator).
+
+## Worktrees
+
+`workspace/worktree.go` manages git worktrees. Key behavior:
+- **Base branch**: `RepoConfig.BaseBranch` (default `origin/main`). Fetches remote before branching.
+- **Branch naming**: `RepoConfig.BranchName` script receives task JSON (with attrs) on stdin. Default: task ID.
+- **`.jeff-base`**: Written in each worktree, records base branch for `jeff ship`.
 
 ## What NOT to Do
 
@@ -73,5 +116,6 @@ Embedded in binary via `persona/templates/`. Used via `--persona` flag on pickup
 
 ## Further Reading
 
+- `docs/config.md` — full configuration reference (repos, hooks, branch naming, IDE)
 - `docs/testing.md` — test infrastructure, existing test files
 - `docs/adding-commands.md` — step-by-step guide for new CLI commands

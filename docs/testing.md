@@ -1,7 +1,5 @@
 # Testing
 
-JEFF has SDK unit tests only (no E2E CLI tests yet).
-
 ## Running Tests
 
 ```bash
@@ -32,5 +30,11 @@ go test -count=1 ./...  # Disable cache
 | `repo_test.go` | repoNameFromURL, ListRepos, AddRepo duplicate, RemoveRepo not registered |
 | `attrs_test.go` | EnsureAttrs defines repos + worktree_setup, idempotency |
 | `persona/persona_test.go` | Names, Get, IsValid, all 4 personas present |
-| `workspace/workspace_test.go` | Create, Open, Remove, List, makeSlug, extractTaskID |
-| `workspace/worktree_test.go` | symlinkIntoTask, idempotent symlink, WorktreeList empty, WorktreeAdd missing repo |
+| `workspace/workspace_test.go` | Create, Open, Remove, List, makeSlug, ExtractTaskID |
+| `workspace/worktree_test.go` | symlinkIntoTask, idempotent symlink, WorktreeList, WorktreeAdd missing repo, ReadBaseBranch, ResolveBranchName |
+| `hooks/registry_test.go` | Register, Get, BySource, duplicate panic, DefaultRegistry |
+| `hooks/claude_test.go` | readSettings/writeSettings, add/remove entries, idempotent install |
+| `hooks/opencode_test.go` | Generate combined plugin, empty = no file |
+| `hooks/manager_test.go` | Sync installs/removes, idempotent, Installed |
+| `hooks/builtin_test.go` | Each hook generates non-empty script content |
+| `cmd/jeff/pickup_test.go` | writeTaskClaudeMD (persona, no persona, worktrees, workspace layout), detectPersona, listWorktreeSymlinks, buildTaskJSON, resolveRepoBranch (E2E with gig store + branch script) |

@@ -59,6 +59,7 @@ func main() {
 		repoCmd(),
 		worktreeCmd(),
 		checkpointCmd(),
+		shipCmd(),
 		configCmd(),
 		openCmd(),
 		completionCmd(),

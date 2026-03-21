@@ -14,15 +14,22 @@ func checkpointCmd() *cobra.Command {
 		next      string
 		blockers  string
 		files     []string
-		taskID    string
+		taskFlag  string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "checkpoint",
 		Short: "Save a structured progress snapshot to the current task",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if taskID == "" {
-				return fmt.Errorf("--task is required (automatic detection from CWD coming soon)")
+			var taskID string
+			if taskFlag != "" {
+				taskID = taskFlag
+			} else {
+				id, _, err := resolveTaskID(nil)
+				if err != nil {
+					return fmt.Errorf("cannot detect task: %w\nUse --task to specify explicitly", err)
+				}
+				taskID = id
 			}
 
 			store, err := openGigStore()
@@ -47,7 +54,7 @@ func checkpointCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&taskID, "task", "", "Task ID to checkpoint")
+	cmd.Flags().StringVar(&taskFlag, "task", "", "Task ID (auto-detected from cwd if omitted)")
 	cmd.Flags().StringVar(&done, "done", "", "What was accomplished (required)")
 	cmd.Flags().StringVar(&decisions, "decisions", "", "Key decisions and reasoning")
 	cmd.Flags().StringVar(&next, "next", "", "What should happen next")

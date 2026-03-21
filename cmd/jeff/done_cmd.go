@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/NeerajG03/JEFF"
+	jeff "github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/spf13/cobra"
 )
@@ -14,11 +14,14 @@ func doneCmd() *cobra.Command {
 	var reason string
 
 	cmd := &cobra.Command{
-		Use:   "done <gig-id>",
+		Use:   "done [gig-id]",
 		Short: "Close a task and clean up its workspace",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			taskID := args[0]
+			taskID, _, err := resolveTaskID(args)
+			if err != nil {
+				return err
+			}
 
 			store, err := openGigStore()
 			if err != nil {

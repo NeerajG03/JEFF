@@ -34,6 +34,11 @@ func main() {
 				return fmt.Errorf("load config: %w", err)
 			}
 			cfg = c
+
+			// Self-heal: ensure the home pointer exists so it survives
+			// upgrades, cache clears, or accidental deletion.
+			_ = jeff.WriteHomePointer(home)
+
 			return nil
 		},
 		// Bare `jeff` with no subcommand: open agent tool at JEFF_HOME.

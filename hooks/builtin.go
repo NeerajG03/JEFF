@@ -148,11 +148,15 @@ const gigInstructionsContext = `## Gig Task Management
 - ` + "`gig comment <id> \"<text>\"`" + `         — leave notes on a task
 - ` + "`gig checkpoint <id> --done \"...\"`" + `  — save a progress snapshot
 - ` + "`gig dep add <from> blocks <to>`" + `     — declare a dependency
-- ` + "`gig search \"<query>\"`" + `              — find tasks by title/description`
+- ` + "`gig search \"<query>\"`" + `              — find tasks by title/description
+
+Run ` + "`gig <command> --help`" + ` for full flags and options.`
 
 const jeffInstructionsContext = `## JEFF Commands
 
-- ` + "`jeff checkpoint --done \"...\" [--next ...]`" + ` — save structured progress snapshot
-- ` + "`jeff worktree add <repo> <branch>`" + `        — create a worktree and symlink to task dir
-- ` + "`jeff ship`" + `                                — push branches + create PRs for all repos
-- ` + "`jeff status`" + `                              — overview of all active tasks and workspaces`
+- ` + "`jeff checkpoint --done \"...\" [--next ...]`" + `        — save structured progress snapshot
+- ` + "`jeff worktree add <repo> <branch> [--base <ref>]`" + ` — create a worktree
+- ` + "`jeff ship`" + `                                        — push branches + create PRs for all repos
+- ` + "`jeff status`" + `                                      — overview of all active tasks and workspaces
+
+Run ` + "`jeff <command> --help`" + ` for full flags and options.`

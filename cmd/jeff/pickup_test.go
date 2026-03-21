@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	jeff "github.com/NeerajG03/JEFF"
+	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/NeerajG03/gig"
 )
 
@@ -359,4 +362,192 @@ func TestWriteWorkspaceLayout_TreeFormat(t *testing.T) {
 	}
 
 	fmt.Println("Generated layout:\n" + content)
+}
+
+func TestBuildTaskJSON_IncludesAttrs(t *testing.T) {
+	store, err := gig.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	task, err := store.Create(gig.CreateParams{Title: "Test attrs", Type: gig.TypeFeature})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Define and set a custom attribute.
+	store.DefineAttr("branch_prefix", gig.AttrString, "custom branch prefix")
+	store.SetAttr(task.ID, "branch_prefix", "neeraj")
+
+	data := buildTaskJSON(store, task)
+
+	var parsed taskWithAttrs
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if parsed.ID != task.ID {
+		t.Errorf("expected ID %s, got %s", task.ID, parsed.ID)
+	}
+	if parsed.Type != gig.TypeFeature {
+		t.Errorf("expected type feature, got %s", parsed.Type)
+	}
+	if parsed.Attrs["branch_prefix"] != "neeraj" {
+		t.Errorf("expected attr branch_prefix=neeraj, got %q", parsed.Attrs["branch_prefix"])
+	}
+
+	fmt.Printf("Task JSON: %s\n", string(data))
+}
+
+func TestBuildTaskJSON_NoAttrs(t *testing.T) {
+	store, err := gig.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	task, err := store.Create(gig.CreateParams{Title: "No attrs", Type: gig.TypeBug})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data := buildTaskJSON(store, task)
+
+	var parsed taskWithAttrs
+	json.Unmarshal(data, &parsed)
+
+	if len(parsed.Attrs) != 0 {
+		t.Errorf("expected empty attrs, got %v", parsed.Attrs)
+	}
+}
+
+func TestResolveRepoBranch_NoConfig(t *testing.T) {
+	got, err := resolveRepoBranch(nil, nil, "gig-ab12")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "gig-ab12" {
+		t.Errorf("expected gig-ab12, got %q", got)
+	}
+}
+
+func TestResolveRepoBranch_NoScript(t *testing.T) {
+	rc := &jeff.RepoConfig{URL: "https://example.com"}
+	got, err := resolveRepoBranch(rc, nil, "gig-cd34")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "gig-cd34" {
+		t.Errorf("expected gig-cd34, got %q", got)
+	}
+}
+
+func TestResolveRepoBranch_WithScript(t *testing.T) {
+	// Create a branch naming script that uses type + custom attr.
+	script := filepath.Join(t.TempDir(), "branch.sh")
+	os.WriteFile(script, []byte(`#!/bin/bash
+TASK=$(cat)
+PREFIX=$(echo "$TASK" | jq -r '.attrs.branch_prefix // empty')
+if [ -z "$PREFIX" ]; then
+  PREFIX=$(echo "$TASK" | jq -r '.type // "task"')
+fi
+ID=$(echo "$TASK" | jq -r '.id')
+echo "${PREFIX}/${ID}"
+`), 0o755)
+
+	rc := &jeff.RepoConfig{BranchName: script}
+
+	// Test with branch_prefix attr.
+	taskJSON := []byte(`{"id":"gig-ab12","type":"feature","attrs":{"branch_prefix":"neeraj"}}`)
+	got, err := resolveRepoBranch(rc, taskJSON, "fallback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "neeraj/gig-ab12" {
+		t.Errorf("expected neeraj/gig-ab12, got %q", got)
+	}
+
+	// Test without branch_prefix attr — falls back to type.
+	taskJSON = []byte(`{"id":"gig-cd34","type":"bug","attrs":{}}`)
+	got, err = resolveRepoBranch(rc, taskJSON, "fallback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "bug/gig-cd34" {
+		t.Errorf("expected bug/gig-cd34, got %q", got)
+	}
+}
+
+func TestResolveRepoBranch_E2E_WithGigStore(t *testing.T) {
+	// Full end-to-end: create task in gig, set custom attr, run branch script.
+	store, err := gig.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	task, err := store.Create(gig.CreateParams{Title: "Auth refactor", Type: gig.TypeFeature})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store.DefineAttr("branch_prefix", gig.AttrString, "custom branch prefix")
+	store.SetAttr(task.ID, "branch_prefix", "neeraj")
+
+	// Build task JSON (same as pickup does).
+	taskJSON := buildTaskJSON(store, task)
+
+	// Create branch naming script.
+	script := filepath.Join(t.TempDir(), "branch.sh")
+	os.WriteFile(script, []byte(`#!/bin/bash
+TASK=$(cat)
+PREFIX=$(echo "$TASK" | jq -r '.attrs.branch_prefix // empty')
+if [ -z "$PREFIX" ]; then
+  PREFIX=$(echo "$TASK" | jq -r '.type // "task"')
+fi
+ID=$(echo "$TASK" | jq -r '.id')
+echo "${PREFIX}/${ID}"
+`), 0o755)
+
+	rc := &jeff.RepoConfig{BranchName: script, BaseBranch: "origin/develop"}
+
+	// Resolve branch name.
+	branch, err := resolveRepoBranch(rc, taskJSON, task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if branch != "neeraj/"+task.ID {
+		t.Errorf("expected neeraj/%s, got %q", task.ID, branch)
+	}
+
+	// Verify base branch would come from config.
+	if rc.BaseBranch != "origin/develop" {
+		t.Errorf("expected origin/develop, got %q", rc.BaseBranch)
+	}
+
+	// Verify ResolveBranchName directly with the JSON to confirm attrs are in there.
+	var parsed map[string]any
+	json.Unmarshal(taskJSON, &parsed)
+	attrs := parsed["attrs"].(map[string]any)
+	if attrs["branch_prefix"] != "neeraj" {
+		t.Errorf("task JSON missing branch_prefix attr")
+	}
+
+	fmt.Printf("Branch: %s (base: %s)\n", branch, rc.BaseBranch)
+	fmt.Printf("Task JSON: %s\n", string(taskJSON))
+
+	// Now test without attr — should fall back to type.
+	store.DeleteAttr(task.ID, "branch_prefix")
+	taskJSON2 := buildTaskJSON(store, task)
+	branch2, err := workspace.ResolveBranchName(script, taskJSON2, task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if branch2 != "feature/"+task.ID {
+		t.Errorf("expected feature/%s without attr, got %q", task.ID, branch2)
+	}
+
+	fmt.Printf("Branch (no attr): %s\n", branch2)
 }

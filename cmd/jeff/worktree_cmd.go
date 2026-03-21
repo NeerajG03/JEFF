@@ -18,25 +18,37 @@ func worktreeCmd() *cobra.Command {
 }
 
 func worktreeAddCmd() *cobra.Command {
-	var taskDir string
+	var taskDir, baseBranch string
 
 	cmd := &cobra.Command{
 		Use:   "add <repo> <branch>",
 		Short: "Create a git worktree and optionally symlink into task dir",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Look up post-setup script from repo config.
-			var postSetup string
-			if rc, ok := cfg.Repos[args[0]]; ok && rc.PostSetup != "" {
-				postSetup = rc.PostSetup
+			repoName, branch := args[0], args[1]
+
+			opts := workspace.WorktreeOpts{
+				JeffHome:   cfg.Home,
+				RepoName:   repoName,
+				Branch:     branch,
+				BaseBranch: baseBranch,
+				TaskDir:    taskDir,
 			}
-			wtDir, err := workspace.WorktreeAdd(cfg.Home, args[0], args[1], taskDir, postSetup)
+			// Fill from repo config if not overridden by flags.
+			if rc, ok := cfg.Repos[repoName]; ok {
+				if opts.BaseBranch == "" {
+					opts.BaseBranch = rc.BaseBranch
+				}
+				opts.PostSetup = rc.PostSetup
+			}
+
+			wtDir, err := workspace.WorktreeAdd(opts)
 			if err != nil {
 				return err
 			}
 			fmt.Printf("Worktree created: %s\n", wtDir)
 			if taskDir != "" {
-				fmt.Printf("Symlinked into: %s/%s\n", taskDir, args[0])
+				fmt.Printf("Symlinked into: %s/%s\n", taskDir, repoName)
 
 				// Refresh task CLAUDE.md so it reflects the new worktree.
 				taskID := workspace.ExtractTaskID(taskDir)
@@ -55,6 +67,7 @@ func worktreeAddCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&taskDir, "task-dir", "", "Symlink worktree into this task directory")
+	cmd.Flags().StringVar(&baseBranch, "base", "", "Base branch to branch from (default: repo config or origin/main)")
 	return cmd
 }
 

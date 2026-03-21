@@ -63,8 +63,84 @@ func TestWorktreeListEmpty(t *testing.T) {
 
 func TestWorktreeAddMissingRepo(t *testing.T) {
 	home := tempJeffHome(t)
-	_, err := WorktreeAdd(home, "nonexistent", "feat-x", "", "")
+	_, err := WorktreeAdd(WorktreeOpts{JeffHome: home, RepoName: "nonexistent", Branch: "feat-x"})
 	if err == nil {
 		t.Error("expected error for missing repo")
+	}
+}
+
+func TestReadBaseBranch_Default(t *testing.T) {
+	dir := t.TempDir()
+	got := ReadBaseBranch(dir)
+	if got != defaultBaseBranch {
+		t.Errorf("expected %q, got %q", defaultBaseBranch, got)
+	}
+}
+
+func TestReadBaseBranch_Written(t *testing.T) {
+	dir := t.TempDir()
+	writeBaseBranch(dir, "origin/develop")
+	got := ReadBaseBranch(dir)
+	if got != "origin/develop" {
+		t.Errorf("expected origin/develop, got %q", got)
+	}
+}
+
+func TestReadBaseBranch_Empty(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, ".jeff-base"), []byte("\n"), 0o644)
+	got := ReadBaseBranch(dir)
+	if got != defaultBaseBranch {
+		t.Errorf("expected default for empty file, got %q", got)
+	}
+}
+
+func TestResolveBranchName_NoScript(t *testing.T) {
+	got, err := ResolveBranchName("", nil, "gig-ab12")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "gig-ab12" {
+		t.Errorf("expected gig-ab12, got %q", got)
+	}
+}
+
+func TestResolveBranchName_WithScript(t *testing.T) {
+	// Create a script that reads task JSON and outputs a branch name.
+	script := filepath.Join(t.TempDir(), "branch.sh")
+	os.WriteFile(script, []byte(`#!/bin/bash
+TASK=$(cat)
+TYPE=$(echo "$TASK" | jq -r '.type')
+ID=$(echo "$TASK" | jq -r '.id')
+echo "${TYPE}/${ID}"
+`), 0o755)
+
+	taskJSON := []byte(`{"id":"gig-ab12","type":"feature"}`)
+	got, err := ResolveBranchName(script, taskJSON, "fallback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "feature/gig-ab12" {
+		t.Errorf("expected feature/gig-ab12, got %q", got)
+	}
+}
+
+func TestResolveBranchName_ScriptEmpty(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "empty.sh")
+	os.WriteFile(script, []byte("#!/bin/bash\necho ''"), 0o755)
+
+	_, err := ResolveBranchName(script, []byte("{}"), "fallback")
+	if err == nil {
+		t.Error("expected error for empty output")
+	}
+}
+
+func TestResolveBranchName_ScriptFails(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "fail.sh")
+	os.WriteFile(script, []byte("#!/bin/bash\nexit 1"), 0o755)
+
+	_, err := ResolveBranchName(script, []byte("{}"), "fallback")
+	if err == nil {
+		t.Error("expected error for failing script")
 	}
 }

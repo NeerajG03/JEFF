@@ -12,6 +12,8 @@ import (
 // RepoConfig holds per-repo configuration.
 type RepoConfig struct {
 	URL        string `yaml:"url"`                    // clone URL
+	BaseBranch string `yaml:"base_branch,omitempty"`  // base branch for PRs (default: "origin/main")
+	BranchName string `yaml:"branch_name,omitempty"`  // script that outputs branch name (receives task JSON on stdin)
 	PostSetup  string `yaml:"post_setup,omitempty"`   // script run after worktree creation (receives src_dir, dest_dir)
 }
 

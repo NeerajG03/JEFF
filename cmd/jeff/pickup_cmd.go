@@ -66,13 +66,27 @@ func pickupCmd() *cobra.Command {
 			}
 
 			// 4. Create worktrees for specified repos.
+			taskJSON := buildTaskJSON(store, task)
 			for _, repoName := range repos {
-				branch := taskID // use task ID as branch name
-				var postSetup string
-				if rc, ok := cfg.Repos[repoName]; ok && rc.PostSetup != "" {
-					postSetup = rc.PostSetup
+				rc := cfg.Repos[repoName]
+				branch, err := resolveRepoBranch(rc, taskJSON, taskID)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: branch name for %s: %v, using %s\n", repoName, err, taskID)
+					branch = taskID
 				}
-				wtDir, err := workspace.WorktreeAdd(cfg.Home, repoName, branch, td.Path, postSetup)
+
+				opts := workspace.WorktreeOpts{
+					JeffHome: cfg.Home,
+					RepoName: repoName,
+					Branch:   branch,
+					TaskDir:  td.Path,
+				}
+				if rc != nil {
+					opts.BaseBranch = rc.BaseBranch
+					opts.PostSetup = rc.PostSetup
+				}
+
+				wtDir, err := workspace.WorktreeAdd(opts)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: worktree for %s: %v\n", repoName, err)
 					continue
@@ -242,4 +256,32 @@ func listWorktreeSymlinks(taskDir string) []worktreeInfo {
 		result = append(result, worktreeInfo{name: e.Name(), branch: branch})
 	}
 	return result
+}
+
+// taskWithAttrs is the JSON shape piped to branch name scripts.
+type taskWithAttrs struct {
+	*gig.Task
+	Attrs map[string]string `json:"attrs,omitempty"`
+}
+
+// buildTaskJSON creates JSON for the task including custom attributes.
+func buildTaskJSON(store *gig.Store, task *gig.Task) []byte {
+	ta := taskWithAttrs{Task: task, Attrs: make(map[string]string)}
+	attrs, err := store.Attrs(task.ID)
+	if err == nil {
+		for _, a := range attrs {
+			ta.Attrs[a.Key] = a.Value
+		}
+	}
+	data, _ := json.Marshal(ta)
+	return data
+}
+
+// resolveRepoBranch determines the branch name for a repo.
+// Uses the branch_name script if configured, otherwise falls back to defaultBranch.
+func resolveRepoBranch(rc *jeff.RepoConfig, taskJSON []byte, defaultBranch string) (string, error) {
+	if rc == nil || rc.BranchName == "" {
+		return defaultBranch, nil
+	}
+	return workspace.ResolveBranchName(rc.BranchName, taskJSON, defaultBranch)
 }

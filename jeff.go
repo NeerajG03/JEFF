@@ -1,5 +1,7 @@
 package jeff
 
+import "slices"
+
 // AgentTool represents a supported agent CLI tool.
 type AgentTool string
 
@@ -13,12 +15,16 @@ var ValidAgentTools = []AgentTool{AgentClaudeCode, AgentOpenCode}
 
 // IsValid returns true if t is a recognized agent tool.
 func (t AgentTool) IsValid() bool {
-	for _, v := range ValidAgentTools {
-		if t == v {
-			return true
-		}
+	return slices.Contains(ValidAgentTools, t)
+}
+
+// ValidNames returns the valid agent tool names as strings.
+func (AgentTool) ValidNames() []string {
+	names := make([]string, len(ValidAgentTools))
+	for i, t := range ValidAgentTools {
+		names[i] = string(t)
 	}
-	return false
+	return names
 }
 
 // Command returns the CLI command name used to launch this agent tool.
@@ -48,12 +54,16 @@ var ValidIDEs = []IDE{IDEVSCode, IDECursor, IDEWindsurf, IDENvim}
 
 // IsValid returns true if i is a recognized IDE.
 func (i IDE) IsValid() bool {
-	for _, v := range ValidIDEs {
-		if i == v {
-			return true
-		}
+	return slices.Contains(ValidIDEs, i)
+}
+
+// ValidNames returns the valid IDE names as strings.
+func (IDE) ValidNames() []string {
+	names := make([]string, len(ValidIDEs))
+	for i, ide := range ValidIDEs {
+		names[i] = string(ide)
 	}
-	return false
+	return names
 }
 
 // Command returns the CLI command used to open this IDE.

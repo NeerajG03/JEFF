@@ -2,15 +2,10 @@ package jeff
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
-)
 
-func tempHome(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	return filepath.Join(dir, ".jeff")
-}
+	"github.com/NeerajG03/JEFF/internal/testutil"
+)
 
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
@@ -23,7 +18,7 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestLoadConfigMissing(t *testing.T) {
-	home := tempHome(t)
+	home := testutil.TempHome(t)
 	cfg, err := LoadConfig(home)
 	if err != nil {
 		t.Fatalf("load missing config: %v", err)
@@ -37,7 +32,7 @@ func TestLoadConfigMissing(t *testing.T) {
 }
 
 func TestSaveAndLoadConfig(t *testing.T) {
-	home := tempHome(t)
+	home := testutil.TempHome(t)
 	os.MkdirAll(home, 0o755)
 
 	cfg := &Config{
@@ -68,7 +63,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 }
 
 func TestLoadConfigInvalidAgent(t *testing.T) {
-	home := tempHome(t)
+	home := testutil.TempHome(t)
 	os.MkdirAll(home, 0o755)
 
 	os.WriteFile(ConfigPath(home), []byte("agent: badtool\n"), 0o644)

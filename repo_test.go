@@ -1,6 +1,10 @@
 package jeff
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/NeerajG03/JEFF/internal/testutil"
+)
 
 func TestRepoNameFromURL(t *testing.T) {
 	tests := []struct {
@@ -43,7 +47,7 @@ func TestListRepos(t *testing.T) {
 }
 
 func TestAddRepoDuplicate(t *testing.T) {
-	home := tempHome(t)
+	home := testutil.TempHome(t)
 	cfg := &Config{
 		Repos: map[string]*RepoConfig{"backend": {URL: "https://github.com/org/backend.git"}},
 		Home:  home,
@@ -55,7 +59,7 @@ func TestAddRepoDuplicate(t *testing.T) {
 }
 
 func TestRemoveRepoNotRegistered(t *testing.T) {
-	home := tempHome(t)
+	home := testutil.TempHome(t)
 	cfg := &Config{Repos: make(map[string]*RepoConfig), Home: home}
 	err := RemoveRepo(cfg, "nonexistent", false)
 	if err == nil {
@@ -64,7 +68,7 @@ func TestRemoveRepoNotRegistered(t *testing.T) {
 }
 
 func TestSyncRepoNotRegistered(t *testing.T) {
-	home := tempHome(t)
+	home := testutil.TempHome(t)
 	cfg := &Config{Repos: make(map[string]*RepoConfig), Home: home}
 	_, err := SyncRepo(cfg, "nonexistent")
 	if err == nil {
@@ -73,7 +77,7 @@ func TestSyncRepoNotRegistered(t *testing.T) {
 }
 
 func TestSyncRepoMissingDir(t *testing.T) {
-	home := tempHome(t)
+	home := testutil.TempHome(t)
 	cfg := &Config{
 		Repos: map[string]*RepoConfig{"backend": {URL: "https://example.com/backend.git"}},
 		Home:  home,
@@ -85,7 +89,7 @@ func TestSyncRepoMissingDir(t *testing.T) {
 }
 
 func TestSyncAllReposEmpty(t *testing.T) {
-	home := tempHome(t)
+	home := testutil.TempHome(t)
 	cfg := &Config{Repos: make(map[string]*RepoConfig), Home: home}
 	results := SyncAllRepos(cfg)
 	if len(results) != 0 {

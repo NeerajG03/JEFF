@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/NeerajG03/JEFF/internal/gitutil"
 )
 
 // WorktreeOpts holds options for creating a worktree.
@@ -50,27 +52,15 @@ func WorktreeAdd(opts WorktreeOpts) (string, error) {
 
 	// Fetch remote if base branch references a remote (e.g. "origin/main").
 	if remote, _, ok := strings.Cut(baseBranch, "/"); ok {
-		fetch := exec.Command("git", "fetch", remote)
-		fetch.Dir = repoDir
-		fetch.Stdout = os.Stdout
-		fetch.Stderr = os.Stderr
-		if err := fetch.Run(); err != nil {
-			return "", fmt.Errorf("git fetch %s: %w", remote, err)
+		if err := gitutil.Run(repoDir, "fetch", remote); err != nil {
+			return "", err
 		}
 	}
 
 	// Create worktree branching from baseBranch.
-	cmd := exec.Command("git", "worktree", "add", wtDir, "-b", opts.Branch, baseBranch)
-	cmd.Dir = repoDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := gitutil.Run(repoDir, "worktree", "add", wtDir, "-b", opts.Branch, baseBranch); err != nil {
 		// Branch may already exist — try without -b.
-		cmd = exec.Command("git", "worktree", "add", wtDir, opts.Branch)
-		cmd.Dir = repoDir
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+		if err := gitutil.Run(repoDir, "worktree", "add", wtDir, opts.Branch); err != nil {
 			return "", fmt.Errorf("git worktree add: %w", err)
 		}
 	}
@@ -125,11 +115,7 @@ func WorktreeRemove(jeffHome, repoName, branch string) error {
 	wtDir := filepath.Join(jeffHome, "worktrees", repoName, branch)
 
 	repoDir := filepath.Join(jeffHome, "repos", repoName)
-	cmd := exec.Command("git", "worktree", "remove", wtDir)
-	cmd.Dir = repoDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := gitutil.Run(repoDir, "worktree", "remove", wtDir); err != nil {
 		// Fallback: force remove if dirty.
 		os.RemoveAll(wtDir)
 	}
@@ -169,12 +155,10 @@ func symlinkIntoTask(taskDir, repoName, wtDir string) error {
 	link := filepath.Join(taskDir, repoName)
 
 	// Remove existing symlink if present.
-	if fi, err := os.Lstat(link); err == nil {
-		if fi.Mode()&os.ModeSymlink != 0 {
-			os.Remove(link)
-		} else {
-			return fmt.Errorf("%s exists and is not a symlink", link)
-		}
+	if gitutil.IsSymlink(link) {
+		os.Remove(link)
+	} else if _, err := os.Lstat(link); err == nil {
+		return fmt.Errorf("%s exists and is not a symlink", link)
 	}
 
 	return os.Symlink(wtDir, link)

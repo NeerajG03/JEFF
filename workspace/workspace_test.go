@@ -2,20 +2,13 @@ package workspace
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
+
+	"github.com/NeerajG03/JEFF/internal/testutil"
 )
 
-func tempJeffHome(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	home := filepath.Join(dir, ".jeff")
-	os.MkdirAll(filepath.Join(home, "tasks"), 0o755)
-	return home
-}
-
 func TestCreateAndOpen(t *testing.T) {
-	home := tempJeffHome(t)
+	home := testutil.TempHome(t, "tasks")
 
 	td, err := Create(home, "gig-ab12", "Refactor auth module")
 	if err != nil {
@@ -44,7 +37,7 @@ func TestCreateAndOpen(t *testing.T) {
 }
 
 func TestOpenNotFound(t *testing.T) {
-	home := tempJeffHome(t)
+	home := testutil.TempHome(t, "tasks")
 	_, err := Open(home, "gig-xxxx")
 	if err == nil {
 		t.Error("expected error for nonexistent task")
@@ -52,7 +45,7 @@ func TestOpenNotFound(t *testing.T) {
 }
 
 func TestRemove(t *testing.T) {
-	home := tempJeffHome(t)
+	home := testutil.TempHome(t, "tasks")
 	Create(home, "gig-ab12", "Some task")
 
 	err := Remove(home, "gig-ab12")
@@ -67,7 +60,7 @@ func TestRemove(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	home := tempJeffHome(t)
+	home := testutil.TempHome(t, "tasks")
 	Create(home, "gig-ab12", "Task one")
 	Create(home, "gig-cd34", "Task two")
 
@@ -81,7 +74,7 @@ func TestList(t *testing.T) {
 }
 
 func TestListEmpty(t *testing.T) {
-	home := tempJeffHome(t)
+	home := testutil.TempHome(t, "tasks")
 	dirs, err := List(home)
 	if err != nil {
 		t.Fatalf("list: %v", err)

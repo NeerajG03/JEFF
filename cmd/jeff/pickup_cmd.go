@@ -9,6 +9,7 @@ import (
 
 	"github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/hooks"
+	"github.com/NeerajG03/JEFF/internal/gitutil"
 	"github.com/NeerajG03/JEFF/persona"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/NeerajG03/gig"
@@ -246,8 +247,7 @@ func listWorktreeSymlinks(taskDir string) []worktreeInfo {
 	var result []worktreeInfo
 	for _, e := range entries {
 		fullPath := filepath.Join(taskDir, e.Name())
-		fi, err := os.Lstat(fullPath)
-		if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		if !gitutil.IsSymlink(fullPath) {
 			continue
 		}
 		target, err := os.Readlink(fullPath)

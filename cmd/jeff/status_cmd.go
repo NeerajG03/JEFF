@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 
+	"github.com/NeerajG03/JEFF/internal/gitutil"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/NeerajG03/gig"
 	"github.com/spf13/cobra"
@@ -47,7 +47,7 @@ func statusCmd() *cobra.Command {
 				// Check for dirty worktrees.
 				entries, _ := os.ReadDir(td.Path)
 				for _, e := range entries {
-					if !isSymlink(filepath.Join(td.Path, e.Name())) {
+					if !gitutil.IsSymlink(filepath.Join(td.Path, e.Name())) {
 						continue
 					}
 					target, err := os.Readlink(filepath.Join(td.Path, e.Name()))
@@ -93,18 +93,8 @@ func statusIconFor(s gig.Status) string {
 	}
 }
 
-func isSymlink(path string) bool {
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return false
-	}
-	return fi.Mode()&os.ModeSymlink != 0
-}
-
 func isGitDirty(dir string) bool {
-	cmd := exec.Command("git", "status", "--porcelain")
-	cmd.Dir = dir
-	out, err := cmd.Output()
+	out, err := gitutil.Output(dir, "status", "--porcelain")
 	if err != nil {
 		return false
 	}

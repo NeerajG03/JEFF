@@ -7,7 +7,6 @@ import (
 
 	"github.com/NeerajG03/JEFF"
 	jeffembed "github.com/NeerajG03/JEFF/embed"
-	"github.com/NeerajG03/JEFF/hooks"
 	"github.com/spf13/cobra"
 )
 
@@ -49,12 +48,7 @@ func initCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("load config: %w", err)
 				}
-				reg := hooks.DefaultRegistry()
-				mgr := hooks.NewManager(reg)
-				ctx := hooks.HookContext{JeffHome: home, TargetDir: home, GigHome: c.GigHome}
-				enabled := hooks.EnabledForSource(c.Hooks, hooks.SourceHome, reg)
-				agent := hooks.AgentTool(c.Agent)
-				if err := mgr.Sync(home, enabled, agent, ctx); err != nil {
+				if err := syncHomeHooks(home, c); err != nil {
 					return fmt.Errorf("sync hooks: %w", err)
 				}
 				fmt.Printf("JEFF already initialized at %s (hooks synced)\n", home)
@@ -106,12 +100,7 @@ func initCmd() *cobra.Command {
 			writeIfMissing(filepath.Join(home, ".opencode", "settings.local.json"), "{}\n")
 
 			// Install hooks.
-			reg := hooks.DefaultRegistry()
-			mgr := hooks.NewManager(reg)
-			ctx := hooks.HookContext{JeffHome: home, TargetDir: home, GigHome: c.GigHome}
-			enabled := hooks.EnabledForSource(c.Hooks, hooks.SourceHome, reg)
-			agent := hooks.AgentTool(c.Agent)
-			if err := mgr.Sync(home, enabled, agent, ctx); err != nil {
+			if err := syncHomeHooks(home, &c); err != nil {
 				return fmt.Errorf("install hooks: %w", err)
 			}
 

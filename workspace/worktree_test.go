@@ -4,10 +4,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/NeerajG03/JEFF/internal/testutil"
 )
 
 func TestSymlinkIntoTask(t *testing.T) {
-	home := tempJeffHome(t)
+	home := testutil.TempHome(t, "tasks")
 	taskDir := filepath.Join(home, "tasks", "gig-ab12-test")
 	os.MkdirAll(taskDir, 0o755)
 
@@ -35,7 +37,7 @@ func TestSymlinkIntoTask(t *testing.T) {
 }
 
 func TestSymlinkIntoTaskIdempotent(t *testing.T) {
-	home := tempJeffHome(t)
+	home := testutil.TempHome(t, "tasks")
 	taskDir := filepath.Join(home, "tasks", "gig-ab12-test")
 	os.MkdirAll(taskDir, 0o755)
 
@@ -51,7 +53,7 @@ func TestSymlinkIntoTaskIdempotent(t *testing.T) {
 }
 
 func TestWorktreeListEmpty(t *testing.T) {
-	home := tempJeffHome(t)
+	home := testutil.TempHome(t, "tasks")
 	branches, err := WorktreeList(home, "nonexistent")
 	if err != nil {
 		t.Fatalf("list: %v", err)
@@ -62,7 +64,7 @@ func TestWorktreeListEmpty(t *testing.T) {
 }
 
 func TestWorktreeAddMissingRepo(t *testing.T) {
-	home := tempJeffHome(t)
+	home := testutil.TempHome(t, "tasks")
 	_, err := WorktreeAdd(WorktreeOpts{JeffHome: home, RepoName: "nonexistent", Branch: "feat-x"})
 	if err == nil {
 		t.Error("expected error for missing repo")

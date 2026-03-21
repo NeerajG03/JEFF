@@ -36,82 +36,64 @@ func configCmd() *cobra.Command {
 	return cmd
 }
 
-func configAgentCmd() *cobra.Command {
+// configEnumCmd creates a get/set command for a string enum config field.
+func configEnumCmd[T ~string](use, short string, validNames []string,
+	get func() string, set func(string),
+) *cobra.Command {
 	return &cobra.Command{
-		Use:   "agent [claude|opencode]",
-		Short: "Get or set the preferred agent tool",
+		Use:   use,
+		Short: short,
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				fmt.Println(cfg.Agent)
+				fmt.Println(get())
 				return nil
 			}
-
-			val := jeff.AgentTool(args[0])
-			if !val.IsValid() {
-				var names []string
-				for _, t := range jeff.ValidAgentTools {
-					names = append(names, string(t))
+			val := args[0]
+			valid := false
+			for _, n := range validNames {
+				if n == val {
+					valid = true
+					break
 				}
-				return fmt.Errorf("invalid agent %q, must be one of: %s", args[0], strings.Join(names, ", "))
 			}
-
-			cfg.Agent = val
+			if !valid {
+				return fmt.Errorf("invalid value %q, must be one of: %s", val, strings.Join(validNames, ", "))
+			}
+			set(val)
 			if err := jeff.SaveConfig(cfg); err != nil {
 				return fmt.Errorf("save config: %w", err)
 			}
-			fmt.Printf("agent set to %s\n", val)
+			fmt.Printf("%s set to %s\n", cmd.Name(), val)
 			return nil
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			var names []string
-			for _, t := range jeff.ValidAgentTools {
-				names = append(names, string(t))
-			}
-			return names, cobra.ShellCompDirectiveNoFileComp
+			return validNames, cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 }
 
+func configAgentCmd() *cobra.Command {
+	return configEnumCmd[jeff.AgentTool](
+		"agent [claude|opencode]", "Get or set the preferred agent tool",
+		jeff.AgentTool("").ValidNames(),
+		func() string { return string(cfg.Agent) },
+		func(v string) { cfg.Agent = jeff.AgentTool(v) },
+	)
+}
+
 func configIDECmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "ide [vscode|cursor|windsurf|nvim]",
-		Short: "Get or set the preferred IDE",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				if cfg.IDE == "" {
-					fmt.Println("vscode (default)")
-				} else {
-					fmt.Println(cfg.IDE)
-				}
-				return nil
+	return configEnumCmd[jeff.IDE](
+		"ide [vscode|cursor|windsurf|nvim]", "Get or set the preferred IDE",
+		jeff.IDE("").ValidNames(),
+		func() string {
+			if cfg.IDE == "" {
+				return "vscode (default)"
 			}
-
-			val := jeff.IDE(args[0])
-			if !val.IsValid() {
-				var names []string
-				for _, i := range jeff.ValidIDEs {
-					names = append(names, string(i))
-				}
-				return fmt.Errorf("invalid IDE %q, must be one of: %s", args[0], strings.Join(names, ", "))
-			}
-
-			cfg.IDE = val
-			if err := jeff.SaveConfig(cfg); err != nil {
-				return fmt.Errorf("save config: %w", err)
-			}
-			fmt.Printf("ide set to %s\n", val)
-			return nil
+			return string(cfg.IDE)
 		},
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			var names []string
-			for _, i := range jeff.ValidIDEs {
-				names = append(names, string(i))
-			}
-			return names, cobra.ShellCompDirectiveNoFileComp
-		},
-	}
+		func(v string) { cfg.IDE = jeff.IDE(v) },
+	)
 }
 
 func configHooksCmd() *cobra.Command {
@@ -146,10 +128,11 @@ func configHooksListCmd() *cobra.Command {
 	}
 }
 
-func configHooksEnableCmd() *cobra.Command {
+// configHooksToggleCmd creates an enable or disable command for hooks.
+func configHooksToggleCmd(verb string, value bool) *cobra.Command {
 	return &cobra.Command{
-		Use:   "enable <hook-name>",
-		Short: "Enable a hook",
+		Use:   verb + " <hook-name>",
+		Short: strings.ToUpper(verb[:1]) + verb[1:] + " a hook",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -161,11 +144,11 @@ func configHooksEnableCmd() *cobra.Command {
 			if cfg.Hooks == nil {
 				cfg.Hooks = make(map[string]bool)
 			}
-			cfg.Hooks[name] = true
+			cfg.Hooks[name] = value
 			if err := jeff.SaveConfig(cfg); err != nil {
 				return fmt.Errorf("save config: %w", err)
 			}
-			fmt.Printf("Enabled %s\n", name)
+			fmt.Printf("%sd %s\n", strings.ToUpper(verb[:1]) + verb[1:], name)
 			return syncHooksFromConfig()
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -174,33 +157,8 @@ func configHooksEnableCmd() *cobra.Command {
 	}
 }
 
-func configHooksDisableCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "disable <hook-name>",
-		Short: "Disable a hook",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-			reg := hooks.DefaultRegistry()
-			if reg.Get(name) == nil {
-				return fmt.Errorf("unknown hook %q, available: %s", name, strings.Join(reg.Names(), ", "))
-			}
-
-			if cfg.Hooks == nil {
-				cfg.Hooks = make(map[string]bool)
-			}
-			cfg.Hooks[name] = false
-			if err := jeff.SaveConfig(cfg); err != nil {
-				return fmt.Errorf("save config: %w", err)
-			}
-			fmt.Printf("Disabled %s\n", name)
-			return syncHooksFromConfig()
-		},
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return hooks.DefaultRegistry().Names(), cobra.ShellCompDirectiveNoFileComp
-		},
-	}
-}
+func configHooksEnableCmd() *cobra.Command  { return configHooksToggleCmd("enable", true) }
+func configHooksDisableCmd() *cobra.Command { return configHooksToggleCmd("disable", false) }
 
 func configHooksSyncCmd() *cobra.Command {
 	return &cobra.Command{
@@ -250,14 +208,19 @@ func configResetClaudeMDCmd() *cobra.Command {
 	}
 }
 
-// syncHooksFromConfig syncs hooks to disk using current config.
-func syncHooksFromConfig() error {
+// syncHomeHooks syncs home-level hooks to disk for the given config.
+func syncHomeHooks(home string, c *jeff.Config) error {
 	reg := hooks.DefaultRegistry()
 	mgr := hooks.NewManager(reg)
-	ctx := hooks.HookContext{JeffHome: cfg.Home, TargetDir: cfg.Home, GigHome: cfg.GigHome}
-	enabled := hooks.EnabledForSource(cfg.Hooks, hooks.SourceHome, reg)
-	agent := hooks.AgentTool(cfg.Agent)
-	if err := mgr.Sync(cfg.Home, enabled, agent, ctx); err != nil {
+	ctx := hooks.HookContext{JeffHome: home, TargetDir: home, GigHome: c.GigHome}
+	enabled := hooks.EnabledForSource(c.Hooks, hooks.SourceHome, reg)
+	agent := hooks.AgentTool(c.Agent)
+	return mgr.Sync(home, enabled, agent, ctx)
+}
+
+// syncHooksFromConfig syncs hooks to disk using current config.
+func syncHooksFromConfig() error {
+	if err := syncHomeHooks(cfg.Home, cfg); err != nil {
 		return fmt.Errorf("sync hooks: %w", err)
 	}
 	fmt.Println("Hooks synced")

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/NeerajG03/JEFF/internal/gitutil"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/NeerajG03/gig"
 	"github.com/spf13/cobra"
@@ -152,8 +153,7 @@ func discoverWorktrees(taskDir, repoFilter string) ([]shipWorktree, error) {
 	var result []shipWorktree
 	for _, e := range entries {
 		fullPath := filepath.Join(taskDir, e.Name())
-		fi, err := os.Lstat(fullPath)
-		if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		if !gitutil.IsSymlink(fullPath) {
 			continue
 		}
 
@@ -229,9 +229,7 @@ func buildPRBody(store *gig.Store, task *gig.Task) string {
 
 // hasUnpushedCommits checks if the branch has commits not yet on the remote.
 func hasUnpushedCommits(wtDir, branch string) (bool, error) {
-	cmd := exec.Command("git", "log", "origin/"+branch+"..HEAD", "--oneline")
-	cmd.Dir = wtDir
-	out, err := cmd.Output()
+	out, err := gitutil.Output(wtDir, "log", "origin/"+branch+"..HEAD", "--oneline")
 	if err != nil {
 		// If origin/branch doesn't exist, all local commits are unpushed.
 		return true, nil
@@ -241,11 +239,7 @@ func hasUnpushedCommits(wtDir, branch string) (bool, error) {
 
 // pushBranch pushes the current branch to origin.
 func pushBranch(wtDir, branch string) error {
-	cmd := exec.Command("git", "push", "-u", "origin", branch)
-	cmd.Dir = wtDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return gitutil.Run(wtDir, "push", "-u", "origin", branch)
 }
 
 // prExists checks if a PR already exists for the branch. Returns the URL or "".

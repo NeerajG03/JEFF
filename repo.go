@@ -3,9 +3,10 @@ package jeff
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/NeerajG03/JEFF/internal/gitutil"
 )
 
 // Repo represents a registered codebase.
@@ -35,11 +36,8 @@ func AddRepo(cfg *Config, url, name string) (*Repo, error) {
 		return nil, fmt.Errorf("directory %s already exists", dest)
 	}
 
-	cmd := exec.Command("git", "clone", url, dest)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("git clone: %w", err)
+	if err := gitutil.Run(".", "clone", url, dest); err != nil {
+		return nil, err
 	}
 
 	cfg.Repos[name] = &RepoConfig{URL: url}
@@ -113,16 +111,12 @@ func SyncRepo(cfg *Config, name string) (*SyncResult, error) {
 	}
 
 	// Fetch latest from origin.
-	fetch := exec.Command("git", "fetch", "origin")
-	fetch.Dir = repoDir
-	if out, err := fetch.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("git fetch %s: %s", name, string(out))
+	if _, err := gitutil.Output(repoDir, "fetch", "origin"); err != nil {
+		return nil, fmt.Errorf("git fetch %s: %w", name, err)
 	}
 
 	// Check how many commits behind.
-	revCount := exec.Command("git", "rev-list", "--count", "HEAD..origin/main")
-	revCount.Dir = repoDir
-	countOut, err := revCount.Output()
+	countOut, err := gitutil.Output(repoDir, "rev-list", "--count", "HEAD..origin/main")
 	if err == nil {
 		fmt.Sscanf(strings.TrimSpace(string(countOut)), "%d", &result.Behind)
 	}
@@ -132,14 +126,10 @@ func SyncRepo(cfg *Config, name string) (*SyncResult, error) {
 	}
 
 	// Checkout main and fast-forward.
-	checkout := exec.Command("git", "checkout", "main")
-	checkout.Dir = repoDir
-	checkout.Run() // ignore if already on main
+	gitutil.Run(repoDir, "checkout", "main") // ignore if already on main
 
-	pull := exec.Command("git", "pull", "origin", "main", "--ff-only")
-	pull.Dir = repoDir
-	if out, err := pull.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("git pull %s: %s", name, string(out))
+	if _, err := gitutil.Output(repoDir, "pull", "origin", "main", "--ff-only"); err != nil {
+		return nil, fmt.Errorf("git pull %s: %w", name, err)
 	}
 
 	result.Updated = true

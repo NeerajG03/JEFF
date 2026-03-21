@@ -3,7 +3,7 @@ module github.com/NeerajG03/JEFF
 go 1.26.1
 
 require (
-	github.com/NeerajG03/gig v0.6.0
+	github.com/NeerajG03/gig v0.6.1
 	github.com/spf13/cobra v1.10.2
 	gopkg.in/yaml.v3 v3.0.1
 )

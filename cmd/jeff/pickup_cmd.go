@@ -45,10 +45,14 @@ func pickupCmd() *cobra.Command {
 				return fmt.Errorf("task %s not found: %w", taskID, err)
 			}
 
-			if err := store.Claim(taskID, "jeff"); err != nil {
+			claimResult, err := store.Claim(taskID, "jeff")
+			if err != nil {
 				return fmt.Errorf("claim: %w", err)
 			}
 			fmt.Fprintf(os.Stderr, "Claimed %s: %s\n", taskID, task.Title)
+			if claimResult.ParentProgressed {
+				fmt.Fprintf(os.Stderr, "Parent %s → in_progress\n", claimResult.ParentID)
+			}
 
 			// 2. Create task workspace.
 			td, err := workspace.Create(cfg.Home, taskID, task.Title)

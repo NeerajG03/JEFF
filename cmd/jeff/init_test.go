@@ -10,13 +10,16 @@ import (
 
 func setupJeffHome(t *testing.T) string {
 	t.Helper()
-	home := filepath.Join(t.TempDir(), ".jeff")
+	base := t.TempDir()
+	home := filepath.Join(base, ".jeff")
 	os.MkdirAll(home, 0o755)
 	c := jeff.DefaultConfig()
 	c.Home = home
 	if err := jeff.SaveConfig(&c); err != nil {
 		t.Fatal(err)
 	}
+	// Redirect HOME so WriteHomePointer doesn't corrupt the real pointer.
+	t.Setenv("HOME", base)
 	return home
 }
 
@@ -114,12 +117,8 @@ func TestEnsureDirs_AddsNewDirs(t *testing.T) {
 }
 
 func TestRunUpdate_NoInit(t *testing.T) {
-	// Point cfg to a nonexistent home.
-	origCfg := cfg
-	defer func() { cfg = origCfg }()
-
-	// runUpdate resolves home via jeff.ResolveHome which reads env/pointer.
-	// Without a valid home, it should error.
+	// Redirect HOME so we don't read the real pointer.
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("JEFF_HOME", filepath.Join(t.TempDir(), "nonexistent"))
 	err := runUpdate()
 	if err == nil {

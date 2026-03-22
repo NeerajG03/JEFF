@@ -1,6 +1,8 @@
 package workspace
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -70,7 +72,12 @@ func WorktreeAdd(opts WorktreeOpts) (string, error) {
 
 	// Run post-setup script if configured.
 	if opts.PostSetup != "" {
-		if err := runPostSetup(opts.PostSetup, repoDir, wtDir); err != nil {
+		if err := runPostSetup(opts.PostSetup, PostSetupContext{
+			SrcDir:  repoDir,
+			DestDir: wtDir,
+			Repo:    opts.RepoName,
+			Branch:  opts.Branch,
+		}); err != nil {
 			return wtDir, fmt.Errorf("post-setup script: %w", err)
 		}
 	}
@@ -100,11 +107,24 @@ func ReadBaseBranch(wtDir string) string {
 	return s
 }
 
+// PostSetupContext is the JSON payload sent to post-setup scripts on stdin.
+type PostSetupContext struct {
+	SrcDir  string `json:"src_dir"`  // repo clone directory
+	DestDir string `json:"dest_dir"` // worktree directory
+	Repo    string `json:"repo"`     // repo name
+	Branch  string `json:"branch"`   // worktree branch
+}
+
 // runPostSetup executes a user-provided script after worktree creation.
-// The script receives src_dir (repo clone) and dest_dir (worktree) as arguments.
-func runPostSetup(script, srcDir, destDir string) error {
-	cmd := exec.Command("sh", script, srcDir, destDir)
-	cmd.Dir = destDir
+// The script receives a JSON context on stdin with src_dir, dest_dir, repo, and branch.
+func runPostSetup(script string, ctx PostSetupContext) error {
+	data, err := json.Marshal(ctx)
+	if err != nil {
+		return fmt.Errorf("marshal post-setup context: %w", err)
+	}
+	cmd := exec.Command(script)
+	cmd.Dir = ctx.DestDir
+	cmd.Stdin = bytes.NewReader(data)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

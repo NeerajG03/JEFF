@@ -13,6 +13,7 @@ JEFF/
 ├── embed/              # Embedded assets (CLAUDE.md template, claude-settings.json)
 ├── hooks/              # Hook system: registry, builtin hooks, claude/opencode delivery
 ├── persona/            # Embedded persona templates (captain, nerd, jock, scout)
+├── skill/              # Skill registry, matching, and injection (symlinks into task dirs)
 ├── workspace/          # Task workspace + worktree management + branch naming
 ├── cmd/jeff/           # CLI (cobra) — thin wrapper over SDK
 ├── docs/               # Guides (testing, adding commands, config reference)
@@ -88,6 +89,10 @@ Located in `hooks/` package. Four built-in hooks inject context at agent session
 Delivery: Claude Code gets bash scripts in `hooks/` + settings.json wiring. OpenCode gets a combined JS plugin.
 
 Key files: `hooks/hook.go` (types), `hooks/registry.go` (collection), `hooks/builtin.go` (definitions + content), `hooks/claude.go` (Claude delivery), `hooks/opencode.go` (OpenCode delivery), `hooks/manager.go` (orchestrator).
+
+## Skills
+
+`skill/` package manages agent skills. Skills are registered in `.skills/skills.json` (JSON with schema) and auto-injected into task workspaces on pickup via symlinks. Matching: any non-empty dimension (persona, gig_type, tags) match triggers injection. See `docs/skill_mgmt.md` for full reference.
 
 ## Worktrees
 

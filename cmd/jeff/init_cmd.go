@@ -63,6 +63,7 @@ func initCmd() *cobra.Command {
 				filepath.Join(home, "worktrees"),
 				filepath.Join(home, "exports"),
 				filepath.Join(home, "scripts"),
+				filepath.Join(home, ".skills"),
 				filepath.Join(home, ".claude"),
 				filepath.Join(home, ".opencode"),
 			}
@@ -92,6 +93,10 @@ func initCmd() *cobra.Command {
 			if err := jeffembed.WriteClaudeMD(home, homePath, false); err != nil {
 				return fmt.Errorf("write CLAUDE.md: %w", err)
 			}
+
+			// Write empty skills registry if missing.
+			writeIfMissing(filepath.Join(home, ".skills", "skills.json"),
+				"{\"$schema\":\"https://raw.githubusercontent.com/NeerajG03/JEFF/main/schemas/skills.json\",\"skills\":{}}\n")
 
 			// Write default agent settings files if missing.
 			writeIfMissing(filepath.Join(home, ".claude", "settings.json"), jeffembed.DefaultClaudeSettings)

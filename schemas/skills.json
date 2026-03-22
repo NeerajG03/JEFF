@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "JEFF Skills Registry",
+  "description": "Registry of Claude Code skills managed by JEFF. Skills are auto-injected into task workspaces based on persona, task type, and tag matching.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "skills": {
+      "type": "object",
+      "description": "Map of skill name to skill configuration.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["location"],
+        "properties": {
+          "location": {
+            "type": "string",
+            "description": "Absolute path to the skill directory containing SKILL.md."
+          },
+          "tags": {
+            "type": "array",
+            "description": "Free-form tags matched against gig task labels. Any intersection triggers injection.",
+            "items": { "type": "string" },
+            "default": []
+          },
+          "personas": {
+            "type": "array",
+            "description": "Persona names. If the pickup persona matches any, the skill is injected.",
+            "items": {
+              "type": "string",
+              "enum": ["captain", "nerd", "jock", "scout"]
+            },
+            "default": []
+          },
+          "gig_type": {
+            "type": "array",
+            "description": "Gig task types. If the task type matches any, the skill is injected.",
+            "items": {
+              "type": "string",
+              "enum": ["task", "bug", "feature", "epic", "chore"]
+            },
+            "default": []
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["skills"]
+}

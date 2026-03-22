@@ -61,6 +61,7 @@ func main() {
 		checkpointCmd(),
 		shipCmd(),
 		configCmd(),
+		skillCmd(),
 		openCmd(),
 		completionCmd(),
 	)

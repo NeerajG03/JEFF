@@ -11,6 +11,7 @@ import (
 	"github.com/NeerajG03/JEFF/hooks"
 	"github.com/NeerajG03/JEFF/internal/gitutil"
 	"github.com/NeerajG03/JEFF/persona"
+	"github.com/NeerajG03/JEFF/skill"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/NeerajG03/gig"
 	"github.com/spf13/cobra"
@@ -116,7 +117,20 @@ func pickupCmd() *cobra.Command {
 				}
 			}
 
-			// 7. Launch agent tool in task directory.
+			// 7. Auto-inject matching skills.
+			mctx := &skill.MatchContext{
+				Persona: personaName,
+				GigType: string(task.Type),
+				Labels:  task.Labels,
+			}
+			injected, err := skill.InjectMatching(cfg.Home, td.Path, mctx)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: skill injection: %v\n", err)
+			} else if len(injected) > 0 {
+				fmt.Fprintf(os.Stderr, "Skills: %s\n", strings.Join(injected, ", "))
+			}
+
+			// 8. Launch agent tool in task directory.
 			fmt.Fprintf(os.Stderr, "\nLaunching %s in %s...\n", cfg.Agent, td.Path)
 			return launchAgent(td.Path, cfg.Agent)
 		},

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/NeerajG03/JEFF/internal/gitutil"
 	"github.com/NeerajG03/JEFF/workspace"
@@ -12,9 +13,11 @@ import (
 )
 
 func statusCmd() *cobra.Command {
-	return &cobra.Command{
+	var all bool
+
+	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Overview of all active tasks and their workspaces",
+		Short: "Overview of active tasks and their workspaces",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := openGigStore()
 			if err != nil {
@@ -22,56 +25,173 @@ func statusCmd() *cobra.Command {
 			}
 			defer store.Close()
 
-			// List task workspaces.
 			dirs, err := workspace.List(cfg.Home)
 			if err != nil {
 				return fmt.Errorf("list workspaces: %w", err)
 			}
 
 			if len(dirs) == 0 {
-				fmt.Println("No active task workspaces.")
+				fmt.Println("No task workspaces.")
 				return nil
 			}
 
+			// Partition into active vs stale.
+			var active, stale []statusEntry
 			for _, td := range dirs {
-				// Get task info from gig.
 				task, err := store.Get(td.TaskID)
 				if err != nil {
-					fmt.Printf("%-16s  (task not found in gig)\n", td.TaskID)
+					stale = append(stale, statusEntry{td: td})
 					continue
 				}
-
-				statusIcon := statusIconFor(task.Status)
-				fmt.Printf("%s %-16s %s\n", statusIcon, td.TaskID, task.Title)
-
-				// Check for dirty worktrees.
-				entries, _ := os.ReadDir(td.Path)
-				for _, e := range entries {
-					if !gitutil.IsSymlink(filepath.Join(td.Path, e.Name())) {
-						continue
-					}
-					target, err := os.Readlink(filepath.Join(td.Path, e.Name()))
-					if err != nil {
-						continue
-					}
-					dirty := isGitDirty(target)
-					dirtyMark := ""
-					if dirty {
-						dirtyMark = " (dirty)"
-					}
-					fmt.Printf("  └── %s → %s%s\n", e.Name(), target, dirtyMark)
-				}
-
-				// Show latest checkpoint if any.
-				cp, _ := store.LatestCheckpoint(td.TaskID)
-				if cp != nil {
-					fmt.Printf("  last checkpoint: %s — %s\n", cp.CreatedAt.Format("2006-01-02 15:04"), cp.Done)
+				e := statusEntry{td: td, task: task}
+				e.worktrees = discoverWorktreeStatus(td.Path)
+				e.checkpoint, _ = store.LatestCheckpoint(td.TaskID)
+				if task.Status.IsTerminal() {
+					stale = append(stale, e)
+				} else {
+					active = append(active, e)
 				}
 			}
+
+			// Print active tasks.
+			if len(active) > 0 {
+				fmt.Printf("%s %s\n\n", colorize(cBold, "Active tasks"), colorize(cDim, fmt.Sprintf("(%d)", len(active))))
+				for i, e := range active {
+					printStatusEntry(e)
+					if i < len(active)-1 {
+						fmt.Println()
+					}
+				}
+			} else {
+				fmt.Println(colorize(cDim, "No active tasks."))
+			}
+
+			// Print stale section.
+			if len(stale) > 0 {
+				if len(active) > 0 {
+					fmt.Println()
+				}
+
+				if all {
+					fmt.Printf("\n%s %s\n\n", colorize(cDim, "Completed"), colorize(cDim, fmt.Sprintf("(%d)", len(stale))))
+					for i, e := range stale {
+						printStatusEntry(e)
+						if i < len(stale)-1 {
+							fmt.Println()
+						}
+					}
+				} else {
+					ids := make([]string, len(stale))
+					for i, e := range stale {
+						ids[i] = e.td.TaskID
+					}
+					fmt.Printf("%s %s\n", colorize(cDim, "Stale workspaces:"), colorize(cDim, strings.Join(ids, ", ")))
+					fmt.Printf("%s\n", colorize(cDim, "  Use --all to show, or jeff clean to remove."))
+				}
+			}
+
+			// Dynamic legend — only show what's present.
+			allEntries := append(active, stale...)
+			fmt.Println()
+			printStatusLegend(allEntries)
 
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVar(&all, "all", false, "Show completed/stale task workspaces too")
+	return cmd
+}
+
+type worktreeStatus struct {
+	repo   string
+	branch string
+	dirty  bool
+}
+
+type statusEntry struct {
+	td         *workspace.TaskDir
+	task       *gig.Task
+	worktrees  []worktreeStatus
+	checkpoint *gig.Checkpoint
+}
+
+func printStatusEntry(e statusEntry) {
+	if e.task == nil {
+		fmt.Printf("  %s  %s  %s\n",
+			colorize(cDim, "[?]"),
+			colorize(cDim, e.td.TaskID),
+			colorize(cRed, "(not found in gig)"),
+		)
+		return
+	}
+
+	// Task line: [>] gig-ab12  P1  Task title
+	fmt.Printf("  %s  %s  %s  %s\n",
+		colorStatus(e.task.Status),
+		colorize(cCyan, e.task.ID),
+		colorPriority(e.task.Priority),
+		e.task.Title,
+	)
+
+	// Worktrees.
+	for i, wt := range e.worktrees {
+		connector := "├──"
+		if i == len(e.worktrees)-1 && e.checkpoint == nil {
+			connector = "└──"
+		}
+
+		branchInfo := colorize(cDim, wt.branch)
+		state := colorize(cGreen, "clean")
+		if wt.dirty {
+			state = colorize(cYellow+cBold, "dirty")
+		}
+
+		fmt.Printf("      %s %s/  %s  %s\n", colorize(cDim, connector), wt.repo, branchInfo, state)
+	}
+
+	// Checkpoint.
+	if e.checkpoint != nil {
+		connector := "└──"
+		ts := e.checkpoint.CreatedAt.Format("01-02 15:04")
+		done := e.checkpoint.Done
+		if len(done) > 80 {
+			done = done[:77] + "..."
+		}
+		fmt.Printf("      %s %s %s\n",
+			colorize(cDim, connector),
+			colorize(cDim, ts),
+			colorize(cDim, done),
+		)
+	}
+}
+
+// discoverWorktreeStatus finds symlinked worktrees in a task dir with their status.
+func discoverWorktreeStatus(taskDir string) []worktreeStatus {
+	entries, err := os.ReadDir(taskDir)
+	if err != nil {
+		return nil
+	}
+
+	var result []worktreeStatus
+	for _, e := range entries {
+		fullPath := filepath.Join(taskDir, e.Name())
+		if !gitutil.IsSymlink(fullPath) {
+			continue
+		}
+		target, err := os.Readlink(fullPath)
+		if err != nil {
+			continue
+		}
+		branch := filepath.Base(target)
+		dirty := isGitDirty(target)
+		result = append(result, worktreeStatus{
+			repo:   e.Name(),
+			branch: branch,
+			dirty:  dirty,
+		})
+	}
+	return result
 }
 
 func statusIconFor(s gig.Status) string {
@@ -99,4 +219,53 @@ func isGitDirty(dir string) bool {
 		return false
 	}
 	return len(out) > 0
+}
+
+func printStatusLegend(entries []statusEntry) {
+	// Collect which statuses and worktree states are present.
+	statuses := map[gig.Status]bool{}
+	hasDirty, hasClean := false, false
+	for _, e := range entries {
+		if e.task != nil {
+			statuses[e.task.Status] = true
+		}
+		for _, wt := range e.worktrees {
+			if wt.dirty {
+				hasDirty = true
+			} else {
+				hasClean = true
+			}
+		}
+	}
+
+	if len(statuses) == 0 {
+		return
+	}
+
+	var parts []string
+	type legendItem struct {
+		status gig.Status
+		label  string
+	}
+	order := []legendItem{
+		{gig.StatusOpen, "open"},
+		{gig.StatusInProgress, "in_progress"},
+		{gig.StatusBlocked, "blocked"},
+		{gig.StatusDeferred, "deferred"},
+		{gig.StatusClosed, "closed"},
+		{gig.StatusCancelled, "cancelled"},
+	}
+	for _, item := range order {
+		if statuses[item.status] {
+			parts = append(parts, colorStatus(item.status)+" "+item.label)
+		}
+	}
+	if hasClean {
+		parts = append(parts, colorize(cGreen, "clean"))
+	}
+	if hasDirty {
+		parts = append(parts, colorize(cYellow+cBold, "dirty"))
+	}
+
+	fmt.Printf("%s  %s\n", colorize(cDim, "Legend:"), strings.Join(parts, "  "))
 }

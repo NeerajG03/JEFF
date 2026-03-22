@@ -32,7 +32,7 @@ go vet ./...
 
 - **SDK-first**: All logic in root package + sub-packages. CLI is a thin cobra wrapper.
 - **gig is the brain**: All task state in gig via SDK (`import "github.com/NeerajG03/gig"`). Never shell out to gig CLI.
-- **No database**: JEFF uses filesystem + gig. jeff.yaml for config, dirs for workspaces.
+- **No database**: JEFF uses filesystem + gig. jeff.json for config, dirs for workspaces.
 - **Module path**: `github.com/NeerajG03/JEFF` — must match GitHub repo URL.
 - All public SDK functions return `(*Type, error)` or `error`.
 - Tests use `t.TempDir()` for isolation.
@@ -46,7 +46,7 @@ Resolved via: `JEFF_HOME` env var → `~/.config/jeff/home` pointer → `~/.jeff
 ```
 JEFF_HOME/
 ├── CLAUDE.md           # agent instructions (editable, resettable)
-├── jeff.yaml           # config: agent, IDE, repos, hooks
+├── jeff.json           # config: agent, IDE, repos, hooks
 ├── .claude/            # Claude Code settings + hooks
 ├── .opencode/          # opencode settings
 ├── hooks/              # hook scripts (managed by jeff)
@@ -57,20 +57,26 @@ JEFF_HOME/
 └── exports/            # generated artifacts
 ```
 
-## Config (jeff.yaml)
+## Config (jeff.json)
 
-```yaml
-agent: claude                      # "claude" or "opencode"
-ide: cursor                        # "vscode", "cursor", "windsurf", "nvim"
-gig_home: ""                       # override gig home (empty = default)
-repos:
-  backend:
-    url: https://github.com/org/backend.git
-    base_branch: origin/develop    # base for worktrees + PRs (default: origin/main)
-    branch_name: scripts/branch.sh # custom branch naming (receives task JSON on stdin)
-    post_setup: scripts/setup.sh   # runs after worktree creation
-hooks:
-  gig-ready-tasks: false           # nil map = all enabled, set false to disable
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/NeerajG03/JEFF/main/schemas/jeff-config.json",
+  "agent": "claude",
+  "ide": "cursor",
+  "gig_home": "",
+  "repos": {
+    "backend": {
+      "url": "https://github.com/org/backend.git",
+      "base_branch": "origin/develop",
+      "branch_name": "scripts/branch.sh",
+      "post_setup": "scripts/setup.sh"
+    }
+  },
+  "hooks": {
+    "gig-ready-tasks": false
+  }
+}
 ```
 
 See `docs/config.md` for full reference.

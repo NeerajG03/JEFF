@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "JEFF Configuration",
+  "description": "Configuration for JEFF agent workspace manager.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "agent": {
+      "type": "string",
+      "description": "Preferred agent tool.",
+      "enum": ["claude", "opencode"],
+      "default": "claude"
+    },
+    "ide": {
+      "type": "string",
+      "description": "Preferred IDE for jeff open.",
+      "enum": ["vscode", "cursor", "windsurf", "nvim"]
+    },
+    "gig_home": {
+      "type": "string",
+      "description": "Override gig home directory. Empty uses default (~/.gig/)."
+    },
+    "repos": {
+      "type": "object",
+      "description": "Registered codebases. Keys are short names (e.g. 'backend').",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Git clone URL."
+          },
+          "base_branch": {
+            "type": "string",
+            "description": "Base branch for worktrees and PRs. Default: origin/main."
+          },
+          "branch_name": {
+            "type": "string",
+            "description": "Script that outputs branch name. Receives task JSON on stdin."
+          },
+          "post_setup": {
+            "type": "string",
+            "description": "Script run after worktree creation. Receives src_dir and dest_dir as args."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "hooks": {
+      "type": "object",
+      "description": "Hook name to enabled state. Null/missing map means all enabled.",
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    }
+  }
+}

@@ -99,7 +99,7 @@ func runInit(here bool) error {
 	fmt.Println("  worktrees/  — git worktrees managed by: jeff worktree add")
 	fmt.Println("  exports/    — artifacts and generated files")
 	fmt.Println("  CLAUDE.md   — agent instructions (editable)")
-	fmt.Println("  hooks/      — session hooks (configure in jeff.yaml)")
+	fmt.Println("  hooks/      — session hooks (configure in jeff.json)")
 	return nil
 }
 

@@ -1,6 +1,7 @@
 package jeff
 
 import (
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -14,6 +15,9 @@ func TestDefaultConfig(t *testing.T) {
 	}
 	if cfg.Repos == nil {
 		t.Error("repos map should be initialized")
+	}
+	if cfg.Schema == "" {
+		t.Error("schema should be set")
 	}
 }
 
@@ -47,6 +51,16 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		t.Fatalf("save config: %v", err)
 	}
 
+	// Verify it's JSON.
+	data, _ := os.ReadFile(ConfigPath(home))
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("saved file is not valid JSON: %v", err)
+	}
+	if raw["$schema"] == nil {
+		t.Error("$schema missing from saved config")
+	}
+
 	loaded, err := LoadConfig(home)
 	if err != nil {
 		t.Fatalf("load config: %v", err)
@@ -66,7 +80,7 @@ func TestLoadConfigInvalidAgent(t *testing.T) {
 	home := testutil.TempHome(t)
 	os.MkdirAll(home, 0o755)
 
-	os.WriteFile(ConfigPath(home), []byte("agent: badtool\n"), 0o644)
+	os.WriteFile(ConfigPath(home), []byte(`{"agent":"badtool"}`+"\n"), 0o644)
 
 	cfg, err := LoadConfig(home)
 	if err != nil {
@@ -74,6 +88,64 @@ func TestLoadConfigInvalidAgent(t *testing.T) {
 	}
 	if cfg.Agent != AgentClaudeCode {
 		t.Errorf("invalid agent should fallback to claude, got %s", cfg.Agent)
+	}
+}
+
+func TestMigrateFromYAML(t *testing.T) {
+	home := testutil.TempHome(t)
+	os.MkdirAll(home, 0o755)
+
+	// Write a legacy jeff.yaml.
+	yamlContent := `agent: claude
+ide: windsurf
+gig_home: ""
+repos:
+  backend:
+    url: https://github.com/org/backend.git
+    base_branch: origin/develop
+hooks:
+  gig-ready-tasks: true
+`
+	os.WriteFile(legacyConfigPath(home), []byte(yamlContent), 0o644)
+
+	// LoadConfig should auto-migrate.
+	cfg, err := LoadConfig(home)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if cfg.Agent != AgentClaudeCode {
+		t.Errorf("agent = %s, want claude", cfg.Agent)
+	}
+	if cfg.IDE != IDEWindsurf {
+		t.Errorf("ide = %s, want windsurf", cfg.IDE)
+	}
+	if cfg.Repos["backend"] == nil {
+		t.Fatal("backend repo missing after migration")
+	}
+	if cfg.Repos["backend"].BaseBranch != "origin/develop" {
+		t.Errorf("base_branch = %s, want origin/develop", cfg.Repos["backend"].BaseBranch)
+	}
+	if !cfg.Hooks["gig-ready-tasks"] {
+		t.Error("hooks not migrated")
+	}
+
+	// jeff.json should exist now.
+	if _, err := os.Stat(ConfigPath(home)); err != nil {
+		t.Error("jeff.json not created after migration")
+	}
+
+	// jeff.yaml should be removed.
+	if _, err := os.Stat(legacyConfigPath(home)); err == nil {
+		t.Error("jeff.yaml not removed after migration")
+	}
+
+	// Verify the JSON file has $schema.
+	data, _ := os.ReadFile(ConfigPath(home))
+	var raw map[string]any
+	json.Unmarshal(data, &raw)
+	if raw["$schema"] == nil {
+		t.Error("$schema missing from migrated config")
 	}
 }
 
@@ -89,7 +161,6 @@ func TestResolveHomeEnvVar(t *testing.T) {
 }
 
 func TestWriteAndResolveHomePointer(t *testing.T) {
-	// Clear env so pointer file is used.
 	t.Setenv("JEFF_HOME", "")
 
 	customHome := t.TempDir()
@@ -105,7 +176,6 @@ func TestWriteAndResolveHomePointer(t *testing.T) {
 		t.Errorf("expected %s, got %s", customHome, home)
 	}
 
-	// Cleanup: restore default pointer.
 	ptr, _ := globalPointerPath()
 	os.Remove(ptr)
 }

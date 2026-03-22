@@ -17,8 +17,8 @@ func setupTaskCtxTest(t *testing.T) (string, func()) {
 	taskDir := filepath.Join(home, "tasks", "gig-ab12-test-task")
 	os.MkdirAll(taskDir, 0o755)
 
-	// Write a minimal jeff.yaml so LoadConfig works.
-	os.WriteFile(filepath.Join(home, "jeff.yaml"), []byte("agent: claude\nrepos: {}\n"), 0o644)
+	// Write a minimal jeff.json so LoadConfig works.
+	os.WriteFile(filepath.Join(home, "jeff.json"), []byte(`{"agent":"claude","repos":{}}`+"\n"), 0o644)
 
 	// Set the global cfg.
 	oldCfg := cfg

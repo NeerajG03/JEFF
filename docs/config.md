@@ -1,28 +1,37 @@
 # Configuration
 
-JEFF is configured via `jeff.yaml` in your JEFF_HOME directory.
+JEFF is configured via `jeff.json` in your JEFF_HOME directory. Editors get autocompletion via the `$schema` field.
 
-## jeff.yaml
+## jeff.json
 
-```yaml
-agent: claude                      # agent tool: "claude" or "opencode"
-ide: cursor                        # IDE: "vscode", "cursor", "windsurf", "nvim"
-gig_home: ""                       # override gig home (empty = default ~/.gig/)
-repos:
-  backend:
-    url: https://github.com/org/backend.git
-    base_branch: origin/main       # base branch for PRs (default: origin/main)
-    branch_name: scripts/branch.sh # script to generate branch names (optional)
-    post_setup: scripts/setup.sh   # script run after worktree creation (optional)
-  frontend:
-    url: https://github.com/org/frontend.git
-    base_branch: origin/develop
-hooks:
-  gig-instructions: true           # inject gig CLI reference at session start
-  gig-ready-tasks: true            # inject `gig ready` output at session start
-  jeff-instructions: true          # inject jeff CLI reference at session start
-  jeff-repos: true                 # inject repo list at session start
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/NeerajG03/JEFF/main/schemas/jeff-config.json",
+  "agent": "claude",
+  "ide": "cursor",
+  "gig_home": "",
+  "repos": {
+    "backend": {
+      "url": "https://github.com/org/backend.git",
+      "base_branch": "origin/main",
+      "branch_name": "scripts/branch.sh",
+      "post_setup": "scripts/setup.sh"
+    },
+    "frontend": {
+      "url": "https://github.com/org/frontend.git",
+      "base_branch": "origin/develop"
+    }
+  },
+  "hooks": {
+    "gig-instructions": true,
+    "gig-ready-tasks": true,
+    "jeff-instructions": true,
+    "jeff-repos": true
+  }
+}
 ```
+
+> **Migration**: If you have an existing `jeff.yaml`, JEFF auto-migrates it to `jeff.json` on first run.
 
 ## Agent Tool
 
@@ -58,12 +67,16 @@ jeff repo remove backend
 
 The branch that worktrees are created from and PRs target. Defaults to `origin/main`. When the base references a remote (e.g. `origin/develop`), JEFF runs `git fetch` before creating the worktree.
 
-Set per-repo in `jeff.yaml`:
+Set per-repo in `jeff.json`:
 
-```yaml
-repos:
-  backend:
-    base_branch: origin/develop
+```json
+{
+  "repos": {
+    "backend": {
+      "base_branch": "origin/develop"
+    }
+  }
+}
 ```
 
 Or override per-worktree:
@@ -76,10 +89,14 @@ jeff worktree add backend gig-ab12 --base origin/staging
 
 By default, worktree branches are named after the task ID (e.g. `gig-ab12`). You can provide a script that receives the full task JSON (including custom attributes) on stdin and outputs the branch name on stdout.
 
-```yaml
-repos:
-  backend:
-    branch_name: scripts/branch-name.sh
+```json
+{
+  "repos": {
+    "backend": {
+      "branch_name": "scripts/branch-name.sh"
+    }
+  }
+}
 ```
 
 The script receives JSON like:
@@ -152,12 +169,14 @@ jeff config hooks list               # show all hooks and their state
 jeff config hooks sync               # re-install hooks (after updates)
 ```
 
-Or edit `jeff.yaml` directly:
+Or edit `jeff.json` directly:
 
-```yaml
-hooks:
-  gig-ready-tasks: false    # disabled
-  # omitted hooks default to enabled
+```json
+{
+  "hooks": {
+    "gig-ready-tasks": false
+  }
+}
 ```
 
 ### How Hooks Work

@@ -6,7 +6,7 @@
 // Layout:
 //
 //	jeff.go          # Core types: Config, JeffHome resolution
-//	config.go        # LoadConfig, SaveConfig, DefaultJeffHome, jeff.yaml parsing
+//	config.go        # LoadConfig, SaveConfig, DefaultJeffHome, jeff.json parsing
 //	persona/         # Embedded persona templates
 //	  personas.go    # //go:embed + GetPersona, ListPersonas
 //	workspace/       # Task workspace and worktree management

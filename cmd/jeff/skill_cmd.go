@@ -83,11 +83,11 @@ func skillListCmd() *cobra.Command {
 
 			fmt.Printf("  %-*s  %-12s  %-16s  %s\n", maxName, "NAME", "PERSONAS", "TYPES", "TAGS")
 			for _, s := range skills {
-				personas := "(all)"
+				personas := "—"
 				if len(s.Entry.Personas) > 0 {
 					personas = strings.Join(s.Entry.Personas, ", ")
 				}
-				types := "(all)"
+				types := "—"
 				if len(s.Entry.GigTypes) > 0 {
 					types = strings.Join(s.Entry.GigTypes, ", ")
 				}
@@ -234,46 +234,71 @@ func skillTagCmd() *cobra.Command {
 }
 
 func skillInjectCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "inject <name>",
-		Short: "Inject a skill into the current task workspace",
-		Args:  cobra.ExactArgs(1),
+	var task string
+
+	cmd := &cobra.Command{
+		Use:   "inject <name> [name2...]",
+		Short: "Inject skills (into JEFF home by default, or --task for a task workspace)",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, taskDir, err := resolveTaskID(nil)
-			if err != nil {
-				return err
+			target := cfg.Home
+			label := "JEFF home"
+			if task != "" {
+				_, taskDir, err := resolveTaskID([]string{task})
+				if err != nil {
+					return err
+				}
+				target = taskDir
+				label = filepath.Base(taskDir)
 			}
 
-			entry, err := skill.Get(cfg.Home, args[0])
-			if err != nil {
-				return err
+			for _, name := range args {
+				entry, err := skill.Get(cfg.Home, name)
+				if err != nil {
+					return err
+				}
+				if err := skill.Inject(name, entry.Location, target); err != nil {
+					return err
+				}
+				fmt.Printf("Injected %s into %s\n", name, label)
 			}
-
-			if err := skill.Inject(args[0], entry.Location, taskDir); err != nil {
-				return err
-			}
-			fmt.Printf("Injected %s into %s\n", args[0], filepath.Base(taskDir))
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&task, "task", "", "Inject into a task workspace instead of JEFF home")
+	return cmd
 }
 
 func skillEjectCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "eject <name>",
-		Short: "Remove a skill from the current task workspace",
-		Args:  cobra.ExactArgs(1),
+	var task string
+
+	cmd := &cobra.Command{
+		Use:   "eject <name> [name2...]",
+		Short: "Eject skills (from JEFF home by default, or --task for a task workspace)",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, taskDir, err := resolveTaskID(nil)
-			if err != nil {
-				return err
+			target := cfg.Home
+			label := "JEFF home"
+			if task != "" {
+				_, taskDir, err := resolveTaskID([]string{task})
+				if err != nil {
+					return err
+				}
+				target = taskDir
+				label = filepath.Base(taskDir)
 			}
 
-			if err := skill.Eject(args[0], taskDir); err != nil {
-				return err
+			for _, name := range args {
+				if err := skill.Eject(name, target); err != nil {
+					return err
+				}
+				fmt.Printf("Ejected %s from %s\n", name, label)
 			}
-			fmt.Printf("Ejected %s from %s\n", args[0], filepath.Base(taskDir))
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&task, "task", "", "Eject from a task workspace instead of JEFF home")
+	return cmd
 }

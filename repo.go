@@ -11,10 +11,11 @@ import (
 
 // Repo represents a registered codebase.
 type Repo struct {
-	Name      string // short name (e.g., "backend")
-	URL       string // clone URL
-	Path      string // absolute path to the clone
-	PostSetup string // post-setup script path (optional)
+	Name        string // short name (e.g., "backend")
+	URL         string // clone URL
+	Description string // human-readable description (optional)
+	Path        string // absolute path to the clone
+	PostSetup   string // post-setup script path (optional)
 }
 
 // AddRepo registers and clones a codebase into JEFF_HOME/repos/.
@@ -70,10 +71,11 @@ func ListRepos(cfg *Config) []*Repo {
 	var repos []*Repo
 	for name, rc := range cfg.Repos {
 		repos = append(repos, &Repo{
-			Name:      name,
-			URL:       rc.URL,
-			Path:      filepath.Join(cfg.Home, "repos", name),
-			PostSetup: rc.PostSetup,
+			Name:        name,
+			URL:         rc.URL,
+			Description: rc.Description,
+			Path:        filepath.Join(cfg.Home, "repos", name),
+			PostSetup:   rc.PostSetup,
 		})
 	}
 	return repos
@@ -86,6 +88,16 @@ func SetPostSetup(cfg *Config, repoName, scriptPath string) error {
 		return fmt.Errorf("repo %q not registered", repoName)
 	}
 	rc.PostSetup = scriptPath
+	return SaveConfig(cfg)
+}
+
+// SetDescription sets the description for a repo.
+func SetDescription(cfg *Config, repoName, description string) error {
+	rc, exists := cfg.Repos[repoName]
+	if !exists {
+		return fmt.Errorf("repo %q not registered", repoName)
+	}
+	rc.Description = description
 	return SaveConfig(cfg)
 }
 

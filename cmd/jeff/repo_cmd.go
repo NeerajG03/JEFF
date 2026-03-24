@@ -13,7 +13,7 @@ func repoCmd() *cobra.Command {
 		Use:   "repo",
 		Short: "Manage registered codebases",
 	}
-	cmd.AddCommand(repoAddCmd(), repoListCmd(), repoRemoveCmd(), repoPostSetupCmd(), repoSyncCmd())
+	cmd.AddCommand(repoAddCmd(), repoListCmd(), repoRemoveCmd(), repoPostSetupCmd(), repoDescribeCmd(), repoSyncCmd())
 	return cmd
 }
 
@@ -49,7 +49,11 @@ func repoListCmd() *cobra.Command {
 				return nil
 			}
 			for _, r := range repos {
-				fmt.Printf("%-20s %s\n", r.Name, r.URL)
+				if r.Description != "" {
+					fmt.Printf("%-20s %s — %s\n", r.Name, r.URL, r.Description)
+				} else {
+					fmt.Printf("%-20s %s\n", r.Name, r.URL)
+				}
 			}
 			return nil
 		},
@@ -111,6 +115,21 @@ func printSyncResult(r *jeff.SyncResult) {
 		fmt.Printf("%-20s updated (%d new commits)\n", r.Name, r.Behind)
 	} else {
 		fmt.Printf("%-20s already up to date\n", r.Name)
+	}
+}
+
+func repoDescribeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "describe <name> <description>",
+		Short: "Set a description for a repo",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := jeff.SetDescription(cfg, args[0], args[1]); err != nil {
+				return err
+			}
+			fmt.Printf("Set description for %s → %s\n", args[0], args[1])
+			return nil
+		},
 	}
 }
 

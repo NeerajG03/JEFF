@@ -14,10 +14,11 @@ const configSchemaURL = "https://raw.githubusercontent.com/NeerajG03/JEFF/main/s
 
 // RepoConfig holds per-repo configuration.
 type RepoConfig struct {
-	URL        string `json:"url" yaml:"url"`
-	BaseBranch string `json:"base_branch,omitempty" yaml:"base_branch,omitempty"`
-	BranchName string `json:"branch_name,omitempty" yaml:"branch_name,omitempty"`
-	PostSetup  string `json:"post_setup,omitempty" yaml:"post_setup,omitempty"`
+	URL         string `json:"url" yaml:"url"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+	BaseBranch  string `json:"base_branch,omitempty" yaml:"base_branch,omitempty"`
+	BranchName  string `json:"branch_name,omitempty" yaml:"branch_name,omitempty"`
+	PostSetup   string `json:"post_setup,omitempty" yaml:"post_setup,omitempty"`
 }
 
 // Config represents the jeff.json configuration file.

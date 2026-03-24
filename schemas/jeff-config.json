@@ -33,6 +33,10 @@
             "type": "string",
             "description": "Git clone URL."
           },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of the repo, injected into agent context."
+          },
           "base_branch": {
             "type": "string",
             "description": "Base branch for worktrees and PRs. Default: origin/main."

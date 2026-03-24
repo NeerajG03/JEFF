@@ -52,10 +52,10 @@ func jeffReposHook() *Hook {
 		Matcher: "*",
 		ClaudeScript: func(ctx HookContext) string {
 			return claudeSessionStartDynamic(`## Registered repos
-` + "$(jeff repo list 2>/dev/null | awk '{print $1}' || echo '(none)')")
+` + "$(jeff repo list 2>/dev/null || echo '(none)')")
 		},
 		OpenCodeSnippet: func(ctx HookContext) string {
-			return jsDynamicSnippet("jeff-repos", `jeff repo list 2>/dev/null | awk '{print $1}'`)
+			return jsDynamicSnippet("jeff-repos", `jeff repo list 2>/dev/null`)
 		},
 	}
 }

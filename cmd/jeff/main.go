@@ -19,8 +19,9 @@ func main() {
 		Long:    "JEFF supercharges AI agents with structured workspaces, personas, and task lifecycle management.",
 		Version: version,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Skip config load for init (home may not exist yet).
-			if cmd.Name() == "init" {
+			// Skip config load for `jeff init` (home may not exist yet).
+			// Use CommandPath to avoid matching subcommands like `project init`.
+			if cmd.CommandPath() == "jeff init" {
 				return nil
 			}
 

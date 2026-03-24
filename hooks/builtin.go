@@ -156,7 +156,7 @@ const jeffInstructionsContext = `## JEFF Commands
 
 - ` + "`jeff checkpoint --done \"...\" [--next ...]`" + `        — save structured progress snapshot
 - ` + "`jeff worktree add <repo> <branch> [--base <ref>]`" + ` — create a worktree
-- ` + "`jeff ship`" + `                                        — push branches + create PRs for all repos
+- ` + "`jeff ship`" + `                                        — push branches + create PRs for all repos. Use this to create PRs
 - ` + "`jeff status`" + `                                      — overview of all active tasks and workspaces
 
 Run ` + "`jeff <command> --help`" + ` for full flags and options.`

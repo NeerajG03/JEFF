@@ -234,11 +234,11 @@ func skillTagCmd() *cobra.Command {
 }
 
 func skillInjectCmd() *cobra.Command {
-	var task string
+	var task, project string
 
 	cmd := &cobra.Command{
 		Use:   "inject <name> [name2...]",
-		Short: "Inject skills (into JEFF home by default, or --task for a task workspace)",
+		Short: "Inject skills (into JEFF home by default, or --task/--project for a specific target)",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := cfg.Home
@@ -250,6 +250,13 @@ func skillInjectCmd() *cobra.Command {
 				}
 				target = taskDir
 				label = filepath.Base(taskDir)
+			} else if project != "" {
+				projectDir := filepath.Join(cfg.Home, "projects", project)
+				if _, err := os.Stat(projectDir); err != nil {
+					return fmt.Errorf("project %q not found — run: jeff project init %s", project, project)
+				}
+				target = projectDir
+				label = "project " + project
 			}
 
 			for _, name := range args {
@@ -267,15 +274,17 @@ func skillInjectCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&task, "task", "", "Inject into a task workspace instead of JEFF home")
+	cmd.Flags().StringVar(&project, "project", "", "Inject into a project instead of JEFF home")
+	cmd.MarkFlagsMutuallyExclusive("task", "project")
 	return cmd
 }
 
 func skillEjectCmd() *cobra.Command {
-	var task string
+	var task, project string
 
 	cmd := &cobra.Command{
 		Use:   "eject <name> [name2...]",
-		Short: "Eject skills (from JEFF home by default, or --task for a task workspace)",
+		Short: "Eject skills (from JEFF home by default, or --task/--project for a specific target)",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := cfg.Home
@@ -287,6 +296,13 @@ func skillEjectCmd() *cobra.Command {
 				}
 				target = taskDir
 				label = filepath.Base(taskDir)
+			} else if project != "" {
+				projectDir := filepath.Join(cfg.Home, "projects", project)
+				if _, err := os.Stat(projectDir); err != nil {
+					return fmt.Errorf("project %q not found", project)
+				}
+				target = projectDir
+				label = "project " + project
 			}
 
 			for _, name := range args {
@@ -300,5 +316,7 @@ func skillEjectCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&task, "task", "", "Eject from a task workspace instead of JEFF home")
+	cmd.Flags().StringVar(&project, "project", "", "Eject from a project instead of JEFF home")
+	cmd.MarkFlagsMutuallyExclusive("task", "project")
 	return cmd
 }

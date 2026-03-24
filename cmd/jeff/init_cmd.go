@@ -147,6 +147,7 @@ func ensureDirs(home string) {
 		filepath.Join(home, "worktrees"),
 		filepath.Join(home, "exports"),
 		filepath.Join(home, "scripts"),
+		filepath.Join(home, "projects"),
 		filepath.Join(home, ".skills"),
 		filepath.Join(home, ".claude"),
 		filepath.Join(home, ".opencode"),

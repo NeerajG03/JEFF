@@ -63,6 +63,7 @@ func main() {
 		configCmd(),
 		skillCmd(),
 		openCmd(),
+		projectCmd(),
 		completionCmd(),
 	)
 

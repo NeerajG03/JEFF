@@ -61,5 +61,6 @@ func checkpointCmd() *cobra.Command {
 	cmd.Flags().StringVar(&blockers, "blockers", "", "Current blockers")
 	cmd.Flags().StringSliceVar(&files, "files", nil, "File paths touched or referenced")
 	cmd.MarkFlagRequired("done")
+	cmd.RegisterFlagCompletionFunc("task", activeTaskCompletion)
 	return cmd
 }

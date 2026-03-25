@@ -11,7 +11,7 @@ import (
 )
 
 func openCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "open [gig-id]",
 		Short: "Open JEFF_HOME or a task workspace in your configured IDE",
 		Args:  cobra.MaximumNArgs(1),
@@ -33,6 +33,8 @@ func openCmd() *cobra.Command {
 			return openIDE(dir, ide)
 		},
 	}
+	cmd.ValidArgsFunction = activeTaskCompletion
+	return cmd
 }
 
 // openIDE launches the configured IDE at the given directory.

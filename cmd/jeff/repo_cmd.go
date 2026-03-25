@@ -64,9 +64,10 @@ func repoRemoveCmd() *cobra.Command {
 	var deleteFiles bool
 
 	cmd := &cobra.Command{
-		Use:   "remove <name>",
-		Short: "Unregister a codebase",
-		Args:  cobra.ExactArgs(1),
+		Use:               "remove <name>",
+		Short:             "Unregister a codebase",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: repoNameCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := jeff.RemoveRepo(cfg, args[0], deleteFiles); err != nil {
 				return err
@@ -105,6 +106,7 @@ func repoSyncCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&repoName, "repo", "", "Sync a specific repo only")
+	cmd.RegisterFlagCompletionFunc("repo", repoNameCompletion)
 	return cmd
 }
 
@@ -123,6 +125,12 @@ func repoDescribeCmd() *cobra.Command {
 		Use:   "describe <name> <description>",
 		Short: "Set a description for a repo",
 		Args:  cobra.ExactArgs(2),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) == 0 {
+				return repoNameCompletion(cmd, args, toComplete)
+			}
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := jeff.SetDescription(cfg, args[0], args[1]); err != nil {
 				return err
@@ -139,6 +147,13 @@ func repoPostSetupCmd() *cobra.Command {
 		Short: "Set a post-setup script for worktree creation",
 		Long:  "The script receives two arguments: src_dir (repo clone) and dest_dir (new worktree).",
 		Args:  cobra.ExactArgs(2),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) == 0 {
+				return repoNameCompletion(cmd, args, toComplete)
+			}
+			// Second arg is a file path — let the shell handle it.
+			return nil, cobra.ShellCompDirectiveDefault
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := jeff.SetPostSetup(cfg, args[0], args[1]); err != nil {
 				return err

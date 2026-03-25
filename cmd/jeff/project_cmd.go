@@ -63,9 +63,10 @@ func projectInitCmd() *cobra.Command {
 
 func projectOpenCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "open <name>",
-		Short: "Open a project in the configured agent",
-		Args:  cobra.ExactArgs(1),
+		Use:               "open <name>",
+		Short:             "Open a project in the configured agent",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: projectNameCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			projectDir := filepath.Join(cfg.Home, "projects", name)

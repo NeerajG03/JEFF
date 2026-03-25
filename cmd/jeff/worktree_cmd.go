@@ -24,6 +24,12 @@ func worktreeAddCmd() *cobra.Command {
 		Use:   "add <repo> <branch>",
 		Short: "Create a git worktree and optionally symlink into task dir",
 		Args:  cobra.ExactArgs(2),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) == 0 {
+				return repoNameCompletion(cmd, args, toComplete)
+			}
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoName, branch := args[0], args[1]
 
@@ -76,6 +82,12 @@ func worktreeRmCmd() *cobra.Command {
 		Use:   "rm <repo> <branch>",
 		Short: "Remove a git worktree",
 		Args:  cobra.ExactArgs(2),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) == 0 {
+				return repoNameCompletion(cmd, args, toComplete)
+			}
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := workspace.WorktreeRemove(cfg.Home, args[0], args[1]); err != nil {
 				return err
@@ -88,9 +100,10 @@ func worktreeRmCmd() *cobra.Command {
 
 func worktreeListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list <repo>",
-		Short: "List worktrees for a repo",
-		Args:  cobra.ExactArgs(1),
+		Use:               "list <repo>",
+		Short:             "List worktrees for a repo",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: repoNameCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			branches, err := workspace.WorktreeList(cfg.Home, args[0])
 			if err != nil {

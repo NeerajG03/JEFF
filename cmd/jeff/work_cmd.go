@@ -8,7 +8,7 @@ import (
 )
 
 func workCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "work [gig-id]",
 		Short: "Resume work on an existing task — launch agent in task dir",
 		Args:  cobra.MaximumNArgs(1),
@@ -25,4 +25,6 @@ func workCmd() *cobra.Command {
 			return launchAgent(taskDir, cfg.Agent)
 		},
 	}
+	cmd.ValidArgsFunction = activeTaskCompletion
+	return cmd
 }

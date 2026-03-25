@@ -63,5 +63,6 @@ func doneCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&reason, "reason", "done", "Close reason")
+	cmd.ValidArgsFunction = activeTaskCompletion
 	return cmd
 }

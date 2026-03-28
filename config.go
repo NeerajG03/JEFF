@@ -23,13 +23,14 @@ type RepoConfig struct {
 
 // Config represents the jeff.json configuration file.
 type Config struct {
-	Schema  string                 `json:"$schema,omitempty" yaml:"-"`
-	Agent   AgentTool              `json:"agent" yaml:"agent"`
-	IDE     IDE                    `json:"ide,omitempty" yaml:"ide,omitempty"`
-	GigHome string                 `json:"gig_home,omitempty" yaml:"gig_home"`
-	Repos   map[string]*RepoConfig `json:"repos" yaml:"repos"`
-	Hooks   map[string]bool        `json:"hooks,omitempty" yaml:"hooks,omitempty"`
-	Home    string                 `json:"-" yaml:"-"` // resolved JEFF_HOME (not persisted)
+	Schema              string                 `json:"$schema,omitempty" yaml:"-"`
+	Agent               AgentTool              `json:"agent" yaml:"agent"`
+	IDE                 IDE                    `json:"ide,omitempty" yaml:"ide,omitempty"`
+	GigHome             string                 `json:"gig_home,omitempty" yaml:"gig_home"`
+	Repos               map[string]*RepoConfig `json:"repos" yaml:"repos"`
+	Hooks               map[string]bool        `json:"hooks,omitempty" yaml:"hooks,omitempty"`
+	CheckpointPatterns  []string               `json:"checkpoint_patterns,omitempty" yaml:"checkpoint_patterns,omitempty"`
+	Home                string                 `json:"-" yaml:"-"` // resolved JEFF_HOME (not persisted)
 }
 
 // DefaultConfig returns a Config with sensible defaults.

@@ -108,7 +108,13 @@ func pickupCmd() *cobra.Command {
 			// 6. Install task-level hooks (if any).
 			reg := hooks.DefaultRegistry()
 			mgr := hooks.NewManager(reg)
-			hctx := hooks.HookContext{JeffHome: cfg.Home, TargetDir: td.Path, GigHome: cfg.GigHome}
+			hctx := hooks.HookContext{
+				JeffHome:           cfg.Home,
+				TargetDir:          td.Path,
+				GigHome:            cfg.GigHome,
+				TaskID:             taskID,
+				CheckpointPatterns: cfg.CheckpointPatterns,
+			}
 			taskEnabled := hooks.EnabledForSource(cfg.Hooks, hooks.SourceTask, reg)
 			if len(taskEnabled) > 0 {
 				agent := hooks.AgentTool(cfg.Agent)
@@ -177,6 +183,14 @@ func writeTaskClaudeMD(taskDir string, task *gig.Task, personaName string) error
 
 	// Workspace layout with worktrees.
 	writeWorkspaceLayout(&sb, taskDir)
+
+	// Good practices.
+	sb.WriteString("## Good Practices\n\n")
+	sb.WriteString("- **Checkpoint after logical blocks** — committed code, passing tests, finished a subtask. ")
+	sb.WriteString("Run `jeff checkpoint --done \"...\" --next \"...\"` to keep the user informed without them having to read diffs.\n")
+	sb.WriteString("- **Ship when ready for review** — `jeff ship` pushes all worktrees and creates PRs.\n")
+	sb.WriteString("- **Mark done when complete** — `jeff done` closes the task and cleans up.\n")
+	sb.WriteString("\n")
 
 	path := filepath.Join(taskDir, "CLAUDE.md")
 	return os.WriteFile(path, []byte(sb.String()), 0o644)

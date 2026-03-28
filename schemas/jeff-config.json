@@ -59,6 +59,14 @@
       "additionalProperties": {
         "type": "boolean"
       }
+    },
+    "checkpoint_patterns": {
+      "type": "array",
+      "description": "Regex patterns matched against Bash commands. When a command matches, the agent is nudged to run jeff checkpoint.",
+      "items": {
+        "type": "string"
+      },
+      "examples": [["git commit", "go test.*PASS", "npm test"]]
     }
   }
 }

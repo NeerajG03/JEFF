@@ -114,14 +114,21 @@ func configHooksListCmd() *cobra.Command {
 		Short: "List all hooks and their status",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			reg := hooks.DefaultRegistry()
-			enabled := hooks.EnabledForSource(cfg.Hooks, hooks.SourceHome, reg)
+			homeEnabled := hooks.EnabledForSource(cfg.Hooks, hooks.SourceHome, reg)
+			taskEnabled := hooks.EnabledForSource(cfg.Hooks, hooks.SourceTask, reg)
 
 			for _, h := range reg.All() {
+				var enabled bool
+				if h.Source == hooks.SourceHome {
+					enabled = homeEnabled[h.Name]
+				} else {
+					enabled = taskEnabled[h.Name]
+				}
 				status := "[ ]"
-				if enabled[h.Name] {
+				if enabled {
 					status = "[x]"
 				}
-				fmt.Printf("%s %-20s %s/%s\n", status, h.Name, h.Event, h.Matcher)
+				fmt.Printf("%s %-22s %-6s %s/%s\n", status, h.Name, h.Source, h.Event, h.Matcher)
 			}
 			return nil
 		},

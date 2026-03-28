@@ -1,12 +1,17 @@
 package hooks
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestBuiltinHooksGenerateContent(t *testing.T) {
 	ctx := HookContext{
-		JeffHome:  "/tmp/test-jeff",
-		TargetDir: "/tmp/test-jeff",
-		GigHome:   "/tmp/test-gig",
+		JeffHome:           "/tmp/test-jeff",
+		TargetDir:          "/tmp/test-jeff",
+		GigHome:            "/tmp/test-gig",
+		TaskID:             "gig-ab12",
+		CheckpointPatterns: []string{"git commit", "go test.*PASS"},
 	}
 
 	for _, h := range builtinHooks() {
@@ -27,27 +32,70 @@ func TestBuiltinHooksGenerateContent(t *testing.T) {
 			if h.OpenCodeSnippet == nil {
 				t.Fatal("OpenCodeSnippet is nil")
 			}
-			content := h.OpenCodeSnippet(ctx)
-			if content == "" {
-				t.Fatal("OpenCodeSnippet returned empty")
-			}
+			// Some task hooks return empty for OpenCode (e.g. PostToolUse hooks).
+			// Just verify no panic.
+			h.OpenCodeSnippet(ctx)
 		})
 	}
 }
 
-func TestBuiltinHooksAreHomeSource(t *testing.T) {
+func TestHomeHooksAreSessionStart(t *testing.T) {
 	for _, h := range builtinHooks() {
 		if h.Source != SourceHome {
-			t.Errorf("%s: source = %q, want %q", h.Name, h.Source, SourceHome)
+			continue
+		}
+		if h.Event != "SessionStart" {
+			t.Errorf("%s: event = %q, want SessionStart", h.Name, h.Event)
 		}
 	}
 }
 
-func TestBuiltinHooksAreSessionStart(t *testing.T) {
+func TestTaskHookSources(t *testing.T) {
+	taskHooks := map[string]bool{
+		"task-context":    true,
+		"task-commands":   true,
+		"checkpoint-nudge": true,
+	}
 	for _, h := range builtinHooks() {
-		if h.Event != "SessionStart" {
-			t.Errorf("%s: event = %q, want SessionStart", h.Name, h.Event)
+		if taskHooks[h.Name] {
+			if h.Source != SourceTask {
+				t.Errorf("%s: source = %q, want %q", h.Name, h.Source, SourceTask)
+			}
 		}
+	}
+}
+
+func TestTaskContextHookIncludesTaskID(t *testing.T) {
+	ctx := HookContext{TaskID: "gig-ab12"}
+	h := taskContextHook()
+	script := h.ClaudeScript(ctx)
+	if !strings.Contains(script, "gig-ab12") {
+		t.Error("task-context script does not contain task ID")
+	}
+}
+
+func TestCheckpointNudgeWithPatterns(t *testing.T) {
+	ctx := HookContext{CheckpointPatterns: []string{"git commit", "go test.*PASS"}}
+	h := checkpointNudgeHook()
+	script := h.ClaudeScript(ctx)
+	if !strings.Contains(script, "git commit") {
+		t.Error("checkpoint-nudge script missing pattern 'git commit'")
+	}
+	if !strings.Contains(script, "go test.*PASS") {
+		t.Error("checkpoint-nudge script missing pattern 'go test.*PASS'")
+	}
+	if !strings.Contains(script, "grep -qE") {
+		t.Error("checkpoint-nudge script missing grep check")
+	}
+}
+
+func TestCheckpointNudgeWithoutPatterns(t *testing.T) {
+	ctx := HookContext{CheckpointPatterns: nil}
+	h := checkpointNudgeHook()
+	script := h.ClaudeScript(ctx)
+	// Should be a no-op script (no grep, just exits).
+	if strings.Contains(script, "grep") {
+		t.Error("checkpoint-nudge with no patterns should not grep")
 	}
 }
 

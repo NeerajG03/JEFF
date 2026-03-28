@@ -26,8 +26,12 @@ JEFF is configured via `jeff.json` in your JEFF_HOME directory. Editors get auto
     "gig-instructions": true,
     "gig-ready-tasks": true,
     "jeff-instructions": true,
-    "jeff-repos": true
-  }
+    "jeff-repos": true,
+    "task-context": true,
+    "task-commands": true,
+    "checkpoint-nudge": true
+  },
+  "checkpoint_patterns": ["git commit", "go test.*PASS", "npm test"]
 }
 ```
 
@@ -153,12 +157,22 @@ Hooks inject context into agent sessions at startup. They run as SessionStart ho
 
 ### Built-in Hooks
 
+**Home hooks** — installed at JEFF_HOME level by `jeff init`:
+
 | Hook | What it injects |
 |------|----------------|
 | `gig-instructions` | gig CLI reference for the agent |
 | `gig-ready-tasks` | Output of `gig ready` (tasks available to pick up) |
 | `jeff-instructions` | jeff CLI reference for the agent |
 | `jeff-repos` | List of registered repos |
+
+**Task hooks** — installed in task directories by `jeff pickup`:
+
+| Hook | Event | What it does |
+|------|-------|-------------|
+| `task-context` | SessionStart | Injects `gig show <task-id>` — task details, status, checkpoints |
+| `task-commands` | SessionStart | Task-dir commands and good practices (checkpoint, ship, done) |
+| `checkpoint-nudge` | PostToolUse/Bash | Matches commands against `checkpoint_patterns`, nudges agent to checkpoint |
 
 All hooks are enabled by default. Disable individually:
 
@@ -179,9 +193,21 @@ Or edit `jeff.json` directly:
 }
 ```
 
+### Checkpoint Patterns
+
+The `checkpoint-nudge` hook fires after Bash tool use and checks the command against regex patterns defined in `checkpoint_patterns`. When a match is found, the agent is reminded to run `jeff checkpoint`.
+
+```json
+{
+  "checkpoint_patterns": ["git commit", "go test.*PASS", "npm test", "pytest"]
+}
+```
+
+Patterns use extended regex (ERE) syntax. If `checkpoint_patterns` is empty or omitted, the hook is a no-op.
+
 ### How Hooks Work
 
-For Claude Code, each hook becomes a bash script in `JEFF_HOME/hooks/` wired into `JEFF_HOME/.claude/settings.json`. For OpenCode, all hooks are combined into a single plugin at `JEFF_HOME/.opencode/plugins/jeff-hooks.js`.
+Home hooks: each becomes a bash script in `JEFF_HOME/hooks/` wired into `JEFF_HOME/.claude/settings.json`. Task hooks: scripts go into `tasks/<id>/hooks/` wired into `tasks/<id>/.claude/settings.json`. For OpenCode, all hooks are combined into a single plugin.
 
 ## CLAUDE.md
 

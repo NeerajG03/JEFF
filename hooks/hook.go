@@ -29,9 +29,11 @@ type Hook struct {
 
 // HookContext provides data that hook generators need.
 type HookContext struct {
-	JeffHome  string // JEFF_HOME path
-	TargetDir string // directory where hooks are being installed
-	GigHome   string // gig home for SDK calls (empty = default)
+	JeffHome           string   // JEFF_HOME path
+	TargetDir          string   // directory where hooks are being installed
+	GigHome            string   // gig home for SDK calls (empty = default)
+	TaskID             string   // gig task ID (set for task-level hooks)
+	CheckpointPatterns []string // regex patterns that trigger checkpoint nudge
 }
 
 // TimeoutOrDefault returns the hook's timeout, defaulting to 10 seconds.

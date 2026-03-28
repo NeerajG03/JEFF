@@ -3,10 +3,15 @@ package hooks
 // builtinHooks returns all built-in hook definitions.
 func builtinHooks() []*Hook {
 	return []*Hook{
+		// Home-level hooks.
 		gigInstructionsHook(),
 		gigReadyTasksHook(),
 		jeffReposHook(),
 		jeffInstructionsHook(),
+		// Task-level hooks.
+		taskContextHook(),
+		taskCommandsHook(),
+		checkpointNudgeHook(),
 	}
 }
 
@@ -160,3 +165,125 @@ const jeffInstructionsContext = `## JEFF Commands
 - ` + "`jeff status`" + `                                      — overview of all active tasks and workspaces
 
 Run ` + "`jeff <command> --help`" + ` for full flags and options.`
+
+// --- Task-level hooks ---
+
+// taskContextHook injects `gig show <task-id>` output so the agent knows
+// what task it is working on, including status, checkpoints, and subtasks.
+func taskContextHook() *Hook {
+	return &Hook{
+		Name:    "task-context",
+		Source:  SourceTask,
+		Event:   "SessionStart",
+		Matcher: "*",
+		ClaudeScript: func(ctx HookContext) string {
+			if ctx.TaskID == "" {
+				return claudeSessionStartStatic("(no task context — TaskID not set)")
+			}
+			return claudeSessionStartDynamic(`## Current Task
+` + "$(gig show " + ctx.TaskID + " 2>/dev/null || echo '(task not found)')")
+		},
+		OpenCodeSnippet: func(ctx HookContext) string {
+			if ctx.TaskID == "" {
+				return ""
+			}
+			return jsDynamicSnippet("task-context", `gig show `+ctx.TaskID+` 2>/dev/null`)
+		},
+	}
+}
+
+// taskCommandsHook injects task-dir-specific commands and good practices.
+func taskCommandsHook() *Hook {
+	return &Hook{
+		Name:    "task-commands",
+		Source:  SourceTask,
+		Event:   "SessionStart",
+		Matcher: "*",
+		ClaudeScript: func(ctx HookContext) string {
+			return claudeSessionStartStatic(taskCommandsContext)
+		},
+		OpenCodeSnippet: func(ctx HookContext) string {
+			return jsStaticSnippet("task-commands", taskCommandsContext)
+		},
+	}
+}
+
+// checkpointNudgeHook fires after Bash tool use and checks if the command
+// matches any user-configured checkpoint patterns. If so, it reminds the
+// agent to run jeff checkpoint.
+func checkpointNudgeHook() *Hook {
+	return &Hook{
+		Name:    "checkpoint-nudge",
+		Source:  SourceTask,
+		Event:   "PostToolUse",
+		Matcher: "Bash",
+		Timeout: 5,
+		ClaudeScript: func(ctx HookContext) string {
+			return buildCheckpointNudgeScript(ctx.CheckpointPatterns)
+		},
+		OpenCodeSnippet: func(ctx HookContext) string {
+			// PostToolUse is Claude Code specific; no OpenCode equivalent.
+			return ""
+		},
+	}
+}
+
+// buildCheckpointNudgeScript generates a bash script that checks the tool
+// input command against a list of regex patterns. If any match, it outputs
+// a checkpoint reminder via the hook protocol.
+func buildCheckpointNudgeScript(patterns []string) string {
+	if len(patterns) == 0 {
+		// No patterns configured — script exits silently.
+		return `#!/bin/bash
+set -euo pipefail
+cat > /dev/null
+`
+	}
+
+	// Build a combined ERE pattern: (pat1|pat2|pat3)
+	combined := "(" + patterns[0]
+	for _, p := range patterns[1:] {
+		combined += "|" + p
+	}
+	combined += ")"
+
+	return `#!/bin/bash
+set -euo pipefail
+
+INPUT=$(cat)
+
+# Extract the command from tool input.
+COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // ""')
+
+if [ -z "$COMMAND" ]; then
+  exit 0
+fi
+
+# Check against configured checkpoint patterns.
+if echo "$COMMAND" | grep -qE '` + combined + `'; then
+  jq -n '{
+    hookSpecificOutput: {
+      hookEventName: "PostToolUse",
+      additionalContext: "You just completed a significant action. Consider running jeff checkpoint --done ... --next ... to save a progress snapshot for the user."
+    }
+  }'
+fi
+`
+}
+
+const taskCommandsContext = `## Task Commands
+
+Commands available in this task workspace:
+
+- ` + "`jeff worktree add <repo> <branch> --task-dir .`" + ` — get a new repo worktree for this task
+- ` + "`jeff checkpoint --done \"...\" [--next \"...\"] [--decisions \"...\"]`" + ` — save a structured progress snapshot
+- ` + "`jeff ship`" + `                                          — push all worktrees and create PRs
+- ` + "`jeff done`" + `                                          — close the task and clean up workspace + worktrees
+- ` + "`gig comment <id> \"...\"`" + `                             — leave notes on the task
+- ` + "`gig update <id> --status blocked`" + `                   — flag blockers
+
+## Good Practices
+
+- **Checkpoint after logical blocks** — committed code, passing tests, finished a subtask. Run ` + "`jeff checkpoint --done \"...\" --next \"...\"`" + ` to keep the user informed without them having to read diffs.
+- **Ship when ready for review** — ` + "`jeff ship`" + ` pushes all worktrees and creates PRs.
+- **Mark done when complete** — ` + "`jeff done`" + ` closes the task and cleans up.`

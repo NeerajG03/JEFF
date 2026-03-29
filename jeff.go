@@ -66,6 +66,17 @@ func (IDE) ValidNames() []string {
 	return names
 }
 
+// Terminal reports whether this IDE runs inside the terminal (TUI)
+// rather than launching a separate GUI window.
+func (i IDE) Terminal() bool {
+	switch i {
+	case IDENvim:
+		return true
+	default:
+		return false
+	}
+}
+
 // Command returns the CLI command used to open this IDE.
 func (i IDE) Command() string {
 	switch i {

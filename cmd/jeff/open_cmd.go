@@ -49,6 +49,15 @@ func openIDE(dir string, ide jeff.IDE) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
+	if ide.Terminal() {
+		// Terminal-based editors (e.g. nvim) must run in the foreground
+		// so the user can interact with the TUI.
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("open %s: %w", ide, err)
+		}
+		return nil
+	}
+
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("open %s: %w", ide, err)
 	}

@@ -44,14 +44,20 @@ func openIDE(dir string, ide jeff.IDE) error {
 		return fmt.Errorf("%s not found in PATH: %w", ide.Command(), err)
 	}
 
-	cmd := exec.Command(bin, dir)
+	var cmd *exec.Cmd
+	if ide.Terminal() {
+		// Terminal-based editors (e.g. nvim) use cwd for their root,
+		// so we cd into the target dir and open ".".
+		cmd = exec.Command(bin, ".")
+		cmd.Dir = dir
+	} else {
+		cmd = exec.Command(bin, dir)
+	}
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if ide.Terminal() {
-		// Terminal-based editors (e.g. nvim) must run in the foreground
-		// so the user can interact with the TUI.
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("open %s: %w", ide, err)
 		}

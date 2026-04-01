@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	jeff "github.com/NeerajG03/JEFF"
+	"github.com/NeerajG03/JEFF/memory"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/NeerajG03/gig"
 )
@@ -21,7 +22,7 @@ func TestWriteTaskClaudeMD_NoPersona(t *testing.T) {
 		Priority: gig.P1,
 	}
 
-	if err := writeTaskClaudeMD(dir, task, ""); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -54,7 +55,7 @@ func TestWriteTaskClaudeMD_WithPersona(t *testing.T) {
 		Priority: gig.P2,
 	}
 
-	if err := writeTaskClaudeMD(dir, task, "jock"); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "jenko", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -79,7 +80,7 @@ func TestWriteTaskClaudeMD_InvalidPersonaSkipped(t *testing.T) {
 		Priority: gig.P1,
 	}
 
-	if err := writeTaskClaudeMD(dir, task, "nonexistent"); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "nonexistent", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -107,7 +108,7 @@ func TestWriteTaskClaudeMD_WithDescription(t *testing.T) {
 		ParentID:    "gig-parent",
 	}
 
-	if err := writeTaskClaudeMD(dir, task, ""); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -130,7 +131,7 @@ func TestWriteTaskClaudeMD_NoDescriptionOmitted(t *testing.T) {
 		Priority: gig.P2,
 	}
 
-	if err := writeTaskClaudeMD(dir, task, ""); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -154,7 +155,7 @@ func TestWriteTaskClaudeMD_NoWorktrees(t *testing.T) {
 		Type:     gig.TypeTask,
 	}
 
-	if err := writeTaskClaudeMD(dir, task, ""); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -185,7 +186,7 @@ func TestWriteTaskClaudeMD_WithWorktrees(t *testing.T) {
 		Type:     gig.TypeFeature,
 	}
 
-	if err := writeTaskClaudeMD(dir, task, ""); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -216,7 +217,7 @@ func TestWriteTaskClaudeMD_WorktreeAddedLater(t *testing.T) {
 	}
 
 	// First write — no worktrees.
-	if err := writeTaskClaudeMD(dir, task, ""); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
@@ -230,7 +231,7 @@ func TestWriteTaskClaudeMD_WorktreeAddedLater(t *testing.T) {
 	os.Symlink(wtDir, filepath.Join(dir, "api"))
 
 	// Rewrite — should now include workspace.
-	if err := writeTaskClaudeMD(dir, task, ""); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	data, _ = os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
@@ -256,16 +257,16 @@ func TestDetectPersona(t *testing.T) {
 
 	// Write with persona, then detect.
 	task := &gig.Task{ID: "gig-dd44", Title: "Detect test", Priority: gig.P2, Type: gig.TypeTask}
-	if err := writeTaskClaudeMD(dir, task, "jock"); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "jenko", nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := detectPersona(dir); got != "jock" {
+	if got := detectPersona(dir); got != "jenko" {
 		t.Errorf("expected jock, got %q", got)
 	}
 
 	// Write without persona, should return "".
 	dir2 := t.TempDir()
-	if err := writeTaskClaudeMD(dir2, task, ""); err != nil {
+	if err := writeTaskClaudeMD(dir2, t.TempDir(), task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := detectPersona(dir2); got != "" {
@@ -310,7 +311,7 @@ func TestWriteTaskClaudeMD_LabelsAndType(t *testing.T) {
 		ParentID: "gig-parent",
 	}
 
-	if err := writeTaskClaudeMD(dir, task, ""); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -320,6 +321,166 @@ func TestWriteTaskClaudeMD_LabelsAndType(t *testing.T) {
 	for _, want := range []string{"bug", "urgent, backend", "gig-parent", "P0"} {
 		if !strings.Contains(content, want) {
 			t.Errorf("missing %q in CLAUDE.md", want)
+		}
+	}
+}
+
+func TestWriteTaskClaudeMD_WithPersonaMemory(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+
+	// Populate persona memory.
+	memory.EnsurePersonaDir(home, "jenko")
+	md := "# Jenko Memory\n\n- [style](style.md) — early returns over nested ifs\n"
+	os.WriteFile(filepath.Join(memory.PersonaMemoryDir(home, "jenko"), "MEMORY.md"), []byte(md), 0o644)
+
+	task := &gig.Task{ID: "gig-mm01", Title: "Memory test", Priority: gig.P1}
+	if err := writeTaskClaudeMD(dir, home, task, "jenko", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	content := string(data)
+
+	if !strings.Contains(content, "## Persona Memory") {
+		t.Error("missing Persona Memory section")
+	}
+	if !strings.Contains(content, "early returns") {
+		t.Error("persona memory content not injected")
+	}
+	if !strings.Contains(content, "Detail files:") {
+		t.Error("missing detail files path")
+	}
+}
+
+func TestWriteTaskClaudeMD_EmptyPersonaMemory(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+
+	// Ensure dir exists but only has seed content.
+	memory.EnsurePersonaDir(home, "jenko")
+
+	task := &gig.Task{ID: "gig-mm02", Title: "Empty memory", Priority: gig.P1}
+	if err := writeTaskClaudeMD(dir, home, task, "jenko", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	content := string(data)
+
+	// Seed-only memory should NOT produce a section.
+	if strings.Contains(content, "## Persona Memory") {
+		t.Error("Persona Memory section should not appear for seed-only MEMORY.md")
+	}
+	// But scratchpad guide should still appear (persona is set).
+	if !strings.Contains(content, "## Scratchpad") {
+		t.Error("Scratchpad section should appear when persona is set")
+	}
+}
+
+func TestWriteTaskClaudeMD_WithRepoLearnings(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+
+	// Populate repo learnings.
+	memory.EnsureRepoDir(home, "backend")
+	md := "# backend Learnings\n\n- [testing](testing.md) — run make migrate before tests\n"
+	os.WriteFile(filepath.Join(memory.RepoLearningsDir(home, "backend"), "INDEX.md"), []byte(md), 0o644)
+
+	task := &gig.Task{ID: "gig-mm03", Title: "Repo learnings test", Priority: gig.P2}
+	if err := writeTaskClaudeMD(dir, home, task, "", []string{"backend"}); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	content := string(data)
+
+	if !strings.Contains(content, "## Repo Learnings: backend") {
+		t.Error("missing Repo Learnings section")
+	}
+	if !strings.Contains(content, "make migrate") {
+		t.Error("repo learnings content not injected")
+	}
+}
+
+func TestWriteTaskClaudeMD_NoPersonaNoRepos_NoScratchpad(t *testing.T) {
+	dir := t.TempDir()
+	task := &gig.Task{ID: "gig-mm04", Title: "Bare task", Priority: gig.P2}
+
+	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	content := string(data)
+
+	if strings.Contains(content, "## Scratchpad") {
+		t.Error("Scratchpad section should not appear with no persona and no repos")
+	}
+	if strings.Contains(content, "## Persona Memory") {
+		t.Error("Persona Memory should not appear with no persona")
+	}
+}
+
+func TestWriteTaskClaudeMD_ScratchpadHasCorrectPath(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+	task := &gig.Task{ID: "gig-mm05", Title: "Scratchpad path", Priority: gig.P1}
+
+	if err := writeTaskClaudeMD(dir, home, task, "jenko", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	content := string(data)
+
+	expectedPath := filepath.Join(dir, "scratchpad.md")
+	if !strings.Contains(content, expectedPath) {
+		t.Errorf("scratchpad section should contain path %s", expectedPath)
+	}
+}
+
+func TestDetectRepos(t *testing.T) {
+	dir := t.TempDir()
+
+	// No symlinks — empty.
+	repos := detectRepos(dir)
+	if len(repos) != 0 {
+		t.Errorf("expected 0 repos, got %d", len(repos))
+	}
+
+	// Add worktree symlinks.
+	for _, name := range []string{"backend", "frontend"} {
+		wtDir := filepath.Join(t.TempDir(), name, "gig-rr01")
+		os.MkdirAll(wtDir, 0o755)
+		os.Symlink(wtDir, filepath.Join(dir, name))
+	}
+
+	repos = detectRepos(dir)
+	if len(repos) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(repos))
+	}
+}
+
+func TestInstallLearnCommand_OnPickup(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+
+	err := memory.InstallLearnCommand(dir, "gig-lc01", "jenko", home, []string{"backend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(dir, ".claude", "commands", "learn.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("learn.md not created: %v", err)
+	}
+
+	content := string(data)
+	for _, want := range []string{"gig-lc01", "jenko", "backend", "scratchpad.md"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("learn.md missing %q", want)
 		}
 	}
 }

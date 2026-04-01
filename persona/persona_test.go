@@ -7,11 +7,11 @@ import (
 
 func TestNames(t *testing.T) {
 	names := Names()
-	if len(names) < 4 {
-		t.Fatalf("expected at least 4 personas, got %d: %v", len(names), names)
+	if len(names) < 5 {
+		t.Fatalf("expected at least 5 personas, got %d: %v", len(names), names)
 	}
 
-	expected := map[string]bool{"captain": false, "nerd": false, "jock": false, "scout": false}
+	expected := map[string]bool{"dickson": false, "eric": false, "hardy": false, "jenko": false, "schmidt": false}
 	for _, n := range names {
 		expected[n] = true
 	}
@@ -23,12 +23,12 @@ func TestNames(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	content, err := Get("jock")
+	content, err := Get("jenko")
 	if err != nil {
-		t.Fatalf("get jock: %v", err)
+		t.Fatalf("get jenko: %v", err)
 	}
-	if !strings.Contains(content, "Jock") {
-		t.Error("jock persona should mention 'Jock'")
+	if !strings.Contains(content, "Jenko") {
+		t.Error("jenko persona should mention 'Jenko'")
 	}
 }
 
@@ -40,8 +40,8 @@ func TestGetInvalid(t *testing.T) {
 }
 
 func TestIsValid(t *testing.T) {
-	if !IsValid("captain") {
-		t.Error("captain should be valid")
+	if !IsValid("dickson") {
+		t.Error("dickson should be valid")
 	}
 	if IsValid("nonexistent") {
 		t.Error("nonexistent should be invalid")

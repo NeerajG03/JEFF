@@ -44,17 +44,17 @@ User runs one agent per task. JEFF makes that agent excellent by front-loading c
 
 **Current state:** Pickup creates workspace, branches worktree, injects skills, writes task CLAUDE.md, launches agent. Checkpoints save progress to gig. Ship creates PRs.
 
-**What's missing:** No persona memory (agent starts fresh every session). No repo learnings (agent rediscovers the same patterns). No checkpoint injection on resume (context lost between sessions). Captain template references `jeff plan` and `jeff delegate` which don't exist.
+**What's missing:** No persona memory (agent starts fresh every session). No repo learnings (agent rediscovers the same patterns). No checkpoint injection on resume (context lost between sessions). Dickson template references `jeff plan` and `jeff delegate` which don't exist.
 
 **What pickup looks like after this phase:**
 
 ```bash
-jeff pickup gig-42 --persona jock --repos backend
+jeff pickup gig-42 --persona jenko --repos backend
 ```
 
 1. Gig task claimed, workspace created, worktree branched
 2. `PERSONA.md` loaded (static role template)
-3. `personas/jock/memory/MEMORY.md` loaded (accumulated persona knowledge)
+3. `personas/jenko/memory/MEMORY.md` loaded (accumulated persona knowledge)
 4. `learnings/backend/INDEX.md` loaded (accumulated repo knowledge)
 5. Latest checkpoint injected if resuming
 6. Matching skills symlinked
@@ -72,13 +72,13 @@ jeff pickup gig-42 --team --repos backend frontend
 1. Everything from Level 1, plus:
 2. Subtask creation in gig (from user-approved decomposition)
 3. Task CLAUDE.md includes Agent Teams instructions
-4. Team lead runs in delegate mode (captain behavior without needing a captain template)
+4. Team lead runs in delegate mode (dickson behavior without needing a dickson template)
 5. Each teammate gets persona-appropriate memory + skills via workspace CLAUDE.md
 6. `TeammateIdle` hook triggers checkpoint writes to gig
 7. `TaskCompleted` hook runs quality gates
 8. On close, `jeff learn` curates memories from all teammates' work
 
-**Key insight:** Captain persona maps to Agent Teams' delegate mode on the team lead. The captain doesn't need to be a separate agent spawned by JEFF — it's how the team lead behaves when `--team` is passed.
+**Key insight:** Dickson persona maps to Agent Teams' delegate mode on the team lead. The dickson doesn't need to be a separate agent spawned by JEFF — it's how the team lead behaves when `--team` is passed.
 
 ### Level 3: Daemon + Auto-Routing
 
@@ -110,33 +110,33 @@ jeff daemon start
 Each persona accumulates knowledge across sessions. Memory is scoped to the persona role, not to any specific repo.
 
 **Examples of persona-scoped knowledge:**
-- Jock: "This user prefers early returns over nested ifs"
-- Jock: "Always run `go vet` before committing Go code"
-- Scout: "Check for N+1 queries in any ORM code"
-- Scout: "This user wants inline comments, not PR comment threads"
-- Nerd: "Architecture decisions are in docs/adr/ in most repos"
+- Jenko: "This user prefers early returns over nested ifs"
+- Jenko: "Always run `go vet` before committing Go code"
+- Hardy: "Check for N+1 queries in any ORM code"
+- Hardy: "This user wants inline comments, not PR comment threads"
+- Eric: "Architecture decisions are in docs/adr/ in most repos"
 
 **Directory structure:**
 
 ```
 JEFF_HOME/
 └── personas/
-    ├── jock/
+    ├── jenko/
     │   ├── PERSONA.md                  # static template (embedded, resetable)
     │   └── memory/
     │       ├── MEMORY.md               # index file, always loaded on pickup
     │       ├── code-style.md           # topic: user's code preferences
     │       ├── debugging-patterns.md   # topic: patterns that solved past bugs
     │       └── mistakes.md             # topic: things to avoid (from PR rejections)
-    ├── scout/
+    ├── hardy/
     │   └── memory/
     │       ├── MEMORY.md
     │       └── review-checklist.md     # topic: learned review patterns
-    ├── nerd/
+    ├── eric/
     │   └── memory/
     │       ├── MEMORY.md
     │       └── research-sources.md     # topic: where to find answers
-    └── captain/
+    └── dickson/
         └── memory/
             ├── MEMORY.md
             └── decomposition.md        # topic: how to break down task types
@@ -145,7 +145,7 @@ JEFF_HOME/
 **MEMORY.md format (index file):**
 
 ```markdown
-# Jock Memory
+# Jenko Memory
 
 Last updated: 2026-03-20
 
@@ -259,15 +259,15 @@ Set on completion: `outcome`, `rejection_count`.
 
 These cost nothing to store (gig attributes are key-value pairs in SQLite) but make every task queryable for stats.
 
-### Captain Template Fix
+### Dickson Template Fix
 
-Current captain template references `jeff plan` and `jeff delegate` which don't exist. Two options:
+Current dickson template references `jeff plan` and `jeff delegate` which don't exist. Two options:
 
-**Option A:** Remove captain as a standalone persona. Its role is fulfilled by Agent Teams' delegate mode on the team lead. Captain-specific memory still exists for decomposition patterns.
+**Option A:** Remove dickson as a standalone persona. Its role is fulfilled by Agent Teams' delegate mode on the team lead. Dickson-specific memory still exists for decomposition patterns.
 
-**Option B:** Rewrite captain template to use actual commands. Captain uses `gig` to create subtasks, uses `jeff checkpoint` to record plans, and the user manually delegates by running `jeff pickup` on subtasks.
+**Option B:** Rewrite dickson template to use actual commands. Dickson uses `gig` to create subtasks, uses `jeff checkpoint` to record plans, and the user manually delegates by running `jeff pickup` on subtasks.
 
-Decision: defer until Phase 2 (Agent Teams integration) clarifies the captain's role.
+Decision: defer until Phase 2 (Agent Teams integration) clarifies the dickson's role.
 
 ---
 
@@ -297,7 +297,7 @@ A `tasks/<id>/learnings-draft.md` file with candidate entries:
 ```markdown
 # Learning Candidates for gig-42
 
-## Persona: jock
+## Persona: jenko
 - [NEW] When adding middleware in backend, always register it in cmd/server/main.go router setup — agent spent 20 min debugging why middleware wasn't running
 - [UPDATE mistakes.md] JWT validation: always check `exp` claim timezone — it's UTC in this codebase
 
@@ -371,7 +371,7 @@ No separate database. All data lives in gig:
 
 ```bash
 jeff stats                            # summary dashboard
-jeff stats --persona jock             # filter by persona
+jeff stats --persona jenko             # filter by persona
 jeff stats --repo backend             # filter by repo
 jeff stats --since 7d                 # time window (7d, 30d, 90d)
 jeff stats --outcome rejected         # filter by outcome
@@ -388,9 +388,9 @@ Avg time to ship   4.2h
 Checkpoints/task   3.1
 
 By persona:
-  jock    9 tasks   3.8h avg   89% first-ship rate
-  scout   2 tasks   1.2h avg   review-only
-  nerd    1 task    2.0h avg   research-only
+  jenko    9 tasks   3.8h avg   89% first-ship rate
+  hardy   2 tasks   1.2h avg   review-only
+  eric    1 task    2.0h avg   research-only
 
 By repo:
   backend    7 tasks   2 rejections (both: missing tests)
@@ -476,13 +476,13 @@ This task uses Claude Code Agent Teams. You are the team lead.
 
 ### Persona Mapping in Teams
 
-The team lead always runs in delegate mode (captain behavior). Teammates get persona instructions via their spawn prompt:
+The team lead always runs in delegate mode (dickson behavior). Teammates get persona instructions via their spawn prompt:
 
 ```
 Spawn prompt for teammate "auth-impl":
   You are working on gig-42.1. Your role is implementer.
-  [jock PERSONA.md contents]
-  [jock MEMORY.md contents]
+  [jenko PERSONA.md contents]
+  [jenko MEMORY.md contents]
   [backend INDEX.md contents]
 ```
 
@@ -496,7 +496,7 @@ When the parent task closes, `jeff learn gig-42` reads:
 - PR feedback on the shipped branch
 - Any scratchpad files from the task workspace
 
-This produces learning candidates scoped appropriately — implementer learnings go to jock memory, review learnings go to scout memory, repo-specific learnings go to repo learnings.
+This produces learning candidates scoped appropriately — implementer learnings go to jenko memory, review learnings go to hardy memory, repo-specific learnings go to repo learnings.
 
 ---
 
@@ -547,11 +547,11 @@ New `jeff.json` section:
     "rules": [
       {
         "match": {"type": "bug", "labels": ["backend"]},
-        "action": {"persona": "jock", "repos": ["backend"], "team": false}
+        "action": {"persona": "jenko", "repos": ["backend"], "team": false}
       },
       {
         "match": {"type": "feature", "priority": [0, 1]},
-        "action": {"persona": "jock", "repos": ["backend", "frontend"], "team": true, "team_size": 3}
+        "action": {"persona": "jenko", "repos": ["backend", "frontend"], "team": true, "team_size": 3}
       },
       {
         "match": {"type": "epic"},
@@ -579,7 +579,7 @@ The daemon manages agent sessions via tmux:
 ┌─────────────────────────────────────────────────────┐
 │ jeff-daemon (tmux session)                          │
 ├──────────────┬──────────────┬───────────────────────┤
-│ gig-42 jock  │ gig-43 team  │ gig-44 scout         │
+│ gig-42 jenko  │ gig-43 team  │ gig-44 hardy         │
 │ backend      │ lead + 3     │ backend (review)      │
 │ [working]    │ [working]    │ [idle - awaiting PR]  │
 ├──────────────┴──────────────┴───────────────────────┤
@@ -673,7 +673,7 @@ These are high-value — they directly prevent repeat failures. The learning loo
 - Comments explain "why", not "what"
 ```
 
-Accumulated from user corrections and PR feedback. The jock persona loads these and follows them without the user having to repeat themselves.
+Accumulated from user corrections and PR feedback. The jenko persona loads these and follows them without the user having to repeat themselves.
 
 ### Memory Budget
 
@@ -687,7 +687,7 @@ This prevents memory bloat while preserving all knowledge.
 
 ### Cross-Persona Learning
 
-Some learnings apply across personas. Example: "This codebase uses a monorepo with pnpm workspaces" is useful for jock, scout, and nerd.
+Some learnings apply across personas. Example: "This codebase uses a monorepo with pnpm workspaces" is useful for jenko, hardy, and eric.
 
 These go to **repo learnings**, not persona memory. The scoping rule:
 
@@ -700,13 +700,13 @@ If in doubt, it goes to repo learnings (broader audience).
 
 ## Open Questions
 
-### Captain Persona Direction
+### Dickson Persona Direction
 
 Two paths:
 
-1. **Remove captain as a JEFF persona.** Its role is delegate mode in Agent Teams. Captain memory still exists for decomposition patterns, loaded into the team lead's context.
+1. **Remove dickson as a JEFF persona.** Its role is delegate mode in Agent Teams. Dickson memory still exists for decomposition patterns, loaded into the team lead's context.
 
-2. **Keep captain as a JEFF persona.** Rewrite template to use actual gig commands for subtask creation. Captain works as a planning-only agent that produces subtasks, then user picks them up separately.
+2. **Keep dickson as a JEFF persona.** Rewrite template to use actual gig commands for subtask creation. Dickson works as a planning-only agent that produces subtasks, then user picks them up separately.
 
 Decision deferred to Phase 4 implementation.
 

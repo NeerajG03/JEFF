@@ -26,8 +26,8 @@ jeff repo sync --repo backend        # pull latest for one repo
 
 ```bash
 jeff pickup gig-ab12                              # minimal
-jeff pickup gig-ab12 --persona jock               # with persona
-jeff pickup gig-ab12 --persona jock --repos backend,frontend  # with worktrees
+jeff pickup gig-ab12 --persona jenko               # with persona
+jeff pickup gig-ab12 --persona jenko --repos backend,frontend  # with worktrees
 ```
 
 This claims the task in gig, creates a workspace, sets up worktrees, injects matching skills, writes CLAUDE.md, and launches the agent.
@@ -195,7 +195,7 @@ jeff skill add ./my-skill                          # copy into .skills/
 jeff skill add ~/shared/deploy --external          # register without copying
 jeff skill add ./review --name pr-review           # custom name
 
-jeff skill tag pr-review --persona scout           # auto-inject for scout persona
+jeff skill tag pr-review --persona hardy           # auto-inject for hardy persona
 jeff skill tag deploy --type chore,feature         # auto-inject for chore/feature tasks
 jeff skill tag aws --tag aws,infra                 # auto-inject when task has these labels
 ```
@@ -204,7 +204,7 @@ jeff skill tag aws --tag aws,infra                 # auto-inject when task has t
 
 ```bash
 jeff skill list                        # all skills
-jeff skill list --persona jock         # filtered
+jeff skill list --persona jenko         # filtered
 jeff skill list --type bug             # filtered
 jeff skill show deploy                 # details + SKILL.md preview
 jeff skill doc                         # full skill management guide

@@ -12,7 +12,7 @@ JEFF/
 ├── attrs.go            # EnsureAttrs — define JEFF custom attributes in gig
 ├── embed/              # Embedded assets (CLAUDE.md template, claude-settings.json)
 ├── hooks/              # Hook system: registry, builtin hooks, claude/opencode delivery
-├── persona/            # Embedded persona templates (captain, nerd, jock, scout)
+├── persona/            # Embedded persona templates (dickson, eric, hardy, jenko, schmidt)
 ├── skill/              # Skill registry, matching, and injection (symlinks into task dirs)
 ├── workspace/          # Task workspace + worktree management + branch naming
 ├── cmd/jeff/           # CLI (cobra) — thin wrapper over SDK
@@ -120,10 +120,11 @@ Embedded in binary via `persona/templates/`. Used via `--persona` flag on pickup
 
 | Persona | Role |
 |---------|------|
-| **captain** | Orchestrator — plans, delegates, reviews. Does NOT write code. |
-| **nerd** | Researcher — explores, documents, recommends. Does NOT change code. |
-| **jock** | Implementer — writes code, runs tests, ships. Default persona. |
-| **scout** | Reviewer — reviews diffs, checks quality, flags issues. |
+| **dickson** | Orchestrator — plans, delegates, reviews. Does NOT write code. |
+| **eric** | Researcher — explores, documents, recommends. Does NOT change code. |
+| **hardy** | Reviewer — reviews diffs, checks quality, flags issues. |
+| **jenko** | Implementer — writes code, runs tests, ships. Default persona. |
+| **schmidt** | Debugger — investigates, traces root causes, finds the fix. |
 
 ## Further Reading
 

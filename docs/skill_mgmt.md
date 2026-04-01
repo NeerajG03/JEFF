@@ -6,13 +6,13 @@ JEFF manages agent skills — SKILL.md files that provide reusable instructions 
 
 ```bash
 jeff skill list                              # list all skills
-jeff skill list --persona jock               # filter by persona
+jeff skill list --persona jenko               # filter by persona
 jeff skill show <name>                       # show details + SKILL.md
 jeff skill add <path>                        # copy skill into .skills/
 jeff skill add <path> --external             # register without copying
 jeff skill remove <name>                     # unregister
 jeff skill remove <name> --delete            # unregister + delete files
-jeff skill tag <name> --persona jock,scout   # set persona filter
+jeff skill tag <name> --persona jenko,hardy   # set persona filter
 jeff skill tag <name> --type bug,feature     # set task type filter
 jeff skill tag <name> --tag deploy,ci        # set tag filter
 jeff skill inject <name>                     # symlink into current task
@@ -41,7 +41,7 @@ JEFF_HOME/
     "deploy": {
       "location": "/path/to/.skills/deploy",
       "tags": ["deploy"],
-      "personas": ["jock"],
+      "personas": ["jenko"],
       "gig_type": ["chore", "feature"]
     }
   }
@@ -82,10 +82,10 @@ EOF
 
 ```bash
 jeff skill add ./my-skill
-jeff skill tag my-skill --persona jock --type feature
+jeff skill tag my-skill --persona jenko --type feature
 ```
 
-The skill will now auto-inject for any task picked up by the jock persona or any feature-type task.
+The skill will now auto-inject for any task picked up by the jenko persona or any feature-type task.
 
 ## Manual Injection
 

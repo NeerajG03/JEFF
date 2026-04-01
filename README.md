@@ -33,7 +33,7 @@ jeff init
 jeff repo add https://github.com/org/backend.git
 
 # 3. Pick up a task and start working
-jeff pickup gig-ab12 --persona jock --repos backend
+jeff pickup gig-ab12 --persona jenko --repos backend
 
 # 4. Save progress
 jeff checkpoint --done "Implemented auth flow" --next "Add tests"
@@ -51,7 +51,7 @@ jeff done gig-ab12
   You ──► gig create "fix auth bug"
                   │
                   ▼
-  jeff pickup gig-ab12 --persona jock --repos backend
+  jeff pickup gig-ab12 --persona jenko --repos backend
         │
         ├── Claims task in gig
         ├── Creates task workspace
@@ -115,13 +115,13 @@ Shape agent behavior with embedded personas:
 
 | Persona | Role | Use when |
 |---------|------|----------|
-| **captain** | Orchestrator — plans, delegates, reviews | Breaking down epics, coordinating work |
-| **nerd** | Researcher — explores, documents, recommends | Investigating code, researching approaches |
-| **jock** | Implementer — writes code, runs tests, ships | Building features, fixing bugs |
-| **scout** | Reviewer — reviews code, checks quality | Code review, quality checks |
+| **dickson** | Orchestrator — plans, delegates, reviews | Breaking down epics, coordinating work |
+| **eric** | Researcher — explores, documents, recommends | Investigating code, researching approaches |
+| **jenko** | Implementer — writes code, runs tests, ships | Building features, fixing bugs |
+| **hardy** | Reviewer — reviews code, checks quality | Code review, quality checks |
 
 ```bash
-jeff pickup gig-ab12 --persona jock --repos backend
+jeff pickup gig-ab12 --persona jenko --repos backend
 ```
 
 ## Skills
@@ -130,7 +130,7 @@ Skills are reusable SKILL.md instructions auto-injected into task workspaces.
 
 ```bash
 jeff skill add ./my-skill              # register a skill
-jeff skill tag my-skill --persona jock # tag for auto-injection
+jeff skill tag my-skill --persona jenko # tag for auto-injection
 jeff skill inject slack notion         # inject into JEFF home
 jeff skill list                        # see all skills
 ```

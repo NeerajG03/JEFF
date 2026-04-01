@@ -232,7 +232,7 @@ func skillTagCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringSliceVar(&personas, "persona", nil, "Persona names (captain, nerd, jock, scout)")
+	cmd.Flags().StringSliceVar(&personas, "persona", nil, "Persona names (dickson, eric, hardy, jenko, schmidt)")
 	cmd.Flags().StringSliceVar(&types, "type", nil, "Gig task types (task, bug, feature, epic, chore)")
 	cmd.Flags().StringSliceVar(&tags, "tag", nil, "Free-form tags matched against task labels")
 	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)

@@ -39,7 +39,7 @@ func TestLoadSkills_RoundTrip(t *testing.T) {
 	home := tempHome(t)
 	sc := &SkillConfig{
 		Skills: map[string]*SkillEntry{
-			"deploy": {Location: "/tmp/deploy", Personas: []string{"jock"}},
+			"deploy": {Location: "/tmp/deploy", Personas: []string{"jenko"}},
 		},
 	}
 	if err := SaveSkills(home, sc); err != nil {
@@ -151,7 +151,7 @@ func TestSetTags(t *testing.T) {
 	srcDir := writeSkill(t, t.TempDir(), "tag-test")
 	Add(home, srcDir, "tag-test", true)
 
-	personas := []string{"jock", "scout"}
+	personas := []string{"jenko", "hardy"}
 	types := []string{"bug"}
 	tags := []string{"auth"}
 	if err := SetTags(home, "tag-test", personas, types, tags); err != nil {
@@ -159,7 +159,7 @@ func TestSetTags(t *testing.T) {
 	}
 
 	entry, _ := Get(home, "tag-test")
-	if len(entry.Personas) != 2 || entry.Personas[0] != "jock" {
+	if len(entry.Personas) != 2 || entry.Personas[0] != "jenko" {
 		t.Errorf("personas = %v", entry.Personas)
 	}
 	if len(entry.GigTypes) != 1 || entry.GigTypes[0] != "bug" {
@@ -181,14 +181,14 @@ func TestMatch(t *testing.T) {
 	}{
 		{
 			name:  "persona match",
-			entry: SkillEntry{Personas: []string{"jock"}},
-			ctx:   MatchContext{Persona: "jock"},
+			entry: SkillEntry{Personas: []string{"jenko"}},
+			ctx:   MatchContext{Persona: "jenko"},
 			want:  true,
 		},
 		{
 			name:  "persona mismatch",
-			entry: SkillEntry{Personas: []string{"captain"}},
-			ctx:   MatchContext{Persona: "jock"},
+			entry: SkillEntry{Personas: []string{"dickson"}},
+			ctx:   MatchContext{Persona: "jenko"},
 			want:  false,
 		},
 		{
@@ -218,24 +218,24 @@ func TestMatch(t *testing.T) {
 		{
 			name:  "all empty = manual only",
 			entry: SkillEntry{},
-			ctx:   MatchContext{Persona: "jock", GigType: "bug", Labels: []string{"auth"}},
+			ctx:   MatchContext{Persona: "jenko", GigType: "bug", Labels: []string{"auth"}},
 			want:  false,
 		},
 		{
 			name:  "any dimension: persona matches, type doesnt",
-			entry: SkillEntry{Personas: []string{"jock"}, GigTypes: []string{"feature"}},
-			ctx:   MatchContext{Persona: "jock", GigType: "bug"},
+			entry: SkillEntry{Personas: []string{"jenko"}, GigTypes: []string{"feature"}},
+			ctx:   MatchContext{Persona: "jenko", GigType: "bug"},
 			want:  true,
 		},
 		{
 			name:  "any dimension: type matches, persona doesnt",
-			entry: SkillEntry{Personas: []string{"captain"}, GigTypes: []string{"bug"}},
-			ctx:   MatchContext{Persona: "jock", GigType: "bug"},
+			entry: SkillEntry{Personas: []string{"dickson"}, GigTypes: []string{"bug"}},
+			ctx:   MatchContext{Persona: "jenko", GigType: "bug"},
 			want:  true,
 		},
 		{
 			name:  "empty context",
-			entry: SkillEntry{Personas: []string{"jock"}},
+			entry: SkillEntry{Personas: []string{"jenko"}},
 			ctx:   MatchContext{},
 			want:  false,
 		},
@@ -254,14 +254,14 @@ func TestMatch(t *testing.T) {
 func TestMatchAll(t *testing.T) {
 	sc := &SkillConfig{
 		Skills: map[string]*SkillEntry{
-			"deploy":  {Personas: []string{"jock"}, GigTypes: []string{"chore"}},
-			"review":  {Personas: []string{"scout"}},
+			"deploy":  {Personas: []string{"jenko"}, GigTypes: []string{"chore"}},
+			"review":  {Personas: []string{"hardy"}},
 			"aws-cli": {Tags: []string{"aws"}},
 			"manual":  {}, // no dimensions
 		},
 	}
 
-	ctx := &MatchContext{Persona: "jock", GigType: "bug", Labels: []string{"aws"}}
+	ctx := &MatchContext{Persona: "jenko", GigType: "bug", Labels: []string{"aws"}}
 	names := MatchAll(sc, ctx)
 
 	if len(names) != 2 {
@@ -350,10 +350,10 @@ func TestInjectMatching_Integration(t *testing.T) {
 	s2 := writeSkill(t, t.TempDir(), "review")
 	Add(home, s1, "deploy", true)
 	Add(home, s2, "review", true)
-	SetTags(home, "deploy", []string{"jock"}, []string{"feature"}, nil)
-	SetTags(home, "review", []string{"scout"}, nil, nil)
+	SetTags(home, "deploy", []string{"jenko"}, []string{"feature"}, nil)
+	SetTags(home, "review", []string{"hardy"}, nil, nil)
 
-	ctx := &MatchContext{Persona: "jock", GigType: "bug"}
+	ctx := &MatchContext{Persona: "jenko", GigType: "bug"}
 	injected, err := InjectMatching(home, taskDir, ctx)
 	if err != nil {
 		t.Fatal(err)

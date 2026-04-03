@@ -440,6 +440,49 @@ func TestWriteTaskClaudeMD_ScratchpadHasCorrectPath(t *testing.T) {
 	}
 }
 
+func TestWriteTaskClaudeMD_PersonaSpecificHint(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+	task := &gig.Task{ID: "gig-mm06", Title: "Persona hint", Priority: gig.P1}
+
+	// Jenko should get implementer-specific hint.
+	if err := writeTaskClaudeMD(dir, home, task, "jenko", nil); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	content := string(data)
+	if !strings.Contains(content, "As jenko, especially capture:") {
+		t.Error("missing persona-specific hint for jenko")
+	}
+	if !strings.Contains(content, "Code style") {
+		t.Error("jenko hint should mention code style")
+	}
+
+	// Schmidt should get debugger-specific hint.
+	dir2 := t.TempDir()
+	if err := writeTaskClaudeMD(dir2, home, task, "schmidt", nil); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(filepath.Join(dir2, "CLAUDE.md"))
+	content = string(data)
+	if !strings.Contains(content, "As schmidt, especially capture:") {
+		t.Error("missing persona-specific hint for schmidt")
+	}
+	if !strings.Contains(content, "Root cause") {
+		t.Error("schmidt hint should mention root cause")
+	}
+
+	// No persona — no hint.
+	dir3 := t.TempDir()
+	if err := writeTaskClaudeMD(dir3, home, task, "", []string{"backend"}); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(filepath.Join(dir3, "CLAUDE.md"))
+	if strings.Contains(string(data), "especially capture:") {
+		t.Error("no persona should mean no persona-specific hint")
+	}
+}
+
 func TestDetectRepos(t *testing.T) {
 	dir := t.TempDir()
 

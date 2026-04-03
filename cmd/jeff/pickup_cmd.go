@@ -275,7 +275,13 @@ func writeScratchpadGuide(sb *strings.Builder, taskDir, jeffHome, personaName st
 	sb.WriteString("- Commands or skill info that was outdated/wrong\n")
 	sb.WriteString("- Repo setup quirks that tripped you up\n")
 	sb.WriteString("- Code patterns the user prefers\n")
-	sb.WriteString("- Debugging insights that took time to discover\n\n")
+	sb.WriteString("- Debugging insights that took time to discover\n")
+	if personaName != "" {
+		if hint := persona.MemoryHint(personaName); hint != "" {
+			sb.WriteString(fmt.Sprintf("\n**As %s, especially capture:** %s\n", personaName, hint))
+		}
+	}
+	sb.WriteString("\n")
 
 	sb.WriteString("### What does NOT belong\n")
 	sb.WriteString("- Code structure or file paths (read the code instead)\n")

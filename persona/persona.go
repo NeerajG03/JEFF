@@ -40,3 +40,58 @@ func IsValid(name string) bool {
 	_, err := Get(name)
 	return err == nil
 }
+
+// Description extracts the short role description from a persona's first line.
+// Templates follow the pattern: "You are <Name> — <description>."
+// Returns "" if the pattern doesn't match.
+func Description(name string) string {
+	content, err := Get(name)
+	if err != nil {
+		return ""
+	}
+	firstLine := strings.SplitN(content, "\n", 2)[0]
+	// Split on " — " (em dash with spaces).
+	parts := strings.SplitN(firstLine, " — ", 2)
+	if len(parts) < 2 {
+		// Try regular dash.
+		parts = strings.SplitN(firstLine, " - ", 2)
+	}
+	if len(parts) < 2 {
+		return ""
+	}
+	desc := parts[1]
+	// Take only the first sentence for a clean description.
+	if idx := strings.Index(desc, "."); idx != -1 {
+		desc = desc[:idx]
+	}
+	return strings.TrimSpace(desc)
+}
+
+// NamesWithDescriptions returns persona names with descriptions
+// formatted as "name\tdescription" for shell completion.
+func NamesWithDescriptions() []string {
+	names := Names()
+	result := make([]string, 0, len(names))
+	for _, name := range names {
+		desc := Description(name)
+		if desc != "" {
+			result = append(result, name+"\t"+desc)
+		} else {
+			result = append(result, name)
+		}
+	}
+	return result
+}
+
+// MemoryHint returns a persona-specific hint for what to capture in the scratchpad.
+// Returns "" if persona has no custom hint.
+func MemoryHint(name string) string {
+	hints := map[string]string{
+		"jenko":   "Code style corrections, test patterns the user prefers, build/lint quirks, implementation shortcuts that worked.",
+		"schmidt":  "Root cause patterns, misleading error messages, debugging techniques that worked, investigation dead ends to avoid.",
+		"eric":     "Where to find authoritative docs, research shortcuts, knowledge gaps in the codebase, architectural insights.",
+		"hardy":    "Review standards the user enforces, common issues to flag, quality thresholds, approval criteria.",
+		"dickson":  "Task decomposition patterns, delegation decisions that worked, scope tradeoffs, planning heuristics.",
+	}
+	return hints[name]
+}

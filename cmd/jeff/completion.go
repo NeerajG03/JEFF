@@ -157,9 +157,9 @@ func projectNameCompletion(cmd *cobra.Command, args []string, toComplete string)
 
 // ── Persona completions ──────────────────────────────────────────────
 
-// personaCompletion completes persona names.
+// personaCompletion completes persona names with role descriptions.
 func personaCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	return persona.Names(), cobra.ShellCompDirectiveNoFileComp
+	return persona.NamesWithDescriptions(), cobra.ShellCompDirectiveNoFileComp
 }
 
 // ── Gig type/status completions ──────────────────────────────────────

@@ -47,3 +47,70 @@ func TestIsValid(t *testing.T) {
 		t.Error("nonexistent should be invalid")
 	}
 }
+
+func TestDescription(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{"jenko", "the implementer and builder"},
+		{"schmidt", "the investigator"},
+		{"dickson", "the orchestrator and planner"},
+		{"eric", "the researcher and analyst"},
+		{"hardy", "the reviewer and quality checker"},
+		{"nonexistent", ""},
+	}
+	for _, tc := range tests {
+		got := Description(tc.name)
+		if tc.want != "" && got != tc.want {
+			t.Errorf("Description(%q) = %q, want %q", tc.name, got, tc.want)
+		}
+		if tc.want == "" && got != "" {
+			t.Errorf("Description(%q) = %q, want empty", tc.name, got)
+		}
+	}
+}
+
+func TestNamesWithDescriptions(t *testing.T) {
+	results := NamesWithDescriptions()
+	if len(results) < 5 {
+		t.Fatalf("expected at least 5 results, got %d", len(results))
+	}
+	// Each result should contain a tab separator with a description.
+	for _, r := range results {
+		if !strings.Contains(r, "\t") {
+			t.Errorf("expected tab-separated description, got %q", r)
+		}
+	}
+	// Spot check jenko.
+	found := false
+	for _, r := range results {
+		if strings.HasPrefix(r, "jenko\t") && strings.Contains(r, "implementer") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("jenko should have 'implementer' in description")
+	}
+}
+
+func TestMemoryHint(t *testing.T) {
+	hint := MemoryHint("jenko")
+	if hint == "" {
+		t.Error("jenko should have a memory hint")
+	}
+	if !strings.Contains(hint, "Code style") {
+		t.Error("jenko hint should mention code style")
+	}
+
+	hint = MemoryHint("schmidt")
+	if !strings.Contains(hint, "Root cause") {
+		t.Error("schmidt hint should mention root cause")
+	}
+
+	hint = MemoryHint("nonexistent")
+	if hint != "" {
+		t.Errorf("nonexistent should have empty hint, got %q", hint)
+	}
+}

@@ -158,7 +158,13 @@ func projectNameCompletion(cmd *cobra.Command, args []string, toComplete string)
 // ── Persona completions ──────────────────────────────────────────────
 
 // personaCompletion completes persona names with role descriptions.
+// Uses the registry if available, falls back to embedded names.
 func personaCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if cfg != nil && cfg.Home != "" {
+		if names := persona.RegisteredNamesWithDescriptions(cfg.Home); len(names) > 0 {
+			return names, cobra.ShellCompDirectiveNoFileComp
+		}
+	}
 	return persona.NamesWithDescriptions(), cobra.ShellCompDirectiveNoFileComp
 }
 

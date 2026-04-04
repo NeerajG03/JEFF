@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "JEFF Personas Registry",
+  "description": "Registry of agent personas managed by JEFF. Each persona defines a role, template, and memory configuration.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "personas": {
+      "type": "object",
+      "description": "Map of persona name to persona configuration.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["location"],
+        "properties": {
+          "location": {
+            "type": "string",
+            "description": "Absolute path to the persona directory containing PERSONA.md."
+          },
+          "description": {
+            "type": "string",
+            "description": "Short role description shown in tab completion and listing."
+          },
+          "memory_hint": {
+            "type": "string",
+            "description": "Persona-specific guidance for what to capture in the scratchpad."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["personas"]
+}

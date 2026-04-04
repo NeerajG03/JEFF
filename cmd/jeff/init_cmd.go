@@ -7,6 +7,7 @@ import (
 
 	"github.com/NeerajG03/JEFF"
 	jeffembed "github.com/NeerajG03/JEFF/embed"
+	"github.com/NeerajG03/JEFF/persona"
 	"github.com/spf13/cobra"
 )
 
@@ -83,6 +84,11 @@ func runInit(here bool) error {
 
 	writeDefaults(home)
 
+	// Seed default personas.
+	if err := persona.SeedDefaults(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: seed personas: %v\n", err)
+	}
+
 	// Install hooks.
 	if err := syncHomeHooks(home, &c); err != nil {
 		return fmt.Errorf("install hooks: %w", err)
@@ -124,6 +130,11 @@ func runUpdate() error {
 	// Write missing default files (never overwrites existing).
 	writeDefaults(home)
 
+	// Seed default personas (adds any new built-in personas, doesn't overwrite existing).
+	if err := persona.SeedDefaults(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: seed personas: %v\n", err)
+	}
+
 	// Sync hooks.
 	if err := syncHomeHooks(home, c); err != nil {
 		return fmt.Errorf("sync hooks: %w", err)
@@ -134,7 +145,7 @@ func runUpdate() error {
 		return fmt.Errorf("write home pointer: %w", err)
 	}
 
-	fmt.Printf("JEFF updated at %s (dirs, hooks, settings synced)\n", home)
+	fmt.Printf("JEFF updated at %s (dirs, hooks, personas, settings synced)\n", home)
 	return nil
 }
 
@@ -149,6 +160,7 @@ func ensureDirs(home string) {
 		filepath.Join(home, "scripts"),
 		filepath.Join(home, "projects"),
 		filepath.Join(home, ".skills"),
+		filepath.Join(home, ".personas"),
 		filepath.Join(home, ".claude"),
 		filepath.Join(home, ".opencode"),
 	}

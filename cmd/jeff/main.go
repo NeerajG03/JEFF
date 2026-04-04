@@ -63,6 +63,7 @@ func main() {
 		shipCmd(),
 		configCmd(),
 		skillCmd(),
+		personaCmd(),
 		openCmd(),
 		projectCmd(),
 		completionCmd(),

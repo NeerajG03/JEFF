@@ -26,10 +26,9 @@
           },
           "personas": {
             "type": "array",
-            "description": "Persona names. If the pickup persona matches any, the skill is injected.",
+            "description": "Persona names (from jeff persona list). If the pickup persona matches any, the skill is injected.",
             "items": {
-              "type": "string",
-              "enum": ["captain", "nerd", "jock", "scout"]
+              "type": "string"
             },
             "default": []
           },

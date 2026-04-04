@@ -175,9 +175,13 @@ func pickupCmd() *cobra.Command {
 func writeTaskClaudeMD(taskDir, jeffHome string, task *gig.Task, personaName string, repos []string) error {
 	var sb strings.Builder
 
-	// Persona section.
+	// Persona section — try registry first, fall back to embedded.
 	if personaName != "" {
-		content, err := persona.Get(personaName)
+		content, err := persona.GetTemplate(jeffHome, personaName)
+		if err != nil {
+			// Fall back to embedded template.
+			content, err = persona.Get(personaName)
+		}
 		if err == nil {
 			sb.WriteString(content)
 			sb.WriteString("\n\n---\n\n")
@@ -277,7 +281,12 @@ func writeScratchpadGuide(sb *strings.Builder, taskDir, jeffHome, personaName st
 	sb.WriteString("- Code patterns the user prefers\n")
 	sb.WriteString("- Debugging insights that took time to discover\n")
 	if personaName != "" {
-		if hint := persona.MemoryHint(personaName); hint != "" {
+		// Try registry hint first, fall back to embedded.
+		hint := persona.RegisteredMemoryHint(jeffHome, personaName)
+		if hint == "" {
+			hint = persona.MemoryHint(personaName)
+		}
+		if hint != "" {
 			sb.WriteString(fmt.Sprintf("\n**As %s, especially capture:** %s\n", personaName, hint))
 		}
 	}

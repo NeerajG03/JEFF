@@ -382,9 +382,8 @@ func crewAttachCmd() *cobra.Command {
 				return fmt.Errorf("session not found: %w", err)
 			}
 
-			target := sess.TmuxSession + ":" + sess.WindowName
-			// Select the window so user can interact directly.
-			return crew.SelectWindow(target)
+			fmt.Fprintf(os.Stderr, "Attaching to %s...\n", sess.WindowName)
+			return crew.AttachSession(sess.WindowName)
 		},
 	}
 }

@@ -8,35 +8,66 @@ import (
 	"github.com/NeerajG03/gig"
 )
 
-func renderEvents(events []*gig.Event, width int) string {
-	header := headerStyle.Render("Events")
+func renderEvents(events []*gig.Event, width, height int) string {
+	header := headerStyle.Render("Activity")
 
 	if len(events) == 0 {
-		return panelStyle.Width(width).Render(header + "\n" + dimStyle.Render("(no recent events)"))
+		return panelStyle.Width(width).Height(height).Render(
+			header + "\n" + dimStyle.Render("(no recent activity)"))
 	}
 
 	var rows []string
-	// Show most recent first, max 10.
-	limit := len(events)
-	if limit > 10 {
-		limit = 10
+	// Most recent first, cap to fit height.
+	maxRows := height - 3
+	if maxRows < 3 {
+		maxRows = 3
 	}
-	for i := len(events) - 1; i >= len(events)-limit; i-- {
+	start := len(events) - 1
+	end := max(0, len(events)-maxRows)
+
+	for i := start; i >= end; i-- {
 		ev := events[i]
 		age := shortRelTime(ev.Timestamp)
-		summary := ev.NewValue
-		if len(summary) > 50 {
-			summary = summary[:47] + "..."
+		desc := describeEvent(ev)
+		if desc == "" {
+			continue
 		}
-		if ev.Type == gig.EventStatusChanged {
-			summary = ev.OldValue + " -> " + ev.NewValue
-		}
-		row := fmt.Sprintf("%-6s %-12s %-14s %s", age, ev.TaskID, ev.Type, summary)
+		row := fmt.Sprintf(" %4s  %-11s  %s", age, ev.TaskID, desc)
 		rows = append(rows, row)
 	}
 
+	if len(rows) == 0 {
+		return panelStyle.Width(width).Height(height).Render(
+			header + "\n" + dimStyle.Render("(no recent activity)"))
+	}
+
 	content := header + "\n" + strings.Join(rows, "\n")
-	return panelStyle.Width(width).Render(content)
+	return panelStyle.Width(width).Height(height).Render(content)
+}
+
+// describeEvent returns a human-readable description of a gig event.
+func describeEvent(ev *gig.Event) string {
+	switch ev.Type {
+	case gig.EventStatusChanged:
+		return fmt.Sprintf("status: %s -> %s", ev.OldValue, ev.NewValue)
+	case gig.EventCommented:
+		if strings.HasPrefix(ev.NewValue, "checkpoint: ") {
+			val := strings.TrimPrefix(ev.NewValue, "checkpoint: ")
+			return "checkpoint: " + truncate(val, 50)
+		}
+		return "comment: " + truncate(ev.NewValue, 50)
+	case gig.EventAssigned:
+		return fmt.Sprintf("assigned to %s", ev.NewValue)
+	case gig.EventCreated:
+		return "task created"
+	case gig.EventUpdated:
+		if ev.Field != "" {
+			return fmt.Sprintf("updated %s", ev.Field)
+		}
+		return "updated"
+	default:
+		return ""
+	}
 }
 
 func shortRelTime(t time.Time) string {

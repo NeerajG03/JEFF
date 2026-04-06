@@ -41,8 +41,7 @@ var (
 
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(highlight).
-			MarginBottom(1)
+			Foreground(highlight)
 
 	helpStyle = lipgloss.NewStyle().
 			Foreground(dimmed)
@@ -53,7 +52,19 @@ var (
 
 	valueStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.AdaptiveColor{Light: "#1A1A1A", Dark: "#DDDDDD"})
+
+	lipglossWarning = lipgloss.NewStyle().
+			Foreground(warning).
+			Bold(true)
+
+	// Layout helpers for side-by-side rendering.
+	lipglossLeft  = lipgloss.NewStyle()
+	lipglossRight = lipgloss.NewStyle()
 )
+
+func lipglossJoinH(left, right string) string {
+	return lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right)
+}
 
 func statusIcon(status string) string {
 	switch status {

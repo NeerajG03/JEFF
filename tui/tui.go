@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/NeerajG03/JEFF/crew"
@@ -14,17 +15,24 @@ const refreshInterval = 2 * time.Second
 
 // Model is the root Bubbletea model for the crew dashboard.
 type Model struct {
-	crewStore  *crew.Store
-	gigStore   *gig.Store
+	crewStore *crew.Store
+	gigStore  *gig.Store
+
 	sessions   []*crew.Session
-	events     []*gig.Event
+	events     []*gig.Event // accumulated events
+	taskTitles map[string]string
 	selected   int
 	paneOutput string
-	input      inputModel
-	lastEvent  time.Time
-	width      int
-	height     int
-	err        error
+
+	input     inputModel
+	lastEvent time.Time
+	width     int
+	height    int
+	err       error
+	status    string // transient status message
+
+	// Set before quitting to trigger tmux attach.
+	AttachTarget string
 }
 
 type tickMsg time.Time
@@ -32,18 +40,24 @@ type tickMsg time.Time
 type refreshedMsg struct {
 	sessions []*crew.Session
 	events   []*gig.Event
+	titles   map[string]string
 	pane     string
 }
 
-type sentMsg struct{ err error }
+type sentMsg struct {
+	err    error
+	taskID string
+	typ    string
+}
 
 // New creates a new dashboard model.
 func New(crewStore *crew.Store, gigStore *gig.Store) Model {
 	return Model{
-		crewStore: crewStore,
-		gigStore:  gigStore,
-		input:     newInputModel(),
-		lastEvent: time.Now().Add(-5 * time.Minute),
+		crewStore:  crewStore,
+		gigStore:   gigStore,
+		input:      newInputModel(),
+		lastEvent:  time.Now().Add(-10 * time.Minute),
+		taskTitles: make(map[string]string),
 	}
 }
 
@@ -53,7 +67,6 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -64,12 +77,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case refreshedMsg:
 		m.sessions = msg.sessions
-		m.events = msg.events
-		m.paneOutput = msg.pane
-		if len(m.events) > 0 {
+		// Accumulate events (append new, cap at 50).
+		if len(msg.events) > 0 {
+			m.events = append(m.events, msg.events...)
+			if len(m.events) > 50 {
+				m.events = m.events[len(m.events)-50:]
+			}
 			m.lastEvent = m.events[len(m.events)-1].Timestamp
 		}
-		// Clamp selection.
+		for k, v := range msg.titles {
+			m.taskTitles[k] = v
+		}
+		m.paneOutput = msg.pane
 		if m.selected >= len(m.sessions) {
 			m.selected = max(0, len(m.sessions)-1)
 		}
@@ -78,11 +97,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sentMsg:
 		if msg.err != nil {
 			m.err = msg.err
+			m.status = fmt.Sprintf("Error: %v", msg.err)
+		} else {
+			m.status = fmt.Sprintf("Sent %s to %s", msg.typ, msg.taskID)
 		}
 		m.input.close()
 		return m, nil
 
 	case tea.KeyMsg:
+		// Clear transient status on any keypress.
+		m.err = nil
+		m.status = ""
 		if m.input.active {
 			return m.updateInput(msg)
 		}
@@ -114,6 +139,7 @@ func (m Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "s":
 		if len(m.sessions) > 0 {
 			m.input.open(m.sessions[m.selected].TaskID)
+			return m, m.input.input.Focus()
 		}
 		return m, nil
 
@@ -126,9 +152,12 @@ func (m Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "x":
 		if len(m.sessions) > 0 {
 			sess := m.sessions[m.selected]
-			return m, func() tea.Msg {
-				_ = crew.Stop(m.crewStore, sess.TaskID)
-				return tickMsg(time.Now())
+			if sess.Status == "running" || sess.Status == "starting" {
+				taskID := sess.TaskID
+				return m, func() tea.Msg {
+					_ = crew.Stop(m.crewStore, taskID)
+					return tickMsg(time.Now())
+				}
 			}
 		}
 		return m, nil
@@ -136,12 +165,14 @@ func (m Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		return m, m.refreshCmd()
 
-	case "a":
+	case "enter", "a":
 		if len(m.sessions) > 0 {
 			sess := m.sessions[m.selected]
-			target := sess.TmuxSession + ":" + sess.WindowName
-			_ = crew.SelectWindow(target)
-			return m, tea.Quit
+			if crew.HasWindow(sess.WindowName) {
+				m.AttachTarget = sess.WindowName
+				return m, tea.Quit
+			}
+			m.status = fmt.Sprintf("No tmux window for %s", sess.TaskID)
 		}
 		return m, nil
 	}
@@ -169,11 +200,10 @@ func (m Model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		msgType := crew.MessageType(m.input.msgType())
 		return m, func() tea.Msg {
 			_, err := crew.Send(m.crewStore, taskID, msgType, content)
-			return sentMsg{err: err}
+			return sentMsg{err: err, taskID: taskID, typ: string(msgType)}
 		}
 	}
 
-	// Forward to text input.
 	var cmd tea.Cmd
 	m.input.input, cmd = m.input.input.Update(msg)
 	return m, cmd
@@ -185,45 +215,58 @@ func (m Model) View() string {
 	}
 
 	w := m.width - 2
+	availH := m.height - 3 // title + help + margin
 
-	title := titleStyle.Render("JEFF Dashboard")
+	// --- Title bar ---
+	running := 0
+	for _, s := range m.sessions {
+		if s.Status == "running" || s.Status == "starting" {
+			running++
+		}
+	}
+	title := titleStyle.Render(fmt.Sprintf(" JEFF Dashboard  ")) +
+		dimStyle.Render(fmt.Sprintf("  %d workers", running))
 
-	// Session list.
-	sessionPanel := renderSessionList(m.sessions, m.selected, m.gigStore, w)
+	// --- Calculate panel heights ---
+	listH := min(len(m.sessions)+3, 8)                           // session list
+	eventH := min(len(m.events)+3, 8)                            // events
+	detailH := max(availH-listH-eventH-2, 6)                     // detail gets the rest
 
-	// Detail panel for selected session.
+	// --- Session list ---
+	sessionPanel := renderSessionList(m.sessions, m.selected, m.gigStore, m.taskTitles, w, listH)
+
+	// --- Detail panel ---
 	var detailPanel string
 	if len(m.sessions) > 0 && m.selected < len(m.sessions) {
 		sess := m.sessions[m.selected]
-		detailPanel = renderDetail(sess, m.gigStore, m.crewStore, m.paneOutput, w)
+		title := m.taskTitles[sess.TaskID]
+		detailPanel = renderDetail(sess, title, m.gigStore, m.crewStore, m.paneOutput, w, detailH)
+	} else {
+		detailPanel = panelStyle.Width(w).Height(detailH).Render(
+			dimStyle.Render("Select a session or start one with: jeff crew start <gig-id> --persona jenko"))
 	}
 
-	// Event feed.
-	eventPanel := renderEvents(m.events, w)
+	// --- Events ---
+	eventPanel := renderEvents(m.events, w, eventH)
 
-	// Input overlay.
+	// --- Input overlay ---
 	inputPanel := renderInput(m.input, w)
 
-	// Error display.
-	errMsg := ""
-	if m.err != nil {
-		errMsg = lipgloss.NewStyle().Foreground(danger).Render(fmt.Sprintf("Error: %v", m.err))
+	// --- Status / help bar ---
+	helpText := "j/k navigate  enter attach  s send  c capture  x stop  r refresh  q quit"
+	if m.input.active {
+		helpText = "Tab cycle type  Enter send  Esc cancel"
+	}
+	help := helpStyle.Render(helpText)
+
+	if m.status != "" {
+		help = lipgloss.NewStyle().Foreground(warning).Render(m.status) + "  " + help
 	}
 
-	// Help bar.
-	help := helpStyle.Render("j/k navigate  s send  a attach  c capture  x stop  r refresh  q quit")
-
-	// Compose.
-	parts := []string{title, sessionPanel}
-	if detailPanel != "" {
-		parts = append(parts, detailPanel)
-	}
-	parts = append(parts, eventPanel)
+	// --- Compose ---
+	parts := []string{title, sessionPanel, detailPanel, eventPanel}
 	if inputPanel != "" {
 		parts = append(parts, inputPanel)
-	}
-	if errMsg != "" {
-		parts = append(parts, errMsg)
 	}
 	parts = append(parts, help)
 
@@ -238,7 +281,6 @@ func tickCmd() tea.Cmd {
 
 func (m Model) refreshCmd() tea.Cmd {
 	return func() tea.Msg {
-		// Refresh tmux state.
 		var isTaskClosed func(string) bool
 		if m.gigStore != nil {
 			isTaskClosed = func(taskID string) bool {
@@ -255,20 +297,22 @@ func (m Model) refreshCmd() tea.Cmd {
 			events, _ = m.gigStore.EventsSince(m.lastEvent)
 		}
 
-		// Capture pane for selected session.
-		pane := ""
-		if len(sessions) > 0 && m.selected < len(sessions) {
-			sess := sessions[m.selected]
-			if crew.HasWindow(sess.WindowName) {
-				target := sess.TmuxSession + ":" + sess.WindowName
-				pane, _ = crew.CapturePane(target, 8)
+		// Fetch task titles.
+		titles := make(map[string]string)
+		if m.gigStore != nil {
+			for _, sess := range sessions {
+				if t, err := m.gigStore.Get(sess.TaskID); err == nil {
+					titles[sess.TaskID] = t.Title
+				}
 			}
 		}
 
+		// Pane capture is NOT automatic — only on explicit 'c' keypress.
 		return refreshedMsg{
 			sessions: sessions,
 			events:   events,
-			pane:     pane,
+			titles:   titles,
+			pane:     "", // empty = don't show pane
 		}
 	}
 }
@@ -283,11 +327,45 @@ func (m Model) captureCmd() tea.Cmd {
 			return nil
 		}
 		target := sess.TmuxSession + ":" + sess.WindowName
-		pane, _ := crew.CapturePane(target, 20)
+		pane, _ := crew.CapturePane(target, 30)
+
+		titles := make(map[string]string)
+		for k, v := range m.taskTitles {
+			titles[k] = v
+		}
 		return refreshedMsg{
 			sessions: m.sessions,
-			events:   m.events,
+			events:   nil, // no new events
+			titles:   titles,
 			pane:     pane,
 		}
 	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n-3] + "..."
+}
+
+func padRight(s string, w int) string {
+	if len(s) >= w {
+		return s[:w]
+	}
+	return s + strings.Repeat(" ", w-len(s))
 }

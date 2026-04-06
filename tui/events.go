@@ -8,41 +8,38 @@ import (
 	"github.com/NeerajG03/gig"
 )
 
-func renderEvents(events []*gig.Event, width, height int) string {
+func renderEvents(events []*gig.Event, width int) string {
 	header := headerStyle.Render("Activity")
 
 	if len(events) == 0 {
-		return panelStyle.Width(width).Height(height).Render(
+		return panelStyle.Width(width).Render(
 			header + "\n" + dimStyle.Render("(no recent activity)"))
 	}
 
 	var rows []string
-	// Most recent first, cap to fit height.
-	maxRows := height - 3
-	if maxRows < 3 {
-		maxRows = 3
-	}
+	// Most recent first, max 10.
+	maxRows := 10
 	start := len(events) - 1
 	end := max(0, len(events)-maxRows)
 
 	for i := start; i >= end; i-- {
 		ev := events[i]
-		age := shortRelTime(ev.Timestamp)
 		desc := describeEvent(ev)
 		if desc == "" {
 			continue
 		}
+		age := shortRelTime(ev.Timestamp)
 		row := fmt.Sprintf(" %4s  %-11s  %s", age, ev.TaskID, desc)
 		rows = append(rows, row)
 	}
 
 	if len(rows) == 0 {
-		return panelStyle.Width(width).Height(height).Render(
+		return panelStyle.Width(width).Render(
 			header + "\n" + dimStyle.Render("(no recent activity)"))
 	}
 
 	content := header + "\n" + strings.Join(rows, "\n")
-	return panelStyle.Width(width).Height(height).Render(content)
+	return panelStyle.Width(width).Render(content)
 }
 
 // describeEvent returns a human-readable description of a gig event.

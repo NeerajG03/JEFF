@@ -215,7 +215,6 @@ func (m Model) View() string {
 	}
 
 	w := m.width - 2
-	availH := m.height - 3 // title + help + margin
 
 	// --- Title bar ---
 	running := 0
@@ -224,30 +223,25 @@ func (m Model) View() string {
 			running++
 		}
 	}
-	title := titleStyle.Render(fmt.Sprintf(" JEFF Dashboard  ")) +
+	title := titleStyle.Render(" JEFF Dashboard ") +
 		dimStyle.Render(fmt.Sprintf("  %d workers", running))
 
-	// --- Calculate panel heights ---
-	listH := min(len(m.sessions)+3, 8)                           // session list
-	eventH := min(len(m.events)+3, 8)                            // events
-	detailH := max(availH-listH-eventH-2, 6)                     // detail gets the rest
+	// --- Session list (natural height) ---
+	sessionPanel := renderSessionList(m.sessions, m.selected, m.gigStore, m.taskTitles, w)
 
-	// --- Session list ---
-	sessionPanel := renderSessionList(m.sessions, m.selected, m.gigStore, m.taskTitles, w, listH)
-
-	// --- Detail panel ---
+	// --- Detail panel (natural height) ---
 	var detailPanel string
 	if len(m.sessions) > 0 && m.selected < len(m.sessions) {
 		sess := m.sessions[m.selected]
-		title := m.taskTitles[sess.TaskID]
-		detailPanel = renderDetail(sess, title, m.gigStore, m.crewStore, m.paneOutput, w, detailH)
-	} else {
-		detailPanel = panelStyle.Width(w).Height(detailH).Render(
-			dimStyle.Render("Select a session or start one with: jeff crew start <gig-id> --persona jenko"))
+		taskTitle := m.taskTitles[sess.TaskID]
+		detailPanel = renderDetail(sess, taskTitle, m.gigStore, m.crewStore, m.paneOutput, w)
+	} else if len(m.sessions) == 0 {
+		detailPanel = panelStyle.Width(w).Render(
+			dimStyle.Render("Start a worker: jeff crew start <gig-id> --persona jenko"))
 	}
 
-	// --- Events ---
-	eventPanel := renderEvents(m.events, w, eventH)
+	// --- Activity feed (natural height) ---
+	eventPanel := renderEvents(m.events, w)
 
 	// --- Input overlay ---
 	inputPanel := renderInput(m.input, w)

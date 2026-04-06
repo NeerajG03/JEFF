@@ -47,10 +47,11 @@ const (
 	IDECursor   IDE = "cursor"
 	IDEWindsurf IDE = "windsurf"
 	IDENvim     IDE = "nvim"
+	IDEZed      IDE = "zed"
 )
 
 // ValidIDEs is the set of supported IDEs.
-var ValidIDEs = []IDE{IDEVSCode, IDECursor, IDEWindsurf, IDENvim}
+var ValidIDEs = []IDE{IDEVSCode, IDECursor, IDEWindsurf, IDENvim, IDEZed}
 
 // IsValid returns true if i is a recognized IDE.
 func (i IDE) IsValid() bool {
@@ -88,6 +89,8 @@ func (i IDE) Command() string {
 		return "windsurf"
 	case IDENvim:
 		return "nvim"
+	case IDEZed:
+		return "zed"
 	default:
 		return string(i)
 	}

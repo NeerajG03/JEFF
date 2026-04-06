@@ -8,9 +8,9 @@ import (
 	"github.com/NeerajG03/gig"
 )
 
-func renderSessionList(sessions []*crew.Session, selected int, gigStore *gig.Store, titles map[string]string, width, height int) string {
+func renderSessionList(sessions []*crew.Session, selected int, gigStore *gig.Store, titles map[string]string, width int) string {
 	if len(sessions) == 0 {
-		return panelStyle.Width(width).Height(height).Render(
+		return panelStyle.Width(width).Render(
 			dimStyle.Render("No sessions. Start one: jeff crew start <gig-id> --persona jenko"))
 	}
 
@@ -23,7 +23,12 @@ func renderSessionList(sessions []*crew.Session, selected int, gigStore *gig.Sto
 
 	header := headerStyle.Render(fmt.Sprintf("Workers (%d active, %d total)", running, len(sessions)))
 
+	// Column header.
+	colHeader := dimStyle.Render(fmt.Sprintf("   %-10s %-8s %-8s %-30s %-30s %5s",
+		"TASK", "PERSONA", "STATUS", "TITLE", "CHECKPOINT", "AGE"))
+
 	var rows []string
+	rows = append(rows, colHeader)
 	for i, sess := range sessions {
 		icon := statusIcon(sess.Status)
 		persona := sess.Persona
@@ -33,24 +38,24 @@ func renderSessionList(sessions []*crew.Session, selected int, gigStore *gig.Sto
 
 		title := titles[sess.TaskID]
 		if title == "" {
-			title = sess.TaskID
+			title = "-"
 		}
-		title = truncate(title, 30)
+		title = truncate(title, 28)
 
 		ckpt := ""
 		if gigStore != nil {
 			if cp, err := gigStore.LatestCheckpoint(sess.TaskID); err == nil && cp != nil {
-				ckpt = truncate(cp.Done, 30)
+				ckpt = truncate(cp.Done, 28)
 			}
 		}
 		if ckpt == "" {
-			ckpt = dimStyle.Render("-")
+			ckpt = "-"
 		}
 
 		age := shortRelTime(sess.StartedAt)
 
-		line := fmt.Sprintf(" %s %-10s %-8s %-32s %-32s %4s",
-			icon, sess.TaskID, persona, title, ckpt, age)
+		line := fmt.Sprintf(" %s %-10s %-8s %-8s %-30s %-30s %5s",
+			icon, sess.TaskID, persona, sess.Status, title, ckpt, age)
 
 		if i == selected {
 			line = selectedStyle.Render(">" + line[1:])
@@ -60,22 +65,22 @@ func renderSessionList(sessions []*crew.Session, selected int, gigStore *gig.Sto
 	}
 
 	content := header + "\n" + strings.Join(rows, "\n")
-	return panelStyle.Width(width).Height(height).Render(content)
+	return panelStyle.Width(width).Render(content)
 }
 
-func renderDetail(sess *crew.Session, taskTitle string, gigStore *gig.Store, crewStore *crew.Store, paneOutput string, width, height int) string {
+func renderDetail(sess *crew.Session, taskTitle string, gigStore *gig.Store, crewStore *crew.Store, paneOutput string, width int) string {
 	if sess == nil {
 		return ""
 	}
 
-	// Header with task ID + title.
+	// Header.
 	header := sess.TaskID
 	if taskTitle != "" {
 		header += " — " + taskTitle
 	}
 	headerLine := headerStyle.Render(header)
 
-	// Left column: metadata.
+	// Metadata fields.
 	var meta []string
 	meta = append(meta, renderField("Persona", sess.Persona))
 	if len(sess.Repos) > 0 {
@@ -103,7 +108,7 @@ func renderDetail(sess *crew.Session, taskTitle string, gigStore *gig.Store, cre
 				lipglossWarning.Render(fmt.Sprintf("%d pending", count))))
 		}
 
-		// Recent messages.
+		// Recent messages (most recent 3).
 		msgs, _ := crewStore.RecentMessages(sess.TaskID, 3)
 		if len(msgs) > 0 {
 			meta = append(meta, "")
@@ -117,32 +122,27 @@ func renderDetail(sess *crew.Session, taskTitle string, gigStore *gig.Store, cre
 				if msg.AckedAt != nil {
 					ack = " " + dimStyle.Render("[acked]")
 				}
-				line := fmt.Sprintf("  %s [%s] %s%s",
-					dir, msg.Type, truncate(msg.Content, 50), ack)
-				meta = append(meta, line)
+				meta = append(meta, fmt.Sprintf("  %s [%s] %s%s",
+					dir, msg.Type, truncate(msg.Content, 50), ack))
 			}
 		}
 	}
 
 	metaStr := strings.Join(meta, "\n")
 
-	// Pane output only shown when user presses 'c' (explicit capture).
+	// Pane output (only when user pressed 'c').
 	if paneOutput != "" {
 		paneLines := strings.Split(paneOutput, "\n")
 		for len(paneLines) > 0 && strings.TrimSpace(paneLines[0]) == "" {
 			paneLines = paneLines[1:]
 		}
-		maxLines := height - 4
-		if maxLines < 4 {
-			maxLines = 4
-		}
-		if len(paneLines) > maxLines {
-			paneLines = paneLines[len(paneLines)-maxLines:]
+		if len(paneLines) > 12 {
+			paneLines = paneLines[len(paneLines)-12:]
 		}
 
-		paneRendered := dimStyle.Render("Terminal (press c to refresh):") + "\n"
+		paneRendered := dimStyle.Render("Terminal (c to refresh):") + "\n"
 		for _, l := range paneLines {
-			paneRendered += dimStyle.Render(" "+truncate(l, width/2-4)) + "\n"
+			paneRendered += dimStyle.Render(" "+truncate(l, width/2-6)) + "\n"
 		}
 
 		if width > 90 {
@@ -151,13 +151,12 @@ func renderDetail(sess *crew.Session, taskTitle string, gigStore *gig.Store, cre
 			left := lipglossLeft.Width(leftW).Render(metaStr)
 			right := lipglossRight.Width(rightW).Render(paneRendered)
 			body := lipglossJoinH(left, right)
-			return panelStyle.Width(width).Height(height).Render(headerLine + "\n" + body)
+			return panelStyle.Width(width).Render(headerLine + "\n" + body)
 		}
-		return panelStyle.Width(width).Height(height).Render(
-			headerLine + "\n" + metaStr + "\n\n" + paneRendered)
+		return panelStyle.Width(width).Render(headerLine + "\n" + metaStr + "\n\n" + paneRendered)
 	}
 
-	return panelStyle.Width(width).Height(height).Render(headerLine + "\n" + metaStr)
+	return panelStyle.Width(width).Render(headerLine + "\n" + metaStr)
 }
 
 func renderField(label, value string) string {

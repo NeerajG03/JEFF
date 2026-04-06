@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -142,14 +143,31 @@ func TestBuildPRBody_Empty(t *testing.T) {
 	}
 }
 
+// initGitBranch creates a git repo at dir on the given branch with an initial commit.
+func initGitBranch(t *testing.T, dir, branch string) {
+	t.Helper()
+	for _, args := range [][]string{
+		{"init", "-b", branch},
+		{"commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test", "GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
 func TestDiscoverWorktrees(t *testing.T) {
 	dir := t.TempDir()
 
-	// Create fake worktree targets with .jeff-base files.
+	// Create fake worktree targets with .jeff-base files and real git repos.
 	for _, name := range []string{"frontend", "backend"} {
 		wtDir := filepath.Join(t.TempDir(), name, "gig-ab12")
 		os.MkdirAll(wtDir, 0o755)
 		os.WriteFile(filepath.Join(wtDir, ".jeff-base"), []byte("origin/main\n"), 0o644)
+		initGitBranch(t, wtDir, "gig-ab12")
 		os.Symlink(wtDir, filepath.Join(dir, name))
 	}
 
@@ -191,6 +209,7 @@ func TestDiscoverWorktrees_FilterByRepo(t *testing.T) {
 	for _, name := range []string{"frontend", "backend"} {
 		wtDir := filepath.Join(t.TempDir(), name, "gig-ab12")
 		os.MkdirAll(wtDir, 0o755)
+		initGitBranch(t, wtDir, "gig-ab12")
 		os.Symlink(wtDir, filepath.Join(dir, name))
 	}
 
@@ -211,6 +230,7 @@ func TestDiscoverWorktrees_FilterMissing(t *testing.T) {
 
 	wtDir := filepath.Join(t.TempDir(), "frontend", "gig-ab12")
 	os.MkdirAll(wtDir, 0o755)
+	initGitBranch(t, wtDir, "gig-ab12")
 	os.Symlink(wtDir, filepath.Join(dir, "frontend"))
 
 	_, err := discoverWorktrees(dir, "nonexistent")
@@ -224,6 +244,7 @@ func TestDiscoverWorktrees_BaseBranchStripped(t *testing.T) {
 	wtDir := filepath.Join(t.TempDir(), "api", "gig-cd34")
 	os.MkdirAll(wtDir, 0o755)
 	os.WriteFile(filepath.Join(wtDir, ".jeff-base"), []byte("origin/develop\n"), 0o644)
+	initGitBranch(t, wtDir, "gig-cd34")
 	os.Symlink(wtDir, filepath.Join(dir, "api"))
 
 	wts, err := discoverWorktrees(dir, "")
@@ -232,5 +253,30 @@ func TestDiscoverWorktrees_BaseBranchStripped(t *testing.T) {
 	}
 	if wts[0].base != "develop" {
 		t.Errorf("expected base develop (origin/ stripped), got %q", wts[0].base)
+	}
+}
+
+func TestDiscoverWorktrees_SlashInBranchName(t *testing.T) {
+	dir := t.TempDir()
+
+	// Simulate a worktree with a slash-prefixed branch like "jeff/gig-6ec5-feature".
+	wtDir := filepath.Join(t.TempDir(), "backend", "jeff", "gig-6ec5-feature")
+	os.MkdirAll(wtDir, 0o755)
+	os.WriteFile(filepath.Join(wtDir, ".jeff-base"), []byte("origin/main\n"), 0o644)
+	initGitBranch(t, wtDir, "jeff/gig-6ec5-feature")
+	os.Symlink(wtDir, filepath.Join(dir, "backend"))
+
+	wts, err := discoverWorktrees(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wts) != 1 {
+		t.Fatalf("expected 1 worktree, got %d", len(wts))
+	}
+	if wts[0].branch != "jeff/gig-6ec5-feature" {
+		t.Errorf("expected branch jeff/gig-6ec5-feature, got %q", wts[0].branch)
+	}
+	if wts[0].base != "main" {
+		t.Errorf("expected base main, got %q", wts[0].base)
 	}
 }

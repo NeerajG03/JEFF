@@ -1,0 +1,161 @@
+package crew
+
+import (
+	"fmt"
+	"os/exec"
+	"strings"
+	"time"
+)
+
+// TmuxSessionName is the fixed tmux session name for all crew windows.
+const TmuxSessionName = "jeff"
+
+// EnsureTmux checks that tmux is available in PATH.
+func EnsureTmux() error {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		return fmt.Errorf("tmux not found in PATH — required for crew management (install: brew install tmux)")
+	}
+	return nil
+}
+
+// EnsureSession ensures the "jeff" tmux session exists.
+// Creates a detached session if it doesn't. No-op if already present.
+func EnsureSession() error {
+	if hasSession(TmuxSessionName) {
+		return nil
+	}
+	return tmuxRun("new-session", "-d", "-s", TmuxSessionName, "-x", "200", "-y", "50")
+}
+
+// CreateWindow creates a new window in the jeff tmux session.
+// Returns the tmux target string "jeff:<name>".
+func CreateWindow(name, dir string) (string, error) {
+	target := TmuxSessionName + ":" + name
+	err := tmuxRun("new-window", "-t", TmuxSessionName, "-n", name, "-c", dir)
+	if err != nil {
+		return "", fmt.Errorf("create tmux window %q: %w", name, err)
+	}
+	return target, nil
+}
+
+// SendText sends text to a tmux pane WITHOUT pressing Enter.
+// This is the first half of sending a command — text and Enter must
+// be separate send-keys calls for Claude Code to work properly.
+func SendText(target, text string) error {
+	return tmuxRun("send-keys", "-t", target, text)
+}
+
+// SendEnter sends the Enter key to a tmux pane.
+// This is the second half of sending a command.
+func SendEnter(target string) error {
+	return tmuxRun("send-keys", "-t", target, "Enter")
+}
+
+// SendCommand sends text followed by Enter to a tmux pane.
+// Convenience wrapper: SendText + small delay + SendEnter.
+func SendCommand(target, command string) error {
+	if err := SendText(target, command); err != nil {
+		return err
+	}
+	time.Sleep(50 * time.Millisecond)
+	return SendEnter(target)
+}
+
+// SendInterrupt sends C-c to a tmux pane.
+func SendInterrupt(target string) error {
+	return tmuxRun("send-keys", "-t", target, "C-c")
+}
+
+// CapturePane captures the visible content of a tmux pane.
+// lines specifies how many lines of scrollback to include (from bottom).
+func CapturePane(target string, lines int) (string, error) {
+	start := fmt.Sprintf("-%d", lines)
+	out, err := tmuxOutput("capture-pane", "-t", target, "-p", "-S", start)
+	if err != nil {
+		return "", fmt.Errorf("capture pane %q: %w", target, err)
+	}
+	return strings.TrimRight(out, "\n"), nil
+}
+
+// SelectWindow switches to the given tmux window.
+func SelectWindow(target string) error {
+	return tmuxRun("select-window", "-t", target)
+}
+
+// KillWindow kills a specific tmux window.
+func KillWindow(target string) error {
+	return tmuxRun("kill-window", "-t", target)
+}
+
+// HasWindow checks if a window exists in the jeff session.
+func HasWindow(name string) bool {
+	windows, err := ListWindows()
+	if err != nil {
+		return false
+	}
+	for _, w := range windows {
+		if w == name {
+			return true
+		}
+	}
+	return false
+}
+
+// ListWindows returns all window names in the jeff session.
+func ListWindows() ([]string, error) {
+	out, err := tmuxOutput("list-windows", "-t", TmuxSessionName, "-F", "#{window_name}")
+	if err != nil {
+		return nil, err
+	}
+	out = strings.TrimSpace(out)
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
+// WindowPID returns the PID of the foreground process in a tmux pane.
+func WindowPID(target string) (int, error) {
+	out, err := tmuxOutput("display-message", "-t", target, "-p", "#{pane_pid}")
+	if err != nil {
+		return 0, fmt.Errorf("get pane PID for %q: %w", target, err)
+	}
+	var pid int
+	if _, err := fmt.Sscanf(strings.TrimSpace(out), "%d", &pid); err != nil {
+		return 0, fmt.Errorf("parse PID %q: %w", out, err)
+	}
+	return pid, nil
+}
+
+// --- internal helpers ---
+
+func hasSession(name string) bool {
+	out, err := tmuxOutput("list-sessions", "-F", "#{session_name}")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line == name {
+			return true
+		}
+	}
+	return false
+}
+
+func tmuxRun(args ...string) error {
+	cmd := exec.Command("tmux", args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("tmux %s: %w (output: %s)", args[0], err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func tmuxOutput(args ...string) (string, error) {
+	cmd := exec.Command("tmux", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("tmux %s: %w", args[0], err)
+	}
+	return string(out), nil
+}

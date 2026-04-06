@@ -67,6 +67,8 @@ func main() {
 		openCmd(),
 		projectCmd(),
 		completionCmd(),
+		crewCmd(),
+		dashboardCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

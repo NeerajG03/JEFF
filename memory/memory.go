@@ -4,6 +4,7 @@ package memory
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -103,6 +104,31 @@ func loadIndex(path string) (string, error) {
 
 // InstallLearnCommand writes the /learn slash command to the task directory.
 // The command template has all paths baked in so it works when invoked.
+// AutoCurate reads the scratchpad and runs the /learn curation prompt
+// via a non-interactive agent invocation. Returns nil if no scratchpad
+// content exists. The task directory must still exist when this is called.
+func AutoCurate(taskDir, taskID, personaName, jeffHome string, repos []string) error {
+	sp := ScratchpadPath(taskDir)
+	data, err := os.ReadFile(sp)
+	if err != nil || len(strings.TrimSpace(string(data))) == 0 {
+		return nil // nothing to curate
+	}
+
+	// Read the /learn command template.
+	learnPath := filepath.Join(taskDir, ".claude", "commands", "learn.md")
+	prompt, err := os.ReadFile(learnPath)
+	if err != nil {
+		return fmt.Errorf("read learn command: %w", err)
+	}
+
+	// Launch claude in non-interactive mode with the curation prompt.
+	cmd := exec.Command("claude", "--dangerously-skip-permissions", "-p", string(prompt))
+	cmd.Dir = taskDir
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 func InstallLearnCommand(taskDir, taskID, personaName, jeffHome string, repos []string) error {
 	dir := filepath.Join(taskDir, ".claude", "commands")
 	if err := os.MkdirAll(dir, 0o755); err != nil {

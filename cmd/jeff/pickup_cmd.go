@@ -7,12 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/NeerajG03/JEFF"
-	"github.com/NeerajG03/JEFF/hooks"
+	jeff "github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/internal/gitutil"
 	"github.com/NeerajG03/JEFF/memory"
 	"github.com/NeerajG03/JEFF/persona"
-	"github.com/NeerajG03/JEFF/skill"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/NeerajG03/gig"
 	"github.com/spf13/cobra"
@@ -31,134 +29,14 @@ func pickupCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			taskID := args[0]
 
-			// 1. Open gig store and claim the task.
-			store, err := openGigStore()
+			taskDir, err := pickupTask(taskID, personaName, repos)
 			if err != nil {
 				return err
 			}
-			defer store.Close()
 
-			// Ensure JEFF's custom attrs exist.
-			if err := jeff.EnsureAttrs(store); err != nil {
-				return fmt.Errorf("ensure attrs: %w", err)
-			}
-
-			task, err := store.Get(taskID)
-			if err != nil {
-				return fmt.Errorf("task %s not found: %w", taskID, err)
-			}
-
-			claimResult, err := store.Claim(taskID, "jeff")
-			if err != nil {
-				return fmt.Errorf("claim: %w", err)
-			}
-			fmt.Fprintf(os.Stderr, "Claimed %s: %s\n", taskID, task.Title)
-			if claimResult.ParentProgressed {
-				fmt.Fprintf(os.Stderr, "Parent %s → in_progress\n", claimResult.ParentID)
-			}
-
-			// 2. Create task workspace.
-			td, err := workspace.Create(cfg.Home, taskID, task.Title)
-			if err != nil {
-				return fmt.Errorf("create workspace: %w", err)
-			}
-			fmt.Fprintf(os.Stderr, "Workspace: %s\n", td.Path)
-
-			// 3. Set repos attribute if specified.
-			if len(repos) > 0 {
-				reposJSON, _ := json.Marshal(repos)
-				if err := store.SetAttr(taskID, jeff.AttrRepos, string(reposJSON)); err != nil {
-					return fmt.Errorf("set repos attr: %w", err)
-				}
-			}
-
-			// 4. Create worktrees for specified repos.
-			taskJSON := buildTaskJSON(store, task)
-			for _, repoName := range repos {
-				rc := cfg.Repos[repoName]
-				branch, err := resolveRepoBranch(rc, taskJSON, taskID)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: branch name for %s: %v, using %s\n", repoName, err, taskID)
-					branch = taskID
-				}
-
-				opts := workspace.WorktreeOpts{
-					JeffHome: cfg.Home,
-					RepoName: repoName,
-					Branch:   branch,
-					TaskDir:  td.Path,
-				}
-				if rc != nil {
-					opts.BaseBranch = rc.BaseBranch
-					opts.PostSetup = rc.PostSetup
-				}
-
-				wtDir, err := workspace.WorktreeAdd(opts)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: worktree for %s: %v\n", repoName, err)
-					continue
-				}
-				fmt.Fprintf(os.Stderr, "Worktree: %s → %s\n", repoName, wtDir)
-			}
-
-			// 5. Ensure memory directories exist.
-			if personaName != "" {
-				if err := memory.EnsurePersonaDir(cfg.Home, personaName); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: persona memory: %v\n", err)
-				}
-			}
-			for _, repoName := range repos {
-				if err := memory.EnsureRepoDir(cfg.Home, repoName); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: repo learnings: %v\n", err)
-				}
-			}
-
-			// 6. Generate CLAUDE.md in task directory.
-			if err := writeTaskClaudeMD(td.Path, cfg.Home, task, personaName, repos); err != nil {
-				return fmt.Errorf("write task CLAUDE.md: %w", err)
-			}
-
-			// 7. Install /learn slash command.
-			if personaName != "" || len(repos) > 0 {
-				if err := memory.InstallLearnCommand(td.Path, taskID, personaName, cfg.Home, repos); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: learn command: %v\n", err)
-				}
-			}
-
-			// 9. Install task-level hooks (if any).
-			reg := hooks.DefaultRegistry()
-			mgr := hooks.NewManager(reg)
-			hctx := hooks.HookContext{
-				JeffHome:           cfg.Home,
-				TargetDir:          td.Path,
-				GigHome:            cfg.GigHome,
-				TaskID:             taskID,
-				CheckpointPatterns: cfg.CheckpointPatterns,
-			}
-			taskEnabled := hooks.EnabledForSource(cfg.Hooks, hooks.SourceTask, reg)
-			if len(taskEnabled) > 0 {
-				agent := hooks.AgentTool(cfg.Agent)
-				if err := mgr.Sync(td.Path, taskEnabled, agent, hctx); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: task hooks: %v\n", err)
-				}
-			}
-
-			// 10. Auto-inject matching skills.
-			mctx := &skill.MatchContext{
-				Persona: personaName,
-				GigType: string(task.Type),
-				Labels:  task.Labels,
-			}
-			injected, err := skill.InjectMatching(cfg.Home, td.Path, mctx)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: skill injection: %v\n", err)
-			} else if len(injected) > 0 {
-				fmt.Fprintf(os.Stderr, "Skills: %s\n", strings.Join(injected, ", "))
-			}
-
-			// 11. Launch agent tool in task directory.
-			fmt.Fprintf(os.Stderr, "\nLaunching %s in %s...\n", cfg.Agent, td.Path)
-			return launchAgent(td.Path, cfg.Agent)
+			// Launch agent tool in task directory (foreground, blocks).
+			fmt.Fprintf(os.Stderr, "\nLaunching %s in %s...\n", cfg.Agent, taskDir)
+			return launchAgent(taskDir, cfg.Agent)
 		},
 	}
 

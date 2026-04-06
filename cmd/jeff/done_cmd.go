@@ -6,6 +6,7 @@ import (
 	"os"
 
 	jeff "github.com/NeerajG03/JEFF"
+	"github.com/NeerajG03/JEFF/memory"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/spf13/cobra"
 )
@@ -45,14 +46,26 @@ func doneCmd() *cobra.Command {
 				}
 			}
 
-			// 2. Remove task workspace directory.
+			// 2. Auto-curate scratchpad before cleanup.
+			td, tdErr := workspace.Open(cfg.Home, taskID)
+			if tdErr == nil {
+				personaName := detectPersona(td.Path)
+				repoNames := detectRepos(td.Path)
+				if err := memory.AutoCurate(td.Path, taskID, personaName, cfg.Home, repoNames); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: auto-curate: %v\n", err)
+				} else {
+					fmt.Fprintf(os.Stderr, "Auto-curated scratchpad for %s\n", taskID)
+				}
+			}
+
+			// 3. Remove task workspace directory.
 			if err := workspace.Remove(cfg.Home, taskID); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: remove workspace: %v\n", err)
 			} else {
 				fmt.Fprintf(os.Stderr, "Removed workspace for %s\n", taskID)
 			}
 
-			// 3. Close the gig task.
+			// 4. Close the gig task.
 			if err := store.CloseTask(taskID, reason, "jeff"); err != nil {
 				return fmt.Errorf("close task: %w", err)
 			}

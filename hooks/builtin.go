@@ -8,10 +8,12 @@ func builtinHooks() []*Hook {
 		gigReadyTasksHook(),
 		jeffReposHook(),
 		jeffInstructionsHook(),
+		crewContextHook(),
 		// Task-level hooks.
 		taskContextHook(),
 		taskCommandsHook(),
 		checkpointNudgeHook(),
+		inboxCheckHook(),
 	}
 }
 
@@ -164,6 +166,17 @@ const jeffInstructionsContext = `## JEFF Commands
 - ` + "`jeff ship`" + `                                        — push branches + create PRs for all repos. Use this to create PRs
 - ` + "`jeff status`" + `                                      — overview of all active tasks and workspaces
 
+### Crew Management (orchestrator)
+
+- ` + "`jeff crew start <id> [--persona p] [--repos r1,r2]`" + ` — launch a worker in tmux
+- ` + "`jeff crew resume <id>`" + `                               — resume a worker in tmux
+- ` + "`jeff crew list`" + `                                      — show active workers
+- ` + "`jeff crew status <id>`" + `                               — worker detail + pane output
+- ` + "`jeff crew send <id> \"msg\" [--type nudge|status|divert|normal]`" + ` — message a worker
+- ` + "`jeff crew events [--since 5m]`" + `                       — recent gig activity across workers
+- ` + "`jeff crew stop <id>`" + `                                 — stop a worker
+- ` + "`jeff crew ack <msg-id> [\"response\"]`" + `                — acknowledge an orchestrator message
+
 Run ` + "`jeff <command> --help`" + ` for full flags and options.`
 
 // --- Task-level hooks ---
@@ -287,3 +300,76 @@ Commands available in this task workspace:
 - **Checkpoint after logical blocks** — committed code, passing tests, finished a subtask. Run ` + "`jeff checkpoint --done \"...\" --next \"...\"`" + ` to keep the user informed without them having to read diffs.
 - **Ship when ready for review** — ` + "`jeff ship`" + ` pushes all worktrees and creates PRs.
 - **Mark done when complete** — ` + "`jeff done`" + ` closes the task and cleans up.`
+
+// --- Crew hooks ---
+
+// crewContextHook injects crew management commands and active session list
+// into the orchestrator's session at JEFF_HOME level.
+func crewContextHook() *Hook {
+	return &Hook{
+		Name:    "crew-context",
+		Source:  SourceHome,
+		Event:   "SessionStart",
+		Matcher: "*",
+		ClaudeScript: func(ctx HookContext) string {
+			return claudeSessionStartDynamic(`## Active Crew Sessions
+` + "$(jeff crew list 2>/dev/null || echo '(no active sessions)')")
+		},
+		OpenCodeSnippet: func(ctx HookContext) string {
+			return jsDynamicSnippet("crew-context", `jeff crew list 2>/dev/null`)
+		},
+	}
+}
+
+// inboxCheckHook checks for pending orchestrator messages and surfaces
+// them to the worker agent. Only nudge-type messages go through this hook;
+// status/divert/normal messages are delivered directly via tmux.
+func inboxCheckHook() *Hook {
+	return &Hook{
+		Name:    "inbox-check",
+		Source:  SourceTask,
+		Event:   "PostToolUse",
+		Matcher: "*",
+		Timeout: 3,
+		ClaudeScript: func(ctx HookContext) string {
+			return buildInboxCheckScript(ctx.TaskID)
+		},
+		OpenCodeSnippet: func(ctx HookContext) string {
+			// PostToolUse hook; no OpenCode equivalent.
+			return ""
+		},
+	}
+}
+
+// buildInboxCheckScript generates a bash script that checks jeff.db
+// for pending nudge messages and surfaces them via the hook protocol.
+func buildInboxCheckScript(taskID string) string {
+	if taskID == "" {
+		return `#!/bin/bash
+set -euo pipefail
+cat > /dev/null
+`
+	}
+
+	return `#!/bin/bash
+set -euo pipefail
+
+INPUT=$(cat)
+
+# Quick check: any pending messages?
+PENDING=$(jeff crew inbox ` + taskID + ` --count 2>/dev/null || echo "0")
+[ "$PENDING" = "0" ] && exit 0
+
+# Fetch messages formatted for agent consumption.
+MESSAGES=$(jeff crew inbox ` + taskID + ` --format agent 2>/dev/null)
+
+jq -n \
+  --arg ctx "$MESSAGES" \
+  '{
+    hookSpecificOutput: {
+      hookEventName: "PostToolUse",
+      additionalContext: $ctx
+    }
+  }'
+`
+}

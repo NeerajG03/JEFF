@@ -46,8 +46,8 @@ type Model struct {
 	readyTasks []*gig.Task
 	allTasks   []*gig.Task // in_progress tasks
 	gigsSel    int
-	creating   bool // create-task form active
-	createForm createFormModel
+	formActive bool // task form (create or edit) active
+	createForm taskFormModel
 
 	// Set before quitting to trigger tmux attach.
 	AttachTarget string
@@ -75,10 +75,6 @@ type taskCreatedMsg struct {
 	task *gig.Task
 }
 
-type crewStartedMsg struct {
-	err    error
-	taskID string
-}
 
 // New creates a new dashboard model.
 func New(crewStore *crew.Store, gigStore *gig.Store) Model {
@@ -144,16 +140,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.status = fmt.Sprintf("Created %s: %s", msg.task.ID, msg.task.Title)
 		}
-		m.creating = false
-		return m, m.refreshCmd()
-
-	case crewStartedMsg:
-		if msg.err != nil {
-			m.status = fmt.Sprintf("Error starting crew: %v", msg.err)
-		} else {
-			m.status = fmt.Sprintf("Started crew for %s", msg.taskID)
-			m.tab = TabCrew // switch to crew tab to see the new worker
-		}
+		m.formActive = false
 		return m, m.refreshCmd()
 
 	case tea.KeyMsg:
@@ -164,7 +151,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.input.active {
 			return m.updateInput(msg)
 		}
-		if m.creating {
+		if m.formActive {
 			return m.updateCreateForm(msg)
 		}
 
@@ -255,15 +242,22 @@ func (m Model) updateGigs(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.gigsSel--
 		}
 	case "n":
-		m.creating = true
+		m.formActive = true
 		m.createForm = newCreateForm()
 		return m, m.createForm.fields[0].Focus()
-	case "w":
-		// Start a crew worker for the selected ready task.
+	case "e":
+		// Edit the selected task.
 		if m.gigsSel < len(items) {
 			task := items[m.gigsSel]
-			m.input.openForCrew(task.ID)
-			return m, m.input.input.Focus()
+			m.formActive = true
+			m.createForm = newEditForm(task)
+			return m, m.createForm.fields[0].Focus()
+		}
+	case "w":
+		// Start a crew worker — guide user to CLI (can't run full pickup from TUI).
+		if m.gigsSel < len(items) {
+			task := items[m.gigsSel]
+			m.status = fmt.Sprintf("Run: jeff crew start %s --persona jenko", task.ID)
 		}
 	}
 	return m, nil
@@ -294,19 +288,6 @@ func (m Model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.input.crewMode {
-			// Starting a crew worker — content is the persona name.
-			taskID := m.input.targetID
-			persona := content
-			m.input.close()
-			return m, func() tea.Msg {
-				_, err := crew.Send(m.crewStore, taskID, crew.MsgNormal, "")
-				// Actually start the crew via CLI.
-				_ = err
-				return crewStartedMsg{taskID: taskID, err: m.startCrewWorker(taskID, persona)}
-			}
-		}
-
 		taskID := m.input.targetID
 		msgType := crew.MessageType(m.input.msgType())
 		return m, func() tea.Msg {
@@ -320,24 +301,13 @@ func (m Model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) startCrewWorker(taskID, persona string) error {
-	// Claim task.
-	if _, err := m.gigStore.Claim(taskID, "jeff"); err != nil {
-		return fmt.Errorf("claim: %w", err)
-	}
-	// We can't run the full pickupTask from here (it's in cmd/jeff).
-	// Instead, use the crew store to record a session that the user
-	// can then resume with `jeff crew start` from CLI.
-	// For now, return an error guiding the user.
-	return fmt.Errorf("run: jeff crew start %s --persona %s", taskID, persona)
-}
 
 // --- Create form handling ---
 
 func (m Model) updateCreateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		m.creating = false
+		m.formActive = false
 		return m, nil
 	case "tab":
 		m.createForm.nextField()
@@ -347,8 +317,7 @@ func (m Model) updateCreateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.createForm.focusCmd()
 	case "enter":
 		if m.createForm.activeField == len(m.createForm.fields)-1 {
-			// Submit on enter from last field.
-			return m, m.submitCreateForm()
+			return m, m.submitTaskForm()
 		}
 		m.createForm.nextField()
 		return m, m.createForm.focusCmd()
@@ -360,19 +329,59 @@ func (m Model) updateCreateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) submitCreateForm() tea.Cmd {
+func (m Model) submitTaskForm() tea.Cmd {
 	title := m.createForm.fields[0].Value()
 	desc := m.createForm.fields[1].Value()
+	taskType := m.createForm.fields[2].Value()
+	priStr := m.createForm.fields[3].Value()
+
 	if title == "" {
-		m.status = "Title is required"
 		return nil
 	}
+
+	var pri gig.Priority = gig.P2
+	if len(priStr) == 1 && priStr[0] >= '0' && priStr[0] <= '4' {
+		pri = gig.Priority(priStr[0] - '0')
+	}
+
+	tt := gig.TypeTask
+	switch taskType {
+	case "bug":
+		tt = gig.TypeBug
+	case "feature":
+		tt = gig.TypeFeature
+	case "epic":
+		tt = gig.TypeEpic
+	case "chore":
+		tt = gig.TypeChore
+	}
+
+	if m.createForm.isEdit() {
+		editID := m.createForm.editing
+		return func() tea.Msg {
+			titleP := title
+			descP := desc
+			priP := pri
+			_, err := m.gigStore.Update(editID, gig.UpdateParams{
+				Title:       &titleP,
+				Description: &descP,
+				Priority:    &priP,
+			}, "jeff-dashboard")
+			if err != nil {
+				return taskCreatedMsg{err: err}
+			}
+			task, _ := m.gigStore.Get(editID)
+			return taskCreatedMsg{err: nil, task: task}
+		}
+	}
+
 	return func() tea.Msg {
-		params := gig.CreateParams{
+		task, err := m.gigStore.Create(gig.CreateParams{
 			Title:       title,
 			Description: desc,
-		}
-		task, err := m.gigStore.Create(params)
+			Type:        tt,
+			Priority:    pri,
+		})
 		return taskCreatedMsg{err: err, task: task}
 	}
 }
@@ -384,7 +393,7 @@ func (m Model) View() string {
 		return "Loading..."
 	}
 
-	w := m.width
+	w := m.width - 1 // leave 1 char margin to avoid wrapping
 
 	// Tab bar.
 	tabBar := m.renderTabBar(w)
@@ -441,7 +450,7 @@ func (m Model) renderTabBar(w int) string {
 }
 
 func (m Model) viewCrew(w int) string {
-	pw := w - 2 // panel inner width
+	pw := w // panels stretch to full width
 
 	sessionPanel := renderSessionList(m.sessions, m.crewSel, m.gigStore, m.taskTitles, pw)
 
@@ -469,7 +478,7 @@ func (m Model) viewCrew(w int) string {
 }
 
 func (m Model) viewGigs(w int) string {
-	pw := w - 2
+	pw := w
 
 	// Task list: ready tasks + in_progress tasks.
 	taskPanel := m.renderGigsList(pw)
@@ -477,10 +486,10 @@ func (m Model) viewGigs(w int) string {
 	// Detail for selected task.
 	detailPanel := m.renderGigDetail(pw)
 
-	// Create form overlay.
+	// Task form overlay (create or edit).
 	formPanel := ""
-	if m.creating {
-		formPanel = m.renderCreateForm(pw)
+	if m.formActive {
+		formPanel = m.renderTaskForm(pw)
 	}
 
 	// Input overlay for crew start (persona picker).
@@ -504,13 +513,10 @@ func (m Model) viewGigs(w int) string {
 }
 
 func (m Model) helpText() string {
-	if m.creating {
-		return "Tab next field  Enter submit/next  Esc cancel"
+	if m.formActive {
+		return "Tab next field  Shift+Tab prev  Enter submit/next  Esc cancel"
 	}
 	if m.input.active {
-		if m.input.crewMode {
-			return "Type persona name (jenko/schmidt/hardy/eric)  Enter start  Esc cancel"
-		}
 		return "Tab cycle type  Enter send  Esc cancel"
 	}
 	base := "1 crew  2 gigs  r refresh  q quit"
@@ -518,7 +524,7 @@ func (m Model) helpText() string {
 	case TabCrew:
 		return base + "  |  j/k navigate  enter attach  s send  c capture  x stop"
 	case TabGigs:
-		return base + "  |  j/k navigate  n new task  w start worker"
+		return base + "  |  j/k navigate  n new  e edit  w start worker"
 	}
 	return base
 }

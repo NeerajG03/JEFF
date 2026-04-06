@@ -40,8 +40,7 @@ func (m Model) renderGigsList(width int) string {
 			priStyled = lipglossOrange.Render(pri)
 		}
 
-		status := string(task.Status)
-		statusStyled := status
+		statusStyled := string(task.Status)
 		switch task.Status {
 		case gig.StatusOpen:
 			statusStyled = lipglossGreen.Render("ready")
@@ -87,7 +86,11 @@ func (m Model) renderGigDetail(width int) string {
 		meta = append(meta, renderField("Labels", strings.Join(task.Labels, ", ")))
 	}
 	if task.Description != "" {
-		desc := truncate(task.Description, 120)
+		desc := task.Description
+		// Show more description, wrap at width.
+		if len(desc) > width-20 {
+			desc = truncate(desc, width-20)
+		}
 		meta = append(meta, "")
 		meta = append(meta, dimStyle.Render("Description:"))
 		meta = append(meta, "  "+desc)
@@ -105,57 +108,89 @@ func (m Model) renderGigDetail(width int) string {
 		}
 	}
 
-	// Hint for ready tasks.
-	if task.Status == gig.StatusOpen {
-		meta = append(meta, "")
-		meta = append(meta, lipglossGreen.Render("Press w to start a worker for this task"))
-	}
-
 	content := header + "\n" + strings.Join(meta, "\n")
 	return panelStyle.Width(width).Render(content)
 }
 
-// --- Create form ---
+// --- Task form (create + edit) ---
 
-type createFormModel struct {
+type taskFormModel struct {
 	fields      []textinput.Model
 	activeField int
 	labels      []string
+	editing     string // task ID if editing, empty if creating
 }
 
-func newCreateForm() createFormModel {
+func newCreateForm() taskFormModel {
+	return newTaskForm("", "", "", "task", "2")
+}
+
+func newEditForm(task *gig.Task) taskFormModel {
+	return newTaskForm(
+		task.ID,
+		task.Title,
+		task.Description,
+		string(task.Type),
+		fmt.Sprintf("%d", task.Priority),
+	)
+}
+
+func newTaskForm(editID, title, desc, taskType, priority string) taskFormModel {
 	titleInput := textinput.New()
 	titleInput.Placeholder = "Task title (required)"
 	titleInput.CharLimit = 200
 	titleInput.Width = 60
+	titleInput.SetValue(title)
 
 	descInput := textinput.New()
 	descInput.Placeholder = "Description (optional)"
 	descInput.CharLimit = 500
 	descInput.Width = 60
+	descInput.SetValue(desc)
 
-	return createFormModel{
-		fields: []textinput.Model{titleInput, descInput},
-		labels: []string{"Title", "Description"},
+	typeInput := textinput.New()
+	typeInput.Placeholder = "task, bug, feature, epic, chore"
+	typeInput.CharLimit = 20
+	typeInput.Width = 30
+	typeInput.SetValue(taskType)
+
+	priInput := textinput.New()
+	priInput.Placeholder = "0-4 (0=critical, 2=medium, 4=backlog)"
+	priInput.CharLimit = 1
+	priInput.Width = 10
+	priInput.SetValue(priority)
+
+	return taskFormModel{
+		fields:  []textinput.Model{titleInput, descInput, typeInput, priInput},
+		labels:  []string{"Title", "Description", "Type", "Priority"},
+		editing: editID,
 	}
 }
 
-func (f *createFormModel) nextField() {
+func (f *taskFormModel) nextField() {
 	f.fields[f.activeField].Blur()
 	f.activeField = (f.activeField + 1) % len(f.fields)
 }
 
-func (f *createFormModel) prevField() {
+func (f *taskFormModel) prevField() {
 	f.fields[f.activeField].Blur()
 	f.activeField = (f.activeField - 1 + len(f.fields)) % len(f.fields)
 }
 
-func (f *createFormModel) focusCmd() tea.Cmd {
+func (f *taskFormModel) focusCmd() tea.Cmd {
 	return f.fields[f.activeField].Focus()
 }
 
-func (m Model) renderCreateForm(width int) string {
-	header := headerStyle.Render("New Task")
+func (f *taskFormModel) isEdit() bool {
+	return f.editing != ""
+}
+
+func (m Model) renderTaskForm(width int) string {
+	action := "New Task"
+	if m.createForm.isEdit() {
+		action = "Edit " + m.createForm.editing
+	}
+	header := headerStyle.Render(action)
 
 	var rows []string
 	for i, field := range m.createForm.fields {
@@ -167,7 +202,7 @@ func (m Model) renderCreateForm(width int) string {
 		rows = append(rows, prefix+labelStyle.Render(label+":")+field.View())
 	}
 
-	hint := dimStyle.Render("  Tab: next field  Enter: submit  Esc: cancel")
+	hint := dimStyle.Render("  Tab: next field  Shift+Tab: prev  Enter: submit  Esc: cancel")
 	content := header + "\n" + strings.Join(rows, "\n") + "\n" + hint
 	return panelStyle.Width(width).Render(content)
 }

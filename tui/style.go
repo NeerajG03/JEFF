@@ -35,6 +35,7 @@ var (
 	dimStyle = lipgloss.NewStyle().
 			Foreground(gruvGray)
 
+	// Status indicators.
 	statusRunning  = lipgloss.NewStyle().Foreground(gruvGreen).Bold(true).Render("●")
 	statusStarting = lipgloss.NewStyle().Foreground(gruvYellow).Render("◉")
 	statusDone     = lipgloss.NewStyle().Foreground(gruvGray).Render("○")
@@ -61,9 +62,23 @@ var (
 	valueStyle = lipgloss.NewStyle().
 			Foreground(gruvFg1)
 
-	lipglossWarning = lipgloss.NewStyle().
-			Foreground(gruvYellow).
-			Bold(true)
+	// Tab bar styles.
+	tabActiveStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(gruvFg0).
+			Background(gruvBg2).
+			Padding(0, 1)
+
+	tabInactiveStyle = lipgloss.NewStyle().
+				Foreground(gruvGray).
+				Padding(0, 1)
+
+	// Inline color helpers.
+	lipglossWarning = lipgloss.NewStyle().Foreground(gruvYellow).Bold(true)
+	lipglossRed     = lipgloss.NewStyle().Foreground(gruvRed).Bold(true)
+	lipglossOrange  = lipgloss.NewStyle().Foreground(gruvOrange).Bold(true)
+	lipglossGreen   = lipgloss.NewStyle().Foreground(gruvGreen)
+	lipglossBlue    = lipgloss.NewStyle().Foreground(gruvBlue)
 
 	// Layout helpers.
 	lipglossLeft  = lipgloss.NewStyle()

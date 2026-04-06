@@ -168,7 +168,11 @@ func discoverWorktrees(taskDir, repoFilter string) ([]shipWorktree, error) {
 			continue
 		}
 
-		branch := filepath.Base(target)
+		branch, err := currentBranch(target)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not detect branch for %s: %v\n", e.Name(), err)
+			continue
+		}
 		base := workspace.ReadBaseBranch(target)
 
 		// Strip "origin/" prefix from base for PR target.
@@ -227,6 +231,16 @@ func buildPRBody(store *gig.Store, task *gig.Task) string {
 
 	sb.WriteString("---\nTask: " + task.ID)
 	return sb.String()
+}
+
+// currentBranch returns the checked-out branch name for a worktree directory.
+// Unlike filepath.Base, this correctly handles branch names containing slashes (e.g. "jeff/gig-1234").
+func currentBranch(wtDir string) (string, error) {
+	out, err := gitutil.Output(wtDir, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", fmt.Errorf("rev-parse HEAD: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // hasUnpushedCommits checks if the branch has commits not yet on the remote.

@@ -3,61 +3,69 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
+// Gruvbox Dark palette.
 var (
-	// Colors.
-	subtle    = lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#383838"}
-	highlight = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	special   = lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#73F59F"}
-	dimmed    = lipgloss.AdaptiveColor{Light: "#A49FA5", Dark: "#777777"}
-	danger    = lipgloss.AdaptiveColor{Light: "#FF4672", Dark: "#ED567A"}
-	warning   = lipgloss.AdaptiveColor{Light: "#F1C40F", Dark: "#F1C40F"}
+	gruvBg0    = lipgloss.Color("#282828")
+	gruvBg1    = lipgloss.Color("#3c3836")
+	gruvBg2    = lipgloss.Color("#504945")
+	gruvFg0    = lipgloss.Color("#fbf1c7")
+	gruvFg1    = lipgloss.Color("#ebdbb2")
+	gruvFg2    = lipgloss.Color("#d5c4a1")
+	gruvGray   = lipgloss.Color("#928374")
+	gruvRed    = lipgloss.Color("#fb4934")
+	gruvGreen  = lipgloss.Color("#b8bb26")
+	gruvYellow = lipgloss.Color("#fabd2f")
+	gruvBlue   = lipgloss.Color("#83a598")
+	gruvPurple = lipgloss.Color("#d3869b")
+	gruvAqua   = lipgloss.Color("#8ec07c")
+	gruvOrange = lipgloss.Color("#fe8019")
 
 	// Base styles.
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(highlight)
+			Foreground(gruvYellow)
 
 	selectedStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(special)
+			Foreground(gruvAqua)
 
 	normalStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#1A1A1A", Dark: "#DDDDDD"})
+			Foreground(gruvFg1)
 
 	dimStyle = lipgloss.NewStyle().
-			Foreground(dimmed)
+			Foreground(gruvGray)
 
-	statusRunning  = lipgloss.NewStyle().Foreground(special).Bold(true).Render("●")
-	statusStarting = lipgloss.NewStyle().Foreground(warning).Render("◉")
-	statusDone     = lipgloss.NewStyle().Foreground(dimmed).Render("○")
-	statusFailed   = lipgloss.NewStyle().Foreground(danger).Bold(true).Render("✕")
-	statusStopped  = lipgloss.NewStyle().Foreground(warning).Render("■")
+	statusRunning  = lipgloss.NewStyle().Foreground(gruvGreen).Bold(true).Render("●")
+	statusStarting = lipgloss.NewStyle().Foreground(gruvYellow).Render("◉")
+	statusDone     = lipgloss.NewStyle().Foreground(gruvGray).Render("○")
+	statusFailed   = lipgloss.NewStyle().Foreground(gruvRed).Bold(true).Render("✕")
+	statusStopped  = lipgloss.NewStyle().Foreground(gruvOrange).Render("■")
 
 	// Panel styles.
 	panelStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(subtle).
+			BorderForeground(gruvBg2).
 			Padding(0, 1)
 
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(highlight)
+			Foreground(gruvBlue)
 
 	helpStyle = lipgloss.NewStyle().
-			Foreground(dimmed)
+			Foreground(gruvGray)
 
 	labelStyle = lipgloss.NewStyle().
-			Foreground(dimmed).
+			Foreground(gruvGray).
 			Width(14)
 
 	valueStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#1A1A1A", Dark: "#DDDDDD"})
+			Foreground(gruvFg1)
 
 	lipglossWarning = lipgloss.NewStyle().
-			Foreground(warning).
+			Foreground(gruvYellow).
 			Bold(true)
 
-	// Layout helpers for side-by-side rendering.
+	// Layout helpers.
 	lipglossLeft  = lipgloss.NewStyle()
 	lipglossRight = lipgloss.NewStyle()
 )

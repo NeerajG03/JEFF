@@ -254,7 +254,7 @@ func (m Model) View() string {
 	help := helpStyle.Render(helpText)
 
 	if m.status != "" {
-		help = lipgloss.NewStyle().Foreground(warning).Render(m.status) + "  " + help
+		help = lipgloss.NewStyle().Foreground(gruvYellow).Render(m.status) + "  " + help
 	}
 
 	// --- Compose ---

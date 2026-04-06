@@ -55,7 +55,7 @@ func renderInput(im inputModel, width int) string {
 
 	typeLabel := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(highlight).
+		Foreground(gruvAqua).
 		Render("[" + im.msgType() + "]")
 
 	header := fmt.Sprintf("Send to %s  %s  (Tab: cycle type, Enter: send, Esc: cancel)",

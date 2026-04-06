@@ -54,11 +54,11 @@ func renderSessionList(sessions []*crew.Session, selected int, gigStore *gig.Sto
 
 		age := shortRelTime(sess.StartedAt)
 
-		line := fmt.Sprintf(" %s %-10s %-8s %-8s %-30s %-30s %5s",
+		line := fmt.Sprintf("  %s %-10s %-8s %-8s %-30s %-30s %5s",
 			icon, sess.TaskID, persona, sess.Status, title, ckpt, age)
 
 		if i == selected {
-			line = selectedStyle.Render(">" + line[1:])
+			line = selectedStyle.Render("> " + line[2:])
 		}
 
 		rows = append(rows, line)

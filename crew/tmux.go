@@ -11,6 +11,9 @@ import (
 // TmuxSessionName is the fixed tmux session name for all crew windows.
 const TmuxSessionName = "jeff"
 
+// DashboardWindowName is the name of the first window (index 1) in the jeff session.
+const DashboardWindowName = "dashboard"
+
 // EnsureTmux checks that tmux is available in PATH.
 func EnsureTmux() error {
 	if _, err := exec.LookPath("tmux"); err != nil {
@@ -20,19 +23,20 @@ func EnsureTmux() error {
 }
 
 // EnsureSession ensures the "jeff" tmux session exists.
-// Creates a detached session if it doesn't. No-op if already present.
+// Creates a detached session with a "dashboard" window at index 1 (base-index).
+// No-op if already present.
 func EnsureSession() error {
 	if hasSession(TmuxSessionName) {
 		return nil
 	}
-	return tmuxRun("new-session", "-d", "-s", TmuxSessionName, "-x", "200", "-y", "50")
+	return tmuxRun("new-session", "-d", "-s", TmuxSessionName, "-n", DashboardWindowName, "-x", "200", "-y", "50")
 }
 
 // CreateWindow creates a new window in the jeff tmux session.
 // Returns the tmux target string "jeff:<name>".
 func CreateWindow(name, dir string) (string, error) {
 	target := TmuxSessionName + ":" + name
-	err := tmuxRun("new-window", "-t", TmuxSessionName, "-n", name, "-c", dir)
+	err := tmuxRun("new-window", "-a", "-t", TmuxSessionName, "-n", name, "-c", dir)
 	if err != nil {
 		return "", fmt.Errorf("create tmux window %q: %w", name, err)
 	}

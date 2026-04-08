@@ -9,6 +9,10 @@ import (
 	"github.com/google/uuid"
 )
 
+// initialPrompt is sent to workers after the agent launches so they begin
+// working immediately instead of sitting idle.
+const initialPrompt = "Read your CLAUDE.md for task context and begin working on the task."
+
 // StartOpts configures a new crew session.
 type StartOpts struct {
 	Persona string
@@ -91,6 +95,13 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 		return nil, fmt.Errorf("launch agent: %w", err)
 	}
 
+	// Send initial prompt so the worker starts immediately.
+	time.Sleep(3 * time.Second)
+	if err := SendCommand(target, initialPrompt); err != nil {
+		KillWindow(target)
+		return nil, fmt.Errorf("send initial prompt: %w", err)
+	}
+
 	pid, _ := WindowPID(target)
 	paneID, _ := PaneID(target)
 
@@ -145,6 +156,13 @@ func Start(store *Store, taskID, taskDir string, opts StartOpts) (*Session, erro
 		// Clean up the window if agent launch fails.
 		KillWindow(target)
 		return nil, fmt.Errorf("launch agent: %w", err)
+	}
+
+	// Send initial prompt so the worker starts immediately.
+	time.Sleep(3 * time.Second)
+	if err := SendCommand(target, initialPrompt); err != nil {
+		KillWindow(target)
+		return nil, fmt.Errorf("send initial prompt: %w", err)
 	}
 
 	// Get PID of the agent process.

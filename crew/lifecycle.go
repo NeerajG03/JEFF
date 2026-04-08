@@ -202,11 +202,11 @@ func Stop(store *Store, taskID string) error {
 	target := sess.TmuxSession + ":" + sess.WindowName
 
 	// Send interrupt to stop the agent.
-	if HasWindow(sess.WindowName) {
+	if HasWindowInSession(sess.TmuxSession, sess.WindowName) {
 		_ = SendInterrupt(target)
 		// Give the agent a moment to exit gracefully.
 		time.Sleep(3 * time.Second)
-		if HasWindow(sess.WindowName) {
+		if HasWindowInSession(sess.TmuxSession, sess.WindowName) {
 			_ = KillWindow(target)
 		}
 	}
@@ -239,7 +239,7 @@ func Refresh(store *Store, isTaskClosed func(taskID string) bool) error {
 	}
 
 	for _, sess := range sessions {
-		if HasWindow(sess.WindowName) {
+		if HasWindowInSession(sess.TmuxSession, sess.WindowName) {
 			_ = store.TouchSession(sess.TaskID)
 			continue
 		}

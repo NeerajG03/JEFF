@@ -132,8 +132,13 @@ func KillWindow(target string) error {
 // HasWindow checks if a window exists in the jeff session.
 // The name is sanitized before comparison to handle task IDs with dots.
 func HasWindow(name string) bool {
+	return HasWindowInSession(TmuxSessionName, name)
+}
+
+// HasWindowInSession checks if a window exists in a specific tmux session.
+func HasWindowInSession(sessionName, name string) bool {
 	name = SanitizeWindowName(name)
-	windows, err := ListWindows()
+	windows, err := ListWindowsInSession(sessionName)
 	if err != nil {
 		return false
 	}
@@ -147,7 +152,12 @@ func HasWindow(name string) bool {
 
 // ListWindows returns all window names in the jeff session.
 func ListWindows() ([]string, error) {
-	out, err := tmuxOutput("list-windows", "-t", TmuxSessionName, "-F", "#{window_name}")
+	return ListWindowsInSession(TmuxSessionName)
+}
+
+// ListWindowsInSession returns all window names in a specific tmux session.
+func ListWindowsInSession(sessionName string) ([]string, error) {
+	out, err := tmuxOutput("list-windows", "-t", sessionName, "-F", "#{window_name}")
 	if err != nil {
 		return nil, err
 	}

@@ -33,6 +33,7 @@ type HookContext struct {
 	TargetDir          string   // directory where hooks are being installed
 	GigHome            string   // gig home for SDK calls (empty = default)
 	TaskID             string   // gig task ID (set for task-level hooks)
+	OrchestratorID     string   // orchestrator ID (set for orchestrator hooks)
 	CheckpointPatterns []string // regex patterns that trigger checkpoint nudge
 }
 

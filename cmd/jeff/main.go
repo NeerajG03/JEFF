@@ -68,6 +68,7 @@ func main() {
 		projectCmd(),
 		completionCmd(),
 		crewCmd(),
+		orchestratorCmd(),
 		dashboardCmd(),
 	)
 

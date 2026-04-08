@@ -9,11 +9,13 @@ func builtinHooks() []*Hook {
 		jeffReposHook(),
 		jeffInstructionsHook(),
 		crewContextHook(),
+		orchestratorInboxHook(),
 		// Task-level hooks.
 		taskContextHook(),
 		taskCommandsHook(),
 		checkpointNudgeHook(),
 		inboxCheckHook(),
+		workerHeartbeatHook(),
 	}
 }
 
@@ -373,3 +375,101 @@ jq -n \
   }'
 `
 }
+
+// --- Signal hooks ---
+
+// workerHeartbeatHook fires after every tool use in a worker session.
+// It touches the session's last_seen timestamp as a heartbeat signal.
+func workerHeartbeatHook() *Hook {
+	return &Hook{
+		Name:    "worker-heartbeat",
+		Source:  SourceTask,
+		Event:   "PostToolUse",
+		Matcher: "*",
+		Timeout: 3,
+		ClaudeScript: func(ctx HookContext) string {
+			return buildWorkerHeartbeatScript(ctx.TaskID)
+		},
+		OpenCodeSnippet: func(ctx HookContext) string {
+			return ""
+		},
+	}
+}
+
+func buildWorkerHeartbeatScript(taskID string) string {
+	if taskID == "" {
+		return `#!/bin/bash
+set -euo pipefail
+cat > /dev/null
+`
+	}
+
+	return `#!/bin/bash
+set -euo pipefail
+
+INPUT=$(cat)
+
+# Touch last_seen as heartbeat signal.
+jeff crew touch ` + taskID + ` 2>/dev/null || true
+`
+}
+
+// orchestratorInboxHook fires after every tool use at JEFF_HOME level.
+// It detects if we're running inside an orchestrator session (jeff-N),
+// and if so, checks for pending to_orchestrator messages from workers.
+func orchestratorInboxHook() *Hook {
+	return &Hook{
+		Name:    "orchestrator-inbox",
+		Source:  SourceHome,
+		Event:   "PostToolUse",
+		Matcher: "*",
+		Timeout: 5,
+		ClaudeScript: func(ctx HookContext) string {
+			return buildOrchestratorInboxScript(ctx.OrchestratorID)
+		},
+		OpenCodeSnippet: func(ctx HookContext) string {
+			return ""
+		},
+	}
+}
+
+func buildOrchestratorInboxScript(orchestratorID string) string {
+	// If no orchestrator ID is configured, detect from tmux session name.
+	detection := `ORCH_ID="` + orchestratorID + `"`
+	if orchestratorID == "" {
+		detection = `# Auto-detect orchestrator ID from tmux session name.
+ORCH_ID=""
+if [ -n "${TMUX:-}" ]; then
+  SESSION_NAME=$(tmux display-message -p '#{session_name}' 2>/dev/null || true)
+  if echo "$SESSION_NAME" | grep -qE '^jeff-[0-9]+$'; then
+    ORCH_ID="$SESSION_NAME"
+  fi
+fi
+[ -z "$ORCH_ID" ] && exit 0`
+	}
+
+	return `#!/bin/bash
+set -euo pipefail
+
+INPUT=$(cat)
+
+` + detection + `
+
+# Quick check: any pending messages for this orchestrator?
+PENDING=$(jeff crew orchestrator-inbox "$ORCH_ID" --count 2>/dev/null || echo "0")
+[ "$PENDING" = "0" ] && exit 0
+
+# Fetch messages formatted for orchestrator consumption.
+MESSAGES=$(jeff crew orchestrator-inbox "$ORCH_ID" --format agent 2>/dev/null)
+
+jq -n \
+  --arg ctx "$MESSAGES" \
+  '{
+    hookSpecificOutput: {
+      hookEventName: "PostToolUse",
+      additionalContext: $ctx
+    }
+  }'
+`
+}
+

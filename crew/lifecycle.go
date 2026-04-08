@@ -39,6 +39,9 @@ func StartOrchestrator(store *Store, jeffHome string, agent string) (*Orchestrat
 		return nil, err
 	}
 
+	// Set JEFF_HOME on the tmux session so all panes inherit it.
+	_ = tmuxRun("set-environment", "-t", id, "JEFF_HOME", jeffHome)
+
 	// Launch agent in the orchestrator window.
 	if agent == "" {
 		agent = "claude"

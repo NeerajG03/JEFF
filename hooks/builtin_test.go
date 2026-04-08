@@ -40,8 +40,18 @@ func TestBuiltinHooksGenerateContent(t *testing.T) {
 }
 
 func TestHomeHooksAreSessionStart(t *testing.T) {
+	// Some home hooks are PostToolUse (e.g. orchestrator-inbox).
+	postToolUseHome := map[string]bool{
+		"orchestrator-inbox": true,
+	}
 	for _, h := range builtinHooks() {
 		if h.Source != SourceHome {
+			continue
+		}
+		if postToolUseHome[h.Name] {
+			if h.Event != "PostToolUse" {
+				t.Errorf("%s: event = %q, want PostToolUse", h.Name, h.Event)
+			}
 			continue
 		}
 		if h.Event != "SessionStart" {

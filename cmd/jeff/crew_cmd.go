@@ -35,6 +35,8 @@ func crewCmd() *cobra.Command {
 		crewAttachCmd(),
 		crewCaptureCmd(),
 		crewInboxCmd(),
+		crewOrchestratorInboxCmd(),
+		crewTouchCmd(),
 		crewAckCmd(),
 		crewEventsCmd(),
 	)
@@ -581,6 +583,103 @@ func crewAckCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func crewTouchCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "touch <gig-id>",
+		Short:  "Update last_seen heartbeat for a worker session",
+		Args:   cobra.ExactArgs(1),
+		Hidden: true, // Used by worker-heartbeat hook.
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cs, err := crew.Open(cfg.Home)
+			if err != nil {
+				return err
+			}
+			defer cs.Close()
+			return cs.TouchSession(args[0])
+		},
+	}
+}
+
+func crewOrchestratorInboxCmd() *cobra.Command {
+	var (
+		countOnly bool
+		format    string
+		ackAll    bool
+	)
+
+	cmd := &cobra.Command{
+		Use:    "orchestrator-inbox <orchestrator-id>",
+		Short:  "Show pending messages from workers to an orchestrator",
+		Args:   cobra.ExactArgs(1),
+		Hidden: true, // Used by orchestrator-inbox hook.
+		RunE: func(cmd *cobra.Command, args []string) error {
+			orchestratorID := args[0]
+
+			cs, err := crew.Open(cfg.Home)
+			if err != nil {
+				return err
+			}
+			defer cs.Close()
+
+			if ackAll {
+				// Ack all to_orchestrator messages for this orchestrator's workers.
+				workers, err := cs.WorkersForOrchestrator(orchestratorID)
+				if err != nil {
+					return err
+				}
+				for _, w := range workers {
+					_ = cs.AckAll(w.TaskID, "to_orchestrator")
+				}
+				return nil
+			}
+
+			msgs, err := cs.PendingOrchestratorMessages(orchestratorID)
+			if err != nil {
+				return err
+			}
+
+			if countOnly {
+				fmt.Println(len(msgs))
+				return nil
+			}
+
+			if len(msgs) == 0 {
+				if format != "agent" {
+					fmt.Println("0")
+				}
+				return nil
+			}
+
+			switch format {
+			case "agent":
+				fmt.Println("## Worker Messages")
+				fmt.Println()
+				for _, m := range msgs {
+					fmt.Printf("[Worker %s %s]: %s\n", m.TaskID, m.ID, m.Content)
+				}
+				fmt.Println()
+				fmt.Println("Acknowledge each message:")
+				for _, m := range msgs {
+					fmt.Printf("  jeff crew ack %s\n", m.ID)
+				}
+			case "json":
+				data, _ := json.MarshalIndent(msgs, "", "  ")
+				fmt.Println(string(data))
+			default:
+				for _, m := range msgs {
+					fmt.Printf("[%s] %s from %s: %s\n", m.Type, m.ID, m.TaskID, m.Content)
+				}
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVar(&countOnly, "count", false, "Only print the count")
+	cmd.Flags().StringVar(&format, "format", "text", "Output format: text, json, agent")
+	cmd.Flags().BoolVar(&ackAll, "ack", false, "Acknowledge all pending messages")
+	return cmd
 }
 
 func crewEventsCmd() *cobra.Command {

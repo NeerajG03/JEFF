@@ -42,6 +42,8 @@ func crewCmd() *cobra.Command {
 		crewAckCmd(),
 		crewEventsCmd(),
 		crewCleanupCmd(),
+		crewSignalOrchestratorCmd(),
+		crewCheckStallsCmd(),
 	)
 
 	return cmd
@@ -986,6 +988,65 @@ func relativeTime(t time.Time) string {
 	default:
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
+}
+
+func crewSignalOrchestratorCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "signal-orchestrator <gig-id> <message>",
+		Short: "Send a signal directly to a worker's orchestrator pane",
+		Long:  "Delivers a formatted message to the orchestrator's tmux pane. Used by stall watchdogs and completion hooks.",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			taskID, message := args[0], args[1]
+
+			cs, err := crew.Open(cfg.Home)
+			if err != nil {
+				return err
+			}
+			defer cs.Close()
+
+			if err := crew.SignalOrchestrator(cs, taskID, message); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(os.Stderr, "Signaled orchestrator for %s\n", taskID)
+			return nil
+		},
+	}
+}
+
+func crewCheckStallsCmd() *cobra.Command {
+	var threshold string
+
+	cmd := &cobra.Command{
+		Use:   "check-stalls",
+		Short: "Check for stalled workers and signal their orchestrators",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dur, err := time.ParseDuration(threshold)
+			if err != nil {
+				return fmt.Errorf("invalid threshold: %w", err)
+			}
+
+			cs, err := crew.Open(cfg.Home)
+			if err != nil {
+				return err
+			}
+			defer cs.Close()
+
+			n, err := crew.CheckStalls(cs, dur)
+			if err != nil {
+				return err
+			}
+
+			if n > 0 {
+				fmt.Fprintf(os.Stderr, "Signaled %d stalled worker(s)\n", n)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&threshold, "threshold", "10m", "Idle time before a worker is considered stalled")
+	return cmd
 }
 
 // crewStatusLabel returns a colored status string for crew sessions.

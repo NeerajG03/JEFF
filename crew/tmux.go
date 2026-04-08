@@ -293,20 +293,8 @@ func ListAllJeffWindows() ([]TmuxWindow, error) {
 	return result, nil
 }
 
-// HasWindowInSession checks if a window exists in a specific tmux session.
-func HasWindowInSession(sessionName, windowName string) bool {
-	windowName = SanitizeWindowName(windowName)
-	windows, err := ListSessionWindows(sessionName)
-	if err != nil {
-		return false
-	}
-	for _, w := range windows {
-		if w == windowName {
-			return true
-		}
-	}
-	return false
-}
+// HasWindowInSession is defined earlier in this file (line ~139).
+// The worker's cleanup code can use it directly.
 
 // KillSession kills an entire tmux session.
 func KillSession(sessionName string) error {

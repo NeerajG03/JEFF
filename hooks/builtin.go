@@ -411,6 +411,20 @@ INPUT=$(cat)
 
 # Touch last_seen as heartbeat signal.
 jeff crew touch ` + taskID + ` 2>/dev/null || true
+
+# Reset stall-detection watchdog: kill previous timer, start a new one.
+# If no heartbeat arrives within 10 minutes, signal the orchestrator.
+PIDFILE="/tmp/jeff-stall-` + taskID + `.pid"
+if [ -f "$PIDFILE" ]; then
+  kill "$(cat "$PIDFILE")" 2>/dev/null || true
+  rm -f "$PIDFILE"
+fi
+(
+  sleep 600
+  jeff crew signal-orchestrator ` + taskID + ` "stalled — no activity for 10 minutes" 2>/dev/null || true
+  rm -f "$PIDFILE"
+) &
+echo $! > "$PIDFILE"
 `
 }
 

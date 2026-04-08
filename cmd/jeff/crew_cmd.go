@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -70,6 +72,20 @@ func crewStartCmd() *cobra.Command {
 				return fmt.Errorf("open crew store: %w", err)
 			}
 			defer cs.Close()
+
+			// Auto-detect orchestrator from tmux session name if not set.
+			if orchestratorID == "" {
+				if os.Getenv("TMUX") != "" {
+					out, err := exec.Command("tmux", "display-message", "-p", "#{session_name}").Output()
+					if err == nil {
+						name := strings.TrimSpace(string(out))
+						if matched, _ := regexp.MatchString(`^jeff-\d+$`, name); matched {
+							orchestratorID = name
+							fmt.Fprintf(os.Stderr, "Auto-detected orchestrator: %s\n", orchestratorID)
+						}
+					}
+				}
+			}
 
 			var sess *crew.Session
 			if orchestratorID != "" {

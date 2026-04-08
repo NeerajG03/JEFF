@@ -320,6 +320,76 @@ func Send(store *Store, taskID string, msgType MessageType, content string) (*Me
 	return msg, nil
 }
 
+// SignalOrchestrator sends a formatted message directly to a worker's
+// orchestrator tmux pane. Unlike Ask, it does not store a DB message — it's
+// a fire-and-forget notification for completion/stall signals that the
+// orchestrator receives as user input immediately, even when idle.
+func SignalOrchestrator(store *Store, taskID, message string) error {
+	sess, err := store.GetSession(taskID)
+	if err != nil {
+		return fmt.Errorf("get session: %w", err)
+	}
+
+	if sess.OrchestratorID == "" {
+		// Not part of a crew — nothing to signal.
+		return nil
+	}
+
+	orch, err := store.GetOrchestrator(sess.OrchestratorID)
+	if err != nil {
+		return fmt.Errorf("get orchestrator %s: %w", sess.OrchestratorID, err)
+	}
+
+	target := orch.TmuxPane
+	if target == "" {
+		target = orch.TmuxSession + ":" + orch.TmuxWindow
+	}
+
+	formatted := fmt.Sprintf("[Worker %s]: %s", taskID, message)
+	if err := SendCommand(target, formatted); err != nil {
+		return fmt.Errorf("signal orchestrator: %w", err)
+	}
+
+	return nil
+}
+
+// CheckStalls iterates running workers and signals their orchestrators
+// for any worker whose last_seen exceeds the given threshold.
+func CheckStalls(store *Store, threshold time.Duration) (int, error) {
+	rows, err := store.db.Query(`
+		SELECT task_id, last_seen, orchestrator_id
+		FROM sessions
+		WHERE status IN ('running', 'starting') AND orchestrator_id != ''`)
+	if err != nil {
+		return 0, fmt.Errorf("query sessions: %w", err)
+	}
+	defer rows.Close()
+
+	signaled := 0
+	now := time.Now().UTC()
+	for rows.Next() {
+		var taskID, lastSeenStr, orchID string
+		if err := rows.Scan(&taskID, &lastSeenStr, &orchID); err != nil {
+			continue
+		}
+		lastSeen, err := time.Parse(timeLayout, lastSeenStr)
+		if err != nil {
+			continue
+		}
+		idle := now.Sub(lastSeen)
+		if idle < threshold {
+			continue
+		}
+
+		msg := fmt.Sprintf("stalled — no activity for %d minutes", int(idle.Minutes()))
+		if err := SignalOrchestrator(store, taskID, msg); err != nil {
+			continue
+		}
+		signaled++
+	}
+	return signaled, rows.Err()
+}
+
 // Ask sends a to_orchestrator message from a worker. It looks up the worker's
 // orchestrator_id, stores the message, and delivers it to the orchestrator's pane.
 func Ask(store *Store, taskID, content string) (*Message, error) {

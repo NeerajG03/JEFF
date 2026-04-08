@@ -32,6 +32,15 @@ func doneCmd() *cobra.Command {
 			}
 			defer store.Close()
 
+			// 0. Signal orchestrator before cleanup (best-effort).
+			if cs, cerr := crew.Open(cfg.Home); cerr == nil {
+				msg := fmt.Sprintf("completed — %s", reason)
+				if err := crew.SignalOrchestrator(cs, taskID, msg); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: signal orchestrator: %v\n", err)
+				}
+				cs.Close()
+			}
+
 			// 1. Clean up worktrees for repos associated with this task.
 			//    Resolve the actual worktree path from the task dir symlink
 			//    (taskDir/<repoName> → real worktree path) instead of

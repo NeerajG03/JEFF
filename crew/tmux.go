@@ -32,7 +32,7 @@ func EnsureSession() error {
 // Returns the tmux target string "jeff:<name>".
 func CreateWindow(name, dir string) (string, error) {
 	target := TmuxSessionName + ":" + name
-	err := tmuxRun("new-window", "-t", TmuxSessionName, "-n", name, "-c", dir)
+	err := tmuxRun("new-window", "-a", "-t", TmuxSessionName, "-n", name, "-c", dir)
 	if err != nil {
 		return "", fmt.Errorf("create tmux window %q: %w", name, err)
 	}

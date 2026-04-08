@@ -209,15 +209,23 @@ func HasSession(name string) bool {
 }
 
 // AttachToSession attaches to an arbitrary tmux session (not just "jeff").
+// Uses an interactive exec so tmux can take over the terminal's TTY.
 func AttachToSession(sessionName, windowName string) error {
 	target := sessionName
 	if windowName != "" {
 		target = sessionName + ":" + SanitizeWindowName(windowName)
 	}
+	var args []string
 	if InsideTmux() {
-		return tmuxRun("switch-client", "-t", target)
+		args = []string{"switch-client", "-t", target}
+	} else {
+		args = []string{"attach-session", "-t", target}
 	}
-	return tmuxRun("attach-session", "-t", target)
+	cmd := exec.Command("tmux", args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 // --- internal helpers ---

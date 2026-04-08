@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	jeff "github.com/NeerajG03/JEFF"
+	"github.com/NeerajG03/JEFF/crew"
 	"github.com/NeerajG03/JEFF/memory"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/spf13/cobra"
@@ -90,6 +91,15 @@ func doneCmd() *cobra.Command {
 				return fmt.Errorf("close task: %w", err)
 			}
 			fmt.Fprintf(os.Stderr, "Closed %s\n", taskID)
+
+			// 5. Run crew cleanup to reconcile tmux windows and worktrees.
+			if cs, err := crew.Open(cfg.Home); err == nil {
+				defer cs.Close()
+				if result, err := crew.Cleanup(cs, cfg.Home, false); err == nil && !result.IsClean() {
+					cleaned := len(result.OrphanedWindows) + len(result.StaleSessions) + len(result.StaleOrch) + len(result.OrphanWorktrees)
+					fmt.Fprintf(os.Stderr, "Crew cleanup: reconciled %d items\n", cleaned)
+				}
+			}
 
 			return nil
 		},

@@ -41,6 +41,7 @@ func crewCmd() *cobra.Command {
 		crewTouchCmd(),
 		crewAckCmd(),
 		crewEventsCmd(),
+		crewCleanupCmd(),
 	)
 
 	return cmd
@@ -759,6 +760,95 @@ func crewEventsCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&since, "since", "5m", "Time window (e.g. 5m, 1h, 30m)")
 	cmd.Flags().StringVar(&taskID, "task", "", "Filter to a specific task")
+	return cmd
+}
+
+func crewCleanupCmd() *cobra.Command {
+	var dryRun bool
+
+	cmd := &cobra.Command{
+		Use:   "cleanup",
+		Short: "Reconcile tmux windows with crew DB, remove orphans",
+		Long: `Reconcile tmux windows with the crew database:
+
+  1. Kill orphaned tmux windows (no matching DB session)
+  2. Mark stale DB sessions as failed (tmux window gone)
+  3. Mark stale orchestrators as stopped (tmux session gone)
+  4. Remove orphaned worktrees (no task workspace symlink)
+
+Use --dry-run to preview what would be cleaned up without making changes.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cs, err := crew.Open(cfg.Home)
+			if err != nil {
+				return err
+			}
+			defer cs.Close()
+
+			result, err := crew.Cleanup(cs, cfg.Home, dryRun)
+			if err != nil {
+				return err
+			}
+
+			if result.IsClean() {
+				fmt.Fprintln(os.Stderr, "Nothing to clean up — all in sync.")
+				return nil
+			}
+
+			prefix := ""
+			if dryRun {
+				prefix = "[dry-run] "
+			}
+
+			if len(result.OrphanedWindows) > 0 {
+				fmt.Fprintf(os.Stderr, "%sOrphaned tmux windows:\n", prefix)
+				for _, tw := range result.OrphanedWindows {
+					action := "killed"
+					if dryRun {
+						action = "would kill"
+					}
+					fmt.Fprintf(os.Stderr, "  %s %s:%s\n", action, tw.Session, tw.Window)
+				}
+			}
+
+			if len(result.StaleSessions) > 0 {
+				fmt.Fprintf(os.Stderr, "%sStale DB sessions:\n", prefix)
+				for _, taskID := range result.StaleSessions {
+					action := "marked failed"
+					if dryRun {
+						action = "would mark failed"
+					}
+					fmt.Fprintf(os.Stderr, "  %s %s\n", action, taskID)
+				}
+			}
+
+			if len(result.StaleOrch) > 0 {
+				fmt.Fprintf(os.Stderr, "%sStale orchestrators:\n", prefix)
+				for _, id := range result.StaleOrch {
+					action := "marked stopped"
+					if dryRun {
+						action = "would mark stopped"
+					}
+					fmt.Fprintf(os.Stderr, "  %s %s\n", action, id)
+				}
+			}
+
+			if len(result.OrphanWorktrees) > 0 {
+				fmt.Fprintf(os.Stderr, "%sOrphaned worktrees:\n", prefix)
+				for _, wt := range result.OrphanWorktrees {
+					action := "removed"
+					if dryRun {
+						action = "would remove"
+					}
+					fmt.Fprintf(os.Stderr, "  %s %s\n", action, wt)
+				}
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview cleanup without making changes")
 	return cmd
 }
 

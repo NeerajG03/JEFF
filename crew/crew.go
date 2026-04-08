@@ -19,19 +19,31 @@ const (
 	timeLayout = "2006-01-02T15:04:05Z"
 )
 
+// Orchestrator represents an orchestrator agent running in a tmux session.
+type Orchestrator struct {
+	ID          string     `json:"id"`
+	TmuxSession string     `json:"tmux_session"`
+	TmuxWindow  string     `json:"tmux_window"`
+	TmuxPane    string     `json:"tmux_pane"`
+	StartedAt   time.Time  `json:"started_at"`
+	Status      string     `json:"status"` // running, stopped
+}
+
 // Session represents a worker agent running in a tmux window.
 type Session struct {
-	TaskID      string     `json:"task_id"`
-	TmuxSession string     `json:"tmux_session"`
-	WindowName  string     `json:"window_name"`
-	TaskDir     string     `json:"task_dir"`
-	Persona     string     `json:"persona,omitempty"`
-	Repos       []string   `json:"repos,omitempty"`
-	PID         int        `json:"pid,omitempty"`
-	Status      string     `json:"status"` // starting, running, done, failed, stopped
-	StartedAt   time.Time  `json:"started_at"`
-	StoppedAt   *time.Time `json:"stopped_at,omitempty"`
-	LastSeen    time.Time  `json:"last_seen"`
+	TaskID         string     `json:"task_id"`
+	TmuxSession    string     `json:"tmux_session"`
+	WindowName     string     `json:"window_name"`
+	TmuxPane       string     `json:"tmux_pane,omitempty"`
+	TaskDir        string     `json:"task_dir"`
+	Persona        string     `json:"persona,omitempty"`
+	Repos          []string   `json:"repos,omitempty"`
+	OrchestratorID string     `json:"orchestrator_id,omitempty"`
+	PID            int        `json:"pid,omitempty"`
+	Status         string     `json:"status"` // starting, running, done, failed, stopped
+	StartedAt      time.Time  `json:"started_at"`
+	StoppedAt      *time.Time `json:"stopped_at,omitempty"`
+	LastSeen       time.Time  `json:"last_seen"`
 }
 
 // MessageType determines delivery mechanism and expected behavior.
@@ -118,18 +130,29 @@ func (s *Store) DB() *sql.DB {
 
 func migrate(db *sql.DB) error {
 	schema := `
-CREATE TABLE IF NOT EXISTS sessions (
-    task_id      TEXT PRIMARY KEY,
-    tmux_session TEXT NOT NULL DEFAULT 'jeff',
-    window_name  TEXT NOT NULL,
-    task_dir     TEXT NOT NULL,
-    persona      TEXT DEFAULT '',
-    repos        TEXT DEFAULT '[]',
-    pid          INTEGER DEFAULT 0,
-    status       TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS orchestrators (
+    id           TEXT PRIMARY KEY,
+    tmux_session TEXT NOT NULL,
+    tmux_window  TEXT NOT NULL DEFAULT '',
+    tmux_pane    TEXT NOT NULL DEFAULT '',
     started_at   TEXT NOT NULL,
-    stopped_at   TEXT,
-    last_seen    TEXT NOT NULL
+    status       TEXT NOT NULL DEFAULT 'running'
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    task_id         TEXT PRIMARY KEY,
+    tmux_session    TEXT NOT NULL DEFAULT 'jeff',
+    window_name     TEXT NOT NULL,
+    tmux_pane       TEXT NOT NULL DEFAULT '',
+    task_dir        TEXT NOT NULL,
+    persona         TEXT DEFAULT '',
+    repos           TEXT DEFAULT '[]',
+    orchestrator_id TEXT DEFAULT '',
+    pid             INTEGER DEFAULT 0,
+    status          TEXT NOT NULL,
+    started_at      TEXT NOT NULL,
+    stopped_at      TEXT,
+    last_seen       TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -150,7 +173,20 @@ CREATE INDEX IF NOT EXISTS idx_messages_task
     ON messages(task_id, created_at);
 `
 	_, err := db.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Additive migrations for existing databases.
+	addCol := []string{
+		"ALTER TABLE sessions ADD COLUMN orchestrator_id TEXT DEFAULT ''",
+		"ALTER TABLE sessions ADD COLUMN tmux_pane TEXT NOT NULL DEFAULT ''",
+	}
+	for _, stmt := range addCol {
+		_, _ = db.Exec(stmt) // ignore "duplicate column" errors
+	}
+
+	return nil
 }
 
 // --- Session CRUD ---
@@ -169,20 +205,22 @@ func (s *Store) PutSession(sess *Session) error {
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO sessions (task_id, tmux_session, window_name, task_dir, persona, repos, pid, status, started_at, stopped_at, last_seen)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO sessions (task_id, tmux_session, window_name, tmux_pane, task_dir, persona, repos, orchestrator_id, pid, status, started_at, stopped_at, last_seen)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(task_id) DO UPDATE SET
-			tmux_session = excluded.tmux_session,
-			window_name  = excluded.window_name,
-			task_dir     = excluded.task_dir,
-			persona      = excluded.persona,
-			repos        = excluded.repos,
-			pid          = excluded.pid,
-			status       = excluded.status,
-			stopped_at   = excluded.stopped_at,
-			last_seen    = excluded.last_seen`,
-		sess.TaskID, sess.TmuxSession, sess.WindowName, sess.TaskDir,
-		sess.Persona, string(repos), sess.PID, sess.Status,
+			tmux_session    = excluded.tmux_session,
+			window_name     = excluded.window_name,
+			tmux_pane       = excluded.tmux_pane,
+			task_dir        = excluded.task_dir,
+			persona         = excluded.persona,
+			repos           = excluded.repos,
+			orchestrator_id = excluded.orchestrator_id,
+			pid             = excluded.pid,
+			status          = excluded.status,
+			stopped_at      = excluded.stopped_at,
+			last_seen       = excluded.last_seen`,
+		sess.TaskID, sess.TmuxSession, sess.WindowName, sess.TmuxPane, sess.TaskDir,
+		sess.Persona, string(repos), sess.OrchestratorID, sess.PID, sess.Status,
 		sess.StartedAt.UTC().Format(timeLayout), stoppedAt,
 		sess.LastSeen.UTC().Format(timeLayout),
 	)
@@ -192,16 +230,16 @@ func (s *Store) PutSession(sess *Session) error {
 // GetSession retrieves a session by task ID.
 func (s *Store) GetSession(taskID string) (*Session, error) {
 	row := s.db.QueryRow(`
-		SELECT task_id, tmux_session, window_name, task_dir, persona, repos,
-		       pid, status, started_at, stopped_at, last_seen
+		SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, repos,
+		       orchestrator_id, pid, status, started_at, stopped_at, last_seen
 		FROM sessions WHERE task_id = ?`, taskID)
 	return scanSession(row)
 }
 
 // ListSessions returns sessions. If activeOnly is true, excludes terminal statuses.
 func (s *Store) ListSessions(activeOnly bool) ([]*Session, error) {
-	query := `SELECT task_id, tmux_session, window_name, task_dir, persona, repos,
-	                 pid, status, started_at, stopped_at, last_seen
+	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, repos,
+	                 orchestrator_id, pid, status, started_at, stopped_at, last_seen
 	          FROM sessions`
 	if activeOnly {
 		query += ` WHERE status NOT IN ('done', 'failed', 'stopped')`
@@ -254,6 +292,115 @@ func (s *Store) TouchSession(taskID string) error {
 	now := time.Now().UTC().Format(timeLayout)
 	_, err := s.db.Exec(`UPDATE sessions SET last_seen = ? WHERE task_id = ?`, now, taskID)
 	return err
+}
+
+// --- Orchestrator CRUD ---
+
+// PutOrchestrator inserts or updates an orchestrator record.
+func (s *Store) PutOrchestrator(o *Orchestrator) error {
+	_, err := s.db.Exec(`
+		INSERT INTO orchestrators (id, tmux_session, tmux_window, tmux_pane, started_at, status)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			tmux_session = excluded.tmux_session,
+			tmux_window  = excluded.tmux_window,
+			tmux_pane    = excluded.tmux_pane,
+			status       = excluded.status`,
+		o.ID, o.TmuxSession, o.TmuxWindow, o.TmuxPane,
+		o.StartedAt.UTC().Format(timeLayout), o.Status,
+	)
+	return err
+}
+
+// GetOrchestrator retrieves an orchestrator by ID.
+func (s *Store) GetOrchestrator(id string) (*Orchestrator, error) {
+	var o Orchestrator
+	var startedAt string
+	err := s.db.QueryRow(`
+		SELECT id, tmux_session, tmux_window, tmux_pane, started_at, status
+		FROM orchestrators WHERE id = ?`, id).Scan(
+		&o.ID, &o.TmuxSession, &o.TmuxWindow, &o.TmuxPane, &startedAt, &o.Status,
+	)
+	if err != nil {
+		return nil, err
+	}
+	o.StartedAt = parseTime(startedAt)
+	return &o, nil
+}
+
+// ListOrchestrators returns orchestrators. If activeOnly, filters to status='running'.
+func (s *Store) ListOrchestrators(activeOnly bool) ([]*Orchestrator, error) {
+	query := `SELECT id, tmux_session, tmux_window, tmux_pane, started_at, status FROM orchestrators`
+	if activeOnly {
+		query += ` WHERE status = 'running'`
+	}
+	query += ` ORDER BY started_at DESC`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []*Orchestrator
+	for rows.Next() {
+		var o Orchestrator
+		var startedAt string
+		if err := rows.Scan(&o.ID, &o.TmuxSession, &o.TmuxWindow, &o.TmuxPane, &startedAt, &o.Status); err != nil {
+			return nil, err
+		}
+		o.StartedAt = parseTime(startedAt)
+		result = append(result, &o)
+	}
+	return result, rows.Err()
+}
+
+// NextOrchestratorID returns the next auto-increment session name (jeff-1, jeff-2, ...).
+func (s *Store) NextOrchestratorID() (string, error) {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM orchestrators`).Scan(&count)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("jeff-%d", count+1), nil
+}
+
+// WorkersForOrchestrator returns sessions belonging to an orchestrator.
+func (s *Store) WorkersForOrchestrator(orchestratorID string) ([]*Session, error) {
+	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, repos,
+	                 orchestrator_id, pid, status, started_at, stopped_at, last_seen
+	          FROM sessions WHERE orchestrator_id = ? ORDER BY started_at DESC`
+	rows, err := s.db.Query(query, orchestratorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []*Session
+	for rows.Next() {
+		sess, err := scanSessionRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, sess)
+	}
+	return sessions, rows.Err()
+}
+
+// PendingOrchestratorMessages returns unacked to_orchestrator messages
+// for all workers belonging to the given orchestrator.
+func (s *Store) PendingOrchestratorMessages(orchestratorID string) ([]*Message, error) {
+	rows, err := s.db.Query(`
+		SELECT m.id, m.task_id, m.direction, m.msg_type, m.content, m.response, m.created_at, m.acked_at
+		FROM messages m
+		JOIN sessions s ON m.task_id = s.task_id
+		WHERE s.orchestrator_id = ? AND m.direction = 'to_orchestrator' AND m.acked_at IS NULL
+		ORDER BY m.created_at ASC`, orchestratorID)
+	if err != nil {
+		return nil, fmt.Errorf("query orchestrator messages: %w", err)
+	}
+	defer rows.Close()
+	return scanMessages(rows)
 }
 
 // --- Message CRUD ---
@@ -341,8 +488,8 @@ func scanSession(row scannable) (*Session, error) {
 	var stoppedAt *string
 
 	err := row.Scan(
-		&sess.TaskID, &sess.TmuxSession, &sess.WindowName, &sess.TaskDir,
-		&sess.Persona, &repos, &sess.PID, &sess.Status,
+		&sess.TaskID, &sess.TmuxSession, &sess.WindowName, &sess.TmuxPane, &sess.TaskDir,
+		&sess.Persona, &repos, &sess.OrchestratorID, &sess.PID, &sess.Status,
 		&startedAt, &stoppedAt, &lastSeen,
 	)
 	if err != nil {

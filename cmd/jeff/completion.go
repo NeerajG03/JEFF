@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/NeerajG03/JEFF/crew"
 	"github.com/NeerajG03/JEFF/persona"
 	"github.com/NeerajG03/JEFF/skill"
 	"github.com/NeerajG03/JEFF/workspace"
@@ -94,6 +95,30 @@ func activeTaskCompletion(cmd *cobra.Command, args []string, toComplete string) 
 			}
 		}
 		ids = append(ids, td.TaskID+"\t"+desc)
+	}
+	return ids, cobra.ShellCompDirectiveNoFileComp
+}
+
+// ── Orchestrator completions ─────────────────────────────────────────
+
+// orchestratorCompletion completes orchestrator IDs.
+func orchestratorCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if cfg == nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	cs, err := crew.Open(cfg.Home)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	defer cs.Close()
+
+	orchs, err := cs.ListOrchestrators(false)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	var ids []string
+	for _, o := range orchs {
+		ids = append(ids, o.ID+"\t"+o.Status)
 	}
 	return ids, cobra.ShellCompDirectiveNoFileComp
 }

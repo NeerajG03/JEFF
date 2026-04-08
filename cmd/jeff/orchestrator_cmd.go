@@ -86,7 +86,7 @@ func orchestratorListCmd() *cobra.Command {
 }
 
 func orchestratorAttachCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "attach <orchestrator-id>",
 		Short: "Attach to an orchestrator's tmux session",
 		Args:  cobra.ExactArgs(1),
@@ -106,4 +106,6 @@ func orchestratorAttachCmd() *cobra.Command {
 			return crew.AttachToSession(orch.TmuxSession, "")
 		},
 	}
+	cmd.ValidArgsFunction = orchestratorCompletion
+	return cmd
 }

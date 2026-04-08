@@ -104,6 +104,7 @@ func crewStartCmd() *cobra.Command {
 	cmd.ValidArgsFunction = readyTaskCompletion
 	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
 	cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)
+	cmd.RegisterFlagCompletionFunc("orchestrator", orchestratorCompletion)
 	return cmd
 }
 
@@ -529,16 +530,12 @@ func crewInboxCmd() *cobra.Command {
 
 			switch format {
 			case "agent":
-				// Format for hook injection.
+				// Format for hook injection. Auto-ack since delivery is confirmed.
 				fmt.Println("## Orchestrator Messages")
 				fmt.Println()
 				for _, m := range msgs {
 					fmt.Printf("[Orchestrator %s]: %s\n", m.ID, m.Content)
-				}
-				fmt.Println()
-				fmt.Println("Acknowledge each message:")
-				for _, m := range msgs {
-					fmt.Printf("  jeff crew ack %s\n", m.ID)
+					cs.AckMessage(m.ID, "")
 				}
 			case "json":
 				data, _ := json.MarshalIndent(msgs, "", "  ")
@@ -654,15 +651,12 @@ func crewOrchestratorInboxCmd() *cobra.Command {
 
 			switch format {
 			case "agent":
+				// Format for hook injection. Auto-ack since delivery is confirmed.
 				fmt.Println("## Worker Messages")
 				fmt.Println()
 				for _, m := range msgs {
-					fmt.Printf("[Worker %s %s]: %s\n", m.TaskID, m.ID, m.Content)
-				}
-				fmt.Println()
-				fmt.Println("Acknowledge each message:")
-				for _, m := range msgs {
-					fmt.Printf("  jeff crew ack %s\n", m.ID)
+					fmt.Printf("[Worker %s]: %s\n", m.TaskID, m.Content)
+					cs.AckMessage(m.ID, "")
 				}
 			case "json":
 				data, _ := json.MarshalIndent(msgs, "", "  ")

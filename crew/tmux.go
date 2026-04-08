@@ -169,6 +169,57 @@ func WindowPID(target string) (int, error) {
 	return pid, nil
 }
 
+// CreateSession creates a new tmux session with the given name and initial window.
+// Returns the target "session:window".
+func CreateSession(sessionName, windowName, dir string) (string, error) {
+	if hasSession(sessionName) {
+		return "", fmt.Errorf("tmux session %q already exists", sessionName)
+	}
+	err := tmuxRun("new-session", "-d", "-s", sessionName, "-n", windowName, "-c", dir, "-x", "200", "-y", "50")
+	if err != nil {
+		return "", fmt.Errorf("create tmux session %q: %w", sessionName, err)
+	}
+	return sessionName + ":" + windowName, nil
+}
+
+// CreateWindowInSession creates a new window in an arbitrary tmux session.
+// Returns the target "session:window".
+func CreateWindowInSession(sessionName, windowName, dir string) (string, error) {
+	windowName = SanitizeWindowName(windowName)
+	target := sessionName + ":" + windowName
+	err := tmuxRun("new-window", "-a", "-t", sessionName, "-n", windowName, "-c", dir)
+	if err != nil {
+		return "", fmt.Errorf("create tmux window %q in %q: %w", windowName, sessionName, err)
+	}
+	return target, nil
+}
+
+// PaneID returns the unique pane ID (e.g. %42) for a target.
+func PaneID(target string) (string, error) {
+	out, err := tmuxOutput("display-message", "-t", target, "-p", "#{pane_id}")
+	if err != nil {
+		return "", fmt.Errorf("get pane ID for %q: %w", target, err)
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// HasSession checks if a tmux session exists.
+func HasSession(name string) bool {
+	return hasSession(name)
+}
+
+// AttachToSession attaches to an arbitrary tmux session (not just "jeff").
+func AttachToSession(sessionName, windowName string) error {
+	target := sessionName
+	if windowName != "" {
+		target = sessionName + ":" + SanitizeWindowName(windowName)
+	}
+	if InsideTmux() {
+		return tmuxRun("switch-client", "-t", target)
+	}
+	return tmuxRun("attach-session", "-t", target)
+}
+
 // --- internal helpers ---
 
 func hasSession(name string) bool {

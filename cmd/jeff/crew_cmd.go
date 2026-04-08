@@ -43,8 +43,9 @@ func crewCmd() *cobra.Command {
 
 func crewStartCmd() *cobra.Command {
 	var (
-		personaName string
-		repos       []string
+		personaName    string
+		repos          []string
+		orchestratorID string
 	)
 
 	cmd := &cobra.Command{
@@ -67,16 +68,26 @@ func crewStartCmd() *cobra.Command {
 			}
 			defer cs.Close()
 
-			sess, err := crew.Start(cs, taskID, taskDir, crew.StartOpts{
-				Persona: personaName,
-				Repos:   repos,
-				Agent:   string(cfg.Agent),
-			})
+			var sess *crew.Session
+			if orchestratorID != "" {
+				// Launch as a tab in the orchestrator's tmux session.
+				sess, err = crew.StartWorkerForOrchestrator(cs, orchestratorID, taskID, taskDir, crew.StartOpts{
+					Persona: personaName,
+					Repos:   repos,
+					Agent:   string(cfg.Agent),
+				})
+			} else {
+				sess, err = crew.Start(cs, taskID, taskDir, crew.StartOpts{
+					Persona: personaName,
+					Repos:   repos,
+					Agent:   string(cfg.Agent),
+				})
+			}
 			if err != nil {
 				return err
 			}
 
-			fmt.Fprintf(os.Stderr, "Started %s in tmux window %s\n", taskID, sess.WindowName)
+			fmt.Fprintf(os.Stderr, "Started %s in tmux window %s:%s\n", taskID, sess.TmuxSession, sess.WindowName)
 			// Structured output for agent consumption.
 			data, _ := json.Marshal(sess)
 			fmt.Println(string(data))
@@ -86,6 +97,7 @@ func crewStartCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&personaName, "persona", "", "Persona template")
 	cmd.Flags().StringSliceVar(&repos, "repos", nil, "Repos to set up worktrees for")
+	cmd.Flags().StringVar(&orchestratorID, "orchestrator", "", "Orchestrator ID to attach worker to")
 	cmd.ValidArgsFunction = readyTaskCompletion
 	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
 	cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)

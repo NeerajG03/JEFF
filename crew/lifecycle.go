@@ -17,6 +17,106 @@ type StartOpts struct {
 	Agent   string // agent command (e.g. "claude"), defaults to "claude"
 }
 
+// StartOrchestrator creates a new tmux session (jeff-N) and launches the
+// orchestrator agent in the first window. Records the orchestrator in the DB.
+func StartOrchestrator(store *Store, jeffHome string, agent string) (*Orchestrator, error) {
+	if err := EnsureTmux(); err != nil {
+		return nil, err
+	}
+
+	id, err := store.NextOrchestratorID()
+	if err != nil {
+		return nil, fmt.Errorf("next orchestrator ID: %w", err)
+	}
+
+	windowName := "orchestrator"
+	target, err := CreateSession(id, windowName, jeffHome)
+	if err != nil {
+		return nil, err
+	}
+
+	// Launch agent in the orchestrator window.
+	if agent == "" {
+		agent = "claude"
+	}
+	agentCmd := agent + " --dangerously-skip-permissions"
+	if err := SendCommand(target, agentCmd); err != nil {
+		return nil, fmt.Errorf("launch orchestrator agent: %w", err)
+	}
+
+	paneID, _ := PaneID(target)
+
+	now := time.Now().UTC()
+	orch := &Orchestrator{
+		ID:          id,
+		TmuxSession: id,
+		TmuxWindow:  windowName,
+		TmuxPane:    paneID,
+		StartedAt:   now,
+		Status:      "running",
+	}
+
+	if err := store.PutOrchestrator(orch); err != nil {
+		return nil, fmt.Errorf("record orchestrator: %w", err)
+	}
+
+	return orch, nil
+}
+
+// StartWorkerForOrchestrator creates a tmux window in the orchestrator's session
+// for a worker, launches the agent, and records the session with orchestrator_id set.
+func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir string, opts StartOpts) (*Session, error) {
+	orch, err := store.GetOrchestrator(orchestratorID)
+	if err != nil {
+		return nil, fmt.Errorf("get orchestrator: %w", err)
+	}
+
+	if err := EnsureTmux(); err != nil {
+		return nil, err
+	}
+
+	windowName := SanitizeWindowName(taskID)
+	target, err := CreateWindowInSession(orch.TmuxSession, windowName, taskDir)
+	if err != nil {
+		return nil, err
+	}
+
+	agent := opts.Agent
+	if agent == "" {
+		agent = "claude"
+	}
+	agentCmd := agent + " --dangerously-skip-permissions"
+	if err := SendCommand(target, agentCmd); err != nil {
+		KillWindow(target)
+		return nil, fmt.Errorf("launch agent: %w", err)
+	}
+
+	pid, _ := WindowPID(target)
+	paneID, _ := PaneID(target)
+
+	now := time.Now().UTC()
+	sess := &Session{
+		TaskID:         taskID,
+		TmuxSession:    orch.TmuxSession,
+		WindowName:     windowName,
+		TmuxPane:       paneID,
+		TaskDir:        taskDir,
+		Persona:        opts.Persona,
+		Repos:          opts.Repos,
+		OrchestratorID: orchestratorID,
+		PID:            pid,
+		Status:         "running",
+		StartedAt:      now,
+		LastSeen:       now,
+	}
+
+	if err := store.PutSession(sess); err != nil {
+		return nil, fmt.Errorf("record session: %w", err)
+	}
+
+	return sess, nil
+}
+
 // Start creates a tmux window for a task and launches the agent.
 // The caller is responsible for running pickup (workspace setup) beforehand.
 // Start only handles tmux window creation + agent launch + session recording.
@@ -78,7 +178,7 @@ func Stop(store *Store, taskID string) error {
 		return fmt.Errorf("get session: %w", err)
 	}
 
-	target := SessionTarget(sess.TmuxSession, sess.WindowName)
+	target := sess.TmuxSession + ":" + sess.WindowName
 
 	// Send interrupt to stop the agent.
 	if HasWindow(sess.WindowName) {
@@ -140,7 +240,7 @@ func Send(store *Store, taskID string, msgType MessageType, content string) (*Me
 		return nil, fmt.Errorf("get session: %w", err)
 	}
 
-	target := SessionTarget(sess.TmuxSession, sess.WindowName)
+	target := sess.TmuxSession + ":" + sess.WindowName
 
 	msg := &Message{
 		ID:        generateMsgID(),
@@ -153,9 +253,12 @@ func Send(store *Store, taskID string, msgType MessageType, content string) (*Me
 
 	switch msgType {
 	case MsgNudge:
-		// Write to DB only; hook picks it up at next tool use.
+		// Store and send to pane, same as normal message.
 		if err := store.SendMessage(msg); err != nil {
 			return nil, fmt.Errorf("store nudge: %w", err)
+		}
+		if err := SendCommand(target, content); err != nil {
+			return nil, fmt.Errorf("send nudge: %w", err)
 		}
 
 	case MsgStatus:

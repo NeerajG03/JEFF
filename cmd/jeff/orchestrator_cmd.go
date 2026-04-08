@@ -26,7 +26,8 @@ func orchestratorCmd() *cobra.Command {
 }
 
 func orchestratorStartCmd() *cobra.Command {
-	return &cobra.Command{
+	var name string
+	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Launch a new orchestrator session",
 		Args:  cobra.NoArgs,
@@ -37,7 +38,7 @@ func orchestratorStartCmd() *cobra.Command {
 			}
 			defer cs.Close()
 
-			orch, err := crew.StartOrchestrator(cs, cfg.Home, string(cfg.Agent))
+			orch, err := crew.StartOrchestrator(cs, cfg.Home, string(cfg.Agent), name)
 			if err != nil {
 				return err
 			}
@@ -51,6 +52,8 @@ func orchestratorStartCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&name, "name", "", "custom name suffix for the session (e.g. --name work → jeff-work)")
+	return cmd
 }
 
 func orchestratorListCmd() *cobra.Command {

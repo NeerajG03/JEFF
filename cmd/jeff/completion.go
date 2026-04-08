@@ -101,7 +101,7 @@ func activeTaskCompletion(cmd *cobra.Command, args []string, toComplete string) 
 
 // ── Orchestrator completions ─────────────────────────────────────────
 
-// orchestratorCompletion completes orchestrator IDs.
+// orchestratorCompletion completes orchestrator IDs — only running sessions (attachable).
 func orchestratorCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if cfg == nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
@@ -112,13 +112,13 @@ func orchestratorCompletion(cmd *cobra.Command, args []string, toComplete string
 	}
 	defer cs.Close()
 
-	orchs, err := cs.ListOrchestrators(false)
+	orchs, err := cs.ListOrchestrators(true) // activeOnly: only running sessions are attachable
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	var ids []string
 	for _, o := range orchs {
-		ids = append(ids, o.ID+"\t"+o.Status)
+		ids = append(ids, o.ID+"\t"+o.TmuxSession)
 	}
 	return ids, cobra.ShellCompDirectiveNoFileComp
 }

@@ -21,16 +21,27 @@ type StartOpts struct {
 	Agent   string // agent command (e.g. "claude"), defaults to "claude"
 }
 
-// StartOrchestrator creates a new tmux session (jeff-N) and launches the
+// StartOrchestrator creates a new tmux session (jeff-N or jeff-<name>) and launches the
 // orchestrator agent in the first window. Records the orchestrator in the DB.
-func StartOrchestrator(store *Store, jeffHome string, agent string) (*Orchestrator, error) {
+// If name is non-empty, the session is named jeff-<name>; otherwise jeff-N is auto-assigned.
+func StartOrchestrator(store *Store, jeffHome string, agent string, name string) (*Orchestrator, error) {
 	if err := EnsureTmux(); err != nil {
 		return nil, err
 	}
 
-	id, err := store.NextOrchestratorID()
-	if err != nil {
-		return nil, fmt.Errorf("next orchestrator ID: %w", err)
+	var id string
+	if name != "" {
+		id = "jeff-" + name
+		// Verify the ID isn't already in use.
+		if existing, err := store.GetOrchestrator(id); err == nil && existing.Status == "running" {
+			return nil, fmt.Errorf("orchestrator %q is already running", id)
+		}
+	} else {
+		var err error
+		id, err = store.NextOrchestratorID()
+		if err != nil {
+			return nil, fmt.Errorf("next orchestrator ID: %w", err)
+		}
 	}
 
 	windowName := "orchestrator"

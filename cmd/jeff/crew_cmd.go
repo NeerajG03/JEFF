@@ -63,20 +63,8 @@ func crewStartCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			taskID := args[0]
 
-			// Run the pickup sequence (claim, workspace, worktrees, hooks, skills).
-			taskDir, err := pickupTask(taskID, personaName, repos, orchestratorID)
-			if err != nil {
-				return err
-			}
-
-			// Open crew store and start tmux session.
-			cs, err := crew.Open(cfg.Home)
-			if err != nil {
-				return fmt.Errorf("open crew store: %w", err)
-			}
-			defer cs.Close()
-
 			// Auto-detect orchestrator from tmux session name if not set.
+			// Must happen before pickupTask so hooks get the orchestrator ID.
 			if orchestratorID == "" {
 				if os.Getenv("TMUX") != "" {
 					out, err := exec.Command("tmux", "display-message", "-p", "#{session_name}").Output()
@@ -89,6 +77,19 @@ func crewStartCmd() *cobra.Command {
 					}
 				}
 			}
+
+			// Run the pickup sequence (claim, workspace, worktrees, hooks, skills).
+			taskDir, err := pickupTask(taskID, personaName, repos, orchestratorID)
+			if err != nil {
+				return err
+			}
+
+			// Open crew store and start tmux session.
+			cs, err := crew.Open(cfg.Home)
+			if err != nil {
+				return fmt.Errorf("open crew store: %w", err)
+			}
+			defer cs.Close()
 
 			var sess *crew.Session
 			if orchestratorID != "" {

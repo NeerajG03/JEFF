@@ -108,6 +108,43 @@ func TestResolveTaskID_NoCwd(t *testing.T) {
 	}
 }
 
+func TestResolveTaskID_FromSymlinkedWorktree(t *testing.T) {
+	home, cleanup := setupTaskCtxTest(t)
+	defer cleanup()
+
+	// Create a worktree directory outside the tasks dir (simulating
+	// /jeff/worktrees/<repo>/<branch>/) and symlink it into the task dir.
+	worktreeDir := filepath.Join(home, "worktrees", "myrepo", "gig-ab12-branch")
+	os.MkdirAll(worktreeDir, 0o755)
+	symlinkPath := filepath.Join(home, "tasks", "gig-ab12-test-task", "myrepo")
+	os.Symlink(worktreeDir, symlinkPath)
+
+	// Simulate what the shell does: update $PWD to the logical path through
+	// the symlink before cd-ing into the physical directory.
+	// os.Getwd() honours $PWD when it matches the current directory's inode,
+	// so this makes it return the logical (task-dir) path, not the worktree path.
+	oldCwd, _ := os.Getwd()
+	oldPWD := os.Getenv("PWD")
+	os.Setenv("PWD", symlinkPath)
+	os.Chdir(symlinkPath)
+	defer func() {
+		os.Chdir(oldCwd)
+		os.Setenv("PWD", oldPWD)
+	}()
+
+	taskID, dir, err := resolveTaskID(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if taskID != "gig-ab12" {
+		t.Errorf("expected gig-ab12, got %q", taskID)
+	}
+	expected := filepath.Join(home, "tasks", "gig-ab12-test-task")
+	if dir != expected {
+		t.Errorf("expected %s, got %s", expected, dir)
+	}
+}
+
 func TestResolveTaskID_ArgOverridesCwd(t *testing.T) {
 	home, cleanup := setupTaskCtxTest(t)
 	defer cleanup()

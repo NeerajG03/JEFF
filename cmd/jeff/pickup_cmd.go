@@ -29,7 +29,7 @@ func pickupCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			taskID := args[0]
 
-			taskDir, err := pickupTask(taskID, personaName, repos)
+			taskDir, err := pickupTask(taskID, personaName, repos, "")
 			if err != nil {
 				return err
 			}

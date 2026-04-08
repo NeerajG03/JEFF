@@ -64,7 +64,7 @@ func crewStartCmd() *cobra.Command {
 			taskID := args[0]
 
 			// Run the pickup sequence (claim, workspace, worktrees, hooks, skills).
-			taskDir, err := pickupTask(taskID, personaName, repos)
+			taskDir, err := pickupTask(taskID, personaName, repos, orchestratorID)
 			if err != nil {
 				return err
 			}
@@ -856,7 +856,7 @@ Use --dry-run to preview what would be cleaned up without making changes.`,
 
 // pickupTask runs the full pickup sequence and returns the task directory.
 // Extracted from pickupCmd for reuse by crew start.
-func pickupTask(taskID, personaName string, repos []string) (string, error) {
+func pickupTask(taskID, personaName string, repos []string, orchestratorID string) (string, error) {
 	store, err := openGigStore()
 	if err != nil {
 		return "", err
@@ -950,6 +950,7 @@ func pickupTask(taskID, personaName string, repos []string) (string, error) {
 		TargetDir:          td.Path,
 		GigHome:            cfg.GigHome,
 		TaskID:             taskID,
+		OrchestratorID:     orchestratorID,
 		CheckpointPatterns: cfg.CheckpointPatterns,
 	}
 	taskEnabled := hooks.EnabledForSource(cfg.Hooks, hooks.SourceTask, reg)

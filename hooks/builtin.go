@@ -427,7 +427,7 @@ func workerStopHook() *Hook {
 		Matcher: "*",
 		Timeout: 5,
 		ClaudeScript: func(ctx HookContext) string {
-			return buildWorkerStopScript(ctx.TaskID)
+			return buildWorkerStopScript(ctx.TaskID, ctx.OrchestratorID)
 		},
 		OpenCodeSnippet: func(ctx HookContext) string {
 			return ""
@@ -435,21 +435,26 @@ func workerStopHook() *Hook {
 	}
 }
 
-func buildWorkerStopScript(taskID string) string {
-	if taskID == "" {
+func buildWorkerStopScript(taskID, orchestratorID string) string {
+	if taskID == "" || orchestratorID == "" {
 		return `#!/bin/bash
 set -euo pipefail
 cat > /dev/null
 `
 	}
 
+	// Send directly to orchestrator pane via tmux — no DB lookup needed.
+	// The orchestrator is always in the "orchestrator" window of its session.
+	target := orchestratorID + ":orchestrator"
+	message := "[Worker " + taskID + " stopped]: Session ended — please check if this was intentional."
+
 	return `#!/bin/bash
 set -euo pipefail
 
 INPUT=$(cat)
 
-# Signal orchestrator that this worker session has stopped.
-jeff crew signal-orchestrator ` + taskID + ` "[Worker ` + taskID + ` stopped]: Session ended — please check if this was intentional." 2>/dev/null || true
+# Signal orchestrator directly via tmux — DB may already be cleaned up.
+tmux send-keys -t "` + target + `" -l "` + message + `" \; send-keys -t "` + target + `" Enter 2>/dev/null || true
 `
 }
 

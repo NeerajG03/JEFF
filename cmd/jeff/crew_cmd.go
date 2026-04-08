@@ -30,6 +30,7 @@ func crewCmd() *cobra.Command {
 		crewListCmd(),
 		crewStatusCmd(),
 		crewSendCmd(),
+		crewAskCmd(),
 		crewStopCmd(),
 		crewAttachCmd(),
 		crewCaptureCmd(),
@@ -337,6 +338,43 @@ func crewSendCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&msgType, "type", "nudge", "Message type: nudge, status, divert, normal")
 	return cmd
+}
+
+func crewAskCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "ask [gig-id] <message>",
+		Short: "Send a message from a worker to its orchestrator",
+		Long:  "Worker sends a to_orchestrator message. Looks up orchestrator via orchestrator_id FK and delivers to orchestrator pane.",
+		Args:  cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var taskID, content string
+			if len(args) == 2 {
+				taskID, content = args[0], args[1]
+			} else {
+				// Single arg: resolve task ID from cwd.
+				var err error
+				taskID, _, err = resolveTaskID(nil)
+				if err != nil {
+					return fmt.Errorf("provide task ID or run from task dir: %w", err)
+				}
+				content = args[0]
+			}
+
+			cs, err := crew.Open(cfg.Home)
+			if err != nil {
+				return err
+			}
+			defer cs.Close()
+
+			msg, err := crew.Ask(cs, taskID, content)
+			if err != nil {
+				return err
+			}
+
+			fmt.Fprintf(os.Stderr, "Sent %s to orchestrator (from %s)\n", msg.ID, taskID)
+			return nil
+		},
+	}
 }
 
 func crewStopCmd() *cobra.Command {

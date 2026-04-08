@@ -299,6 +299,51 @@ func Send(store *Store, taskID string, msgType MessageType, content string) (*Me
 	return msg, nil
 }
 
+// Ask sends a to_orchestrator message from a worker. It looks up the worker's
+// orchestrator_id, stores the message, and delivers it to the orchestrator's pane.
+func Ask(store *Store, taskID, content string) (*Message, error) {
+	sess, err := store.GetSession(taskID)
+	if err != nil {
+		return nil, fmt.Errorf("get session: %w", err)
+	}
+
+	if sess.OrchestratorID == "" {
+		return nil, fmt.Errorf("worker %s has no orchestrator", taskID)
+	}
+
+	orch, err := store.GetOrchestrator(sess.OrchestratorID)
+	if err != nil {
+		return nil, fmt.Errorf("get orchestrator %s: %w", sess.OrchestratorID, err)
+	}
+
+	msg := &Message{
+		ID:        generateMsgID(),
+		TaskID:    taskID,
+		Direction: "to_orchestrator",
+		Type:      MsgNormal,
+		Content:   content,
+		CreatedAt: time.Now().UTC(),
+	}
+
+	if err := store.SendMessage(msg); err != nil {
+		return nil, fmt.Errorf("store ask message: %w", err)
+	}
+
+	// Deliver to orchestrator pane. Use pane ID if available, else session:window.
+	target := orch.TmuxPane
+	if target == "" {
+		target = orch.TmuxSession + ":" + orch.TmuxWindow
+	}
+
+	// Format: "[worker <task-id>]: <content>"
+	formatted := fmt.Sprintf("[worker %s]: %s", taskID, content)
+	if err := SendCommand(target, formatted); err != nil {
+		return nil, fmt.Errorf("deliver to orchestrator: %w", err)
+	}
+
+	return msg, nil
+}
+
 func generateMsgID() string {
 	raw := fmt.Sprintf("%s-%d", uuid.New().String(), time.Now().UnixNano())
 	sum := sha256.Sum256([]byte(raw))

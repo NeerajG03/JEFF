@@ -54,10 +54,10 @@ func CreateWindow(name, dir string) (string, error) {
 }
 
 // SendText sends text to a tmux pane WITHOUT pressing Enter.
-// This is the first half of sending a command — text and Enter must
-// be separate send-keys calls for Claude Code to work properly.
+// Uses -l (literal) so embedded newlines and special characters are
+// pasted as-is rather than interpreted as tmux key names.
 func SendText(target, text string) error {
-	return tmuxRun("send-keys", "-t", target, text)
+	return tmuxRun("send-keys", "-t", target, "-l", text)
 }
 
 // SendEnter sends the Enter key to a tmux pane.
@@ -90,6 +90,13 @@ func CapturePane(target string, lines int) (string, error) {
 		return "", fmt.Errorf("capture pane %q: %w", target, err)
 	}
 	return strings.TrimRight(out, "\n"), nil
+}
+
+// SessionTarget builds a sanitized tmux target string "session:window".
+// Always use this instead of manual string concatenation to ensure
+// dots in task IDs are replaced with hyphens.
+func SessionTarget(tmuxSession, windowName string) string {
+	return tmuxSession + ":" + SanitizeWindowName(windowName)
 }
 
 // SelectWindow switches to the given tmux window.

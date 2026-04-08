@@ -592,7 +592,7 @@ func (m Model) captureCmd() tea.Cmd {
 		if !crew.HasWindow(sess.WindowName) {
 			return nil
 		}
-		target := sess.TmuxSession + ":" + sess.WindowName
+		target := crew.SessionTarget(sess.TmuxSession, sess.WindowName)
 		pane, _ := crew.CapturePane(target, 30)
 
 		titles := make(map[string]string)

@@ -256,7 +256,7 @@ func crewStatusCmd() *cobra.Command {
 
 			// Pane capture.
 			if crew.HasWindow(sess.WindowName) {
-				target := sess.TmuxSession + ":" + sess.WindowName
+				target := crew.SessionTarget(sess.TmuxSession, sess.WindowName)
 				if pane, err := crew.CapturePane(target, 5); err == nil && pane != "" {
 					fmt.Fprintf(os.Stdout, "Pane (last 5 lines):\n")
 					for _, line := range strings.Split(pane, "\n") {
@@ -308,7 +308,7 @@ func crewSendCmd() *cobra.Command {
 				time.Sleep(10 * time.Second)
 				sess, _ := cs.GetSession(taskID)
 				if sess != nil && crew.HasWindow(sess.WindowName) {
-					target := sess.TmuxSession + ":" + sess.WindowName
+					target := crew.SessionTarget(sess.TmuxSession, sess.WindowName)
 					if pane, err := crew.CapturePane(target, 15); err == nil {
 						fmt.Fprintf(os.Stdout, "Response:\n%s\n", pane)
 					}
@@ -407,7 +407,7 @@ func crewCaptureCmd() *cobra.Command {
 				return fmt.Errorf("session not found: %w", err)
 			}
 
-			target := sess.TmuxSession + ":" + sess.WindowName
+			target := crew.SessionTarget(sess.TmuxSession, sess.WindowName)
 			out, err := crew.CapturePane(target, lines)
 			if err != nil {
 				return err

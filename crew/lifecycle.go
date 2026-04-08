@@ -78,7 +78,7 @@ func Stop(store *Store, taskID string) error {
 		return fmt.Errorf("get session: %w", err)
 	}
 
-	target := sess.TmuxSession + ":" + sess.WindowName
+	target := SessionTarget(sess.TmuxSession, sess.WindowName)
 
 	// Send interrupt to stop the agent.
 	if HasWindow(sess.WindowName) {
@@ -140,7 +140,7 @@ func Send(store *Store, taskID string, msgType MessageType, content string) (*Me
 		return nil, fmt.Errorf("get session: %w", err)
 	}
 
-	target := sess.TmuxSession + ":" + sess.WindowName
+	target := SessionTarget(sess.TmuxSession, sess.WindowName)
 
 	msg := &Message{
 		ID:        generateMsgID(),

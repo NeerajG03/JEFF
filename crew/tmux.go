@@ -32,9 +32,19 @@ func EnsureSession() error {
 	return tmuxRun("new-session", "-d", "-s", TmuxSessionName, "-n", DashboardWindowName, "-x", "200", "-y", "50")
 }
 
+// SanitizeWindowName replaces dots with hyphens in tmux window names.
+// tmux interprets dots in target specs as session.window.pane separators,
+// so task IDs like "gig-45c2.2" would be parsed as session "jeff:gig-45c2" window "2".
+func SanitizeWindowName(name string) string {
+	return strings.ReplaceAll(name, ".", "-")
+}
+
 // CreateWindow creates a new window in the jeff tmux session.
 // Returns the tmux target string "jeff:<name>".
+// The window name is sanitized (dots replaced with hyphens) to avoid
+// tmux interpreting dots as session.window.pane separators.
 func CreateWindow(name, dir string) (string, error) {
+	name = SanitizeWindowName(name)
 	target := TmuxSessionName + ":" + name
 	err := tmuxRun("new-window", "-a", "-t", TmuxSessionName, "-n", name, "-c", dir)
 	if err != nil {
@@ -90,6 +100,7 @@ func SelectWindow(target string) error {
 // AttachSession attaches to the jeff tmux session and selects a window.
 // If already inside tmux, uses switch-client. Otherwise uses attach-session.
 func AttachSession(windowName string) error {
+	windowName = SanitizeWindowName(windowName)
 	target := TmuxSessionName + ":" + windowName
 	if InsideTmux() {
 		// Already in tmux — switch to the jeff session + window.
@@ -110,7 +121,9 @@ func KillWindow(target string) error {
 }
 
 // HasWindow checks if a window exists in the jeff session.
+// The name is sanitized before comparison to handle task IDs with dots.
 func HasWindow(name string) bool {
+	name = SanitizeWindowName(name)
 	windows, err := ListWindows()
 	if err != nil {
 		return false

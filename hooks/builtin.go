@@ -16,6 +16,7 @@ func builtinHooks() []*Hook {
 		checkpointNudgeHook(),
 		inboxCheckHook(),
 		workerHeartbeatHook(),
+		workerStopHook(),
 	}
 }
 
@@ -425,6 +426,43 @@ fi
   rm -f "$PIDFILE"
 ) &
 echo $! > "$PIDFILE"
+`
+}
+
+// workerStopHook fires when the worker's Claude Code session ends.
+// Signals the orchestrator that the worker has stopped so it can check
+// if this was intentional (jeff done) or unexpected (crash/timeout).
+func workerStopHook() *Hook {
+	return &Hook{
+		Name:    "worker-stop",
+		Source:  SourceTask,
+		Event:   "Stop",
+		Matcher: "*",
+		Timeout: 5,
+		ClaudeScript: func(ctx HookContext) string {
+			return buildWorkerStopScript(ctx.TaskID)
+		},
+		OpenCodeSnippet: func(ctx HookContext) string {
+			return ""
+		},
+	}
+}
+
+func buildWorkerStopScript(taskID string) string {
+	if taskID == "" {
+		return `#!/bin/bash
+set -euo pipefail
+cat > /dev/null
+`
+	}
+
+	return `#!/bin/bash
+set -euo pipefail
+
+INPUT=$(cat)
+
+# Signal orchestrator that this worker session has stopped.
+jeff crew signal-orchestrator ` + taskID + ` "[Worker ` + taskID + ` stopped]: Session ended — please check if this was intentional." 2>/dev/null || true
 `
 }
 

@@ -230,6 +230,79 @@ func AttachToSession(sessionName, windowName string) error {
 	return cmd.Run()
 }
 
+// TmuxWindow represents a window in a tmux session.
+type TmuxWindow struct {
+	Session string
+	Window  string
+}
+
+// ListSessionWindows returns all window names in the given tmux session.
+func ListSessionWindows(sessionName string) ([]string, error) {
+	out, err := tmuxOutput("list-windows", "-t", sessionName, "-F", "#{window_name}")
+	if err != nil {
+		return nil, err
+	}
+	out = strings.TrimSpace(out)
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
+// ListAllJeffSessions returns the names of all tmux sessions matching "jeff" or "jeff-N".
+func ListAllJeffSessions() ([]string, error) {
+	out, err := tmuxOutput("list-sessions", "-F", "#{session_name}")
+	if err != nil {
+		return nil, nil // tmux not running or no sessions
+	}
+	var result []string
+	for _, name := range strings.Split(strings.TrimSpace(out), "\n") {
+		if name == TmuxSessionName || strings.HasPrefix(name, TmuxSessionName+"-") {
+			result = append(result, name)
+		}
+	}
+	return result, nil
+}
+
+// ListAllJeffWindows returns all windows across jeff and jeff-N sessions.
+func ListAllJeffWindows() ([]TmuxWindow, error) {
+	sessions, err := ListAllJeffSessions()
+	if err != nil {
+		return nil, err
+	}
+	var result []TmuxWindow
+	for _, sess := range sessions {
+		windows, err := ListSessionWindows(sess)
+		if err != nil {
+			continue
+		}
+		for _, w := range windows {
+			result = append(result, TmuxWindow{Session: sess, Window: w})
+		}
+	}
+	return result, nil
+}
+
+// HasWindowInSession checks if a window exists in a specific tmux session.
+func HasWindowInSession(sessionName, windowName string) bool {
+	windowName = SanitizeWindowName(windowName)
+	windows, err := ListSessionWindows(sessionName)
+	if err != nil {
+		return false
+	}
+	for _, w := range windows {
+		if w == windowName {
+			return true
+		}
+	}
+	return false
+}
+
+// KillSession kills an entire tmux session.
+func KillSession(sessionName string) error {
+	return tmuxRun("kill-session", "-t", sessionName)
+}
+
 // --- internal helpers ---
 
 func hasSession(name string) bool {

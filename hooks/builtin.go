@@ -424,7 +424,7 @@ fi
   sleep 600
   jeff crew signal-orchestrator ` + taskID + ` "stalled — no activity for 10 minutes" 2>/dev/null || true
   rm -f "$PIDFILE"
-) &
+) > /dev/null 2>&1 &
 echo $! > "$PIDFILE"
 `
 }

@@ -130,21 +130,42 @@ func runPostSetup(script string, ctx PostSetupContext) error {
 	return cmd.Run()
 }
 
-// WorktreeRemove removes a git worktree and its symlink.
+// WorktreeRemove removes a git worktree by reconstructing its path from
+// jeffHome/worktrees/<repoName>/<branch>.
 func WorktreeRemove(jeffHome, repoName, branch string) error {
 	wtDir := filepath.Join(jeffHome, "worktrees", repoName, branch)
+	return worktreeRemoveDir(jeffHome, repoName, wtDir)
+}
 
+// WorktreeRemoveByPath removes a git worktree at the given absolute path.
+// Use this when the worktree path is already known (e.g. resolved from a
+// task dir symlink) instead of reconstructing from a branch name.
+func WorktreeRemoveByPath(jeffHome, repoName, wtDir string) error {
+	return worktreeRemoveDir(jeffHome, repoName, wtDir)
+}
+
+func worktreeRemoveDir(jeffHome, repoName, wtDir string) error {
 	repoDir := filepath.Join(jeffHome, "repos", repoName)
 	if err := gitutil.Run(repoDir, "worktree", "remove", wtDir); err != nil {
 		// Fallback: force remove if dirty.
 		os.RemoveAll(wtDir)
 	}
 
-	// Clean up empty parent dir.
+	// Clean up empty parent dirs up to the worktrees/<repoName> level.
 	parent := filepath.Dir(wtDir)
-	entries, _ := os.ReadDir(parent)
-	if len(entries) == 0 {
+	wtBase := filepath.Join(jeffHome, "worktrees", repoName)
+	for parent != wtBase && strings.HasPrefix(parent, wtBase+string(filepath.Separator)) {
+		entries, _ := os.ReadDir(parent)
+		if len(entries) != 0 {
+			break
+		}
 		os.Remove(parent)
+		parent = filepath.Dir(parent)
+	}
+	// Also clean the repo-level dir if empty.
+	entries, _ := os.ReadDir(wtBase)
+	if len(entries) == 0 {
+		os.Remove(wtBase)
 	}
 
 	return nil

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	jeff "github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/memory"
@@ -31,23 +32,42 @@ func doneCmd() *cobra.Command {
 			defer store.Close()
 
 			// 1. Clean up worktrees for repos associated with this task.
+			//    Resolve the actual worktree path from the task dir symlink
+			//    (taskDir/<repoName> → real worktree path) instead of
+			//    reconstructing from the task ID, which doesn't match the
+			//    branch name generated during pickup.
+			td, tdErr := workspace.Open(cfg.Home, taskID)
 			attr, err := store.GetAttr(taskID, jeff.AttrRepos)
 			if err == nil && attr != nil {
 				var repos []string
 				if json.Unmarshal([]byte(attr.Value), &repos) == nil {
 					for _, repoName := range repos {
-						branch := taskID
-						if err := workspace.WorktreeRemove(cfg.Home, repoName, branch); err != nil {
-							fmt.Fprintf(os.Stderr, "Warning: worktree cleanup %s/%s: %v\n", repoName, branch, err)
+						var wtPath string
+						if tdErr == nil {
+							link := filepath.Join(td.Path, repoName)
+							if target, lerr := os.Readlink(link); lerr == nil {
+								wtPath = target
+							}
+						}
+						if wtPath != "" {
+							if err := workspace.WorktreeRemoveByPath(cfg.Home, repoName, wtPath); err != nil {
+								fmt.Fprintf(os.Stderr, "Warning: worktree cleanup %s: %v\n", wtPath, err)
+							} else {
+								fmt.Fprintf(os.Stderr, "Removed worktree %s\n", wtPath)
+							}
 						} else {
-							fmt.Fprintf(os.Stderr, "Removed worktree %s/%s\n", repoName, branch)
+							// Fallback: try the old branch=taskID approach.
+							if err := workspace.WorktreeRemove(cfg.Home, repoName, taskID); err != nil {
+								fmt.Fprintf(os.Stderr, "Warning: worktree cleanup %s/%s: %v\n", repoName, taskID, err)
+							} else {
+								fmt.Fprintf(os.Stderr, "Removed worktree %s/%s\n", repoName, taskID)
+							}
 						}
 					}
 				}
 			}
 
 			// 2. Auto-curate scratchpad before cleanup.
-			td, tdErr := workspace.Open(cfg.Home, taskID)
 			if tdErr == nil {
 				personaName := detectPersona(td.Path)
 				repoNames := detectRepos(td.Path)

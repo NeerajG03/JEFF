@@ -29,18 +29,34 @@ func resolveTaskID(args []string) (taskID string, taskDir string, err error) {
 		return "", "", fmt.Errorf("get cwd: %w", err)
 	}
 
-	// Resolve symlinks for reliable comparison.
-	tasksDir, _ := filepath.EvalSymlinks(filepath.Join(cfg.Home, "tasks"))
-	cwdResolved, _ := filepath.EvalSymlinks(cwd)
+	sep := string(filepath.Separator)
+	tasksDir := filepath.Join(cfg.Home, "tasks")
 
-	// Check if cwd is under tasks/.
-	if !strings.HasPrefix(cwdResolved, tasksDir+string(filepath.Separator)) && cwdResolved != tasksDir {
+	// Find the tasks dir and cwd path to use for slug extraction.
+	// Check the logical (unresolved) path first — this handles the case where cwd
+	// is inside a worktree accessed via a symlink in the task dir (e.g. tasks/<slug>/repo/).
+	// os.Getwd honours $PWD which gives the logical path through the symlink.
+	// Only fall back to symlink-resolved paths for macOS /var→/private/var style indirection.
+	var matchTasksDir, matchCwd string
+	switch {
+	case strings.HasPrefix(cwd, tasksDir+sep) || cwd == tasksDir:
+		matchTasksDir, matchCwd = tasksDir, cwd
+	default:
+		// Fall back to fully-resolved paths.
+		tasksDirResolved, _ := filepath.EvalSymlinks(tasksDir)
+		cwdResolved, _ := filepath.EvalSymlinks(cwd)
+		if strings.HasPrefix(cwdResolved, tasksDirResolved+sep) || cwdResolved == tasksDirResolved {
+			matchTasksDir, matchCwd = tasksDirResolved, cwdResolved
+		}
+	}
+
+	if matchTasksDir == "" {
 		return "", "", fmt.Errorf("not inside a task workspace — provide a task ID")
 	}
 
 	// Extract the task dir slug — first path component after tasks/.
-	rel, _ := filepath.Rel(tasksDir, cwdResolved)
-	slug := strings.SplitN(rel, string(filepath.Separator), 2)[0]
+	rel, _ := filepath.Rel(matchTasksDir, matchCwd)
+	slug := strings.SplitN(rel, sep, 2)[0]
 
 	taskID = workspace.ExtractTaskID(slug)
 	if !strings.HasPrefix(taskID, "gig-") {

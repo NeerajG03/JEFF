@@ -777,7 +777,6 @@ func crewCleanupCmd() *cobra.Command {
   1. Kill orphaned tmux windows (no matching DB session)
   2. Mark stale DB sessions as failed (tmux window gone)
   3. Mark stale orchestrators as stopped (tmux session gone)
-  4. Remove orphaned worktrees (no task workspace symlink)
 
 Use --dry-run to preview what would be cleaned up without making changes.`,
 		Args: cobra.NoArgs,
@@ -833,17 +832,6 @@ Use --dry-run to preview what would be cleaned up without making changes.`,
 						action = "would mark stopped"
 					}
 					fmt.Fprintf(os.Stderr, "  %s %s\n", action, id)
-				}
-			}
-
-			if len(result.OrphanWorktrees) > 0 {
-				fmt.Fprintf(os.Stderr, "%sOrphaned worktrees:\n", prefix)
-				for _, wt := range result.OrphanWorktrees {
-					action := "removed"
-					if dryRun {
-						action = "would remove"
-					}
-					fmt.Fprintf(os.Stderr, "  %s %s\n", action, wt)
 				}
 			}
 

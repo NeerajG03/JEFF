@@ -105,7 +105,7 @@ func doneCmd() *cobra.Command {
 			if cs, err := crew.Open(cfg.Home); err == nil {
 				defer cs.Close()
 				if result, err := crew.Cleanup(cs, cfg.Home, false); err == nil && !result.IsClean() {
-					cleaned := len(result.OrphanedWindows) + len(result.StaleSessions) + len(result.StaleOrch) + len(result.OrphanWorktrees)
+					cleaned := len(result.OrphanedWindows) + len(result.StaleSessions) + len(result.StaleOrch)
 					fmt.Fprintf(os.Stderr, "Crew cleanup: reconciled %d items\n", cleaned)
 				}
 			}

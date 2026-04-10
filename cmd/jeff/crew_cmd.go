@@ -19,6 +19,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// orchestratorSessionRe matches valid orchestrator tmux session names.
+// Covers numeric auto-assigned IDs (jeff-1) and named sessions (jeff-work).
+var orchestratorSessionRe = regexp.MustCompile(`^jeff-[a-z0-9][a-z0-9-]*$`)
+
 func crewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "crew",
@@ -66,15 +70,9 @@ func crewStartCmd() *cobra.Command {
 			// Auto-detect orchestrator from tmux session name if not set.
 			// Must happen before pickupTask so hooks get the orchestrator ID.
 			if orchestratorID == "" {
-				if os.Getenv("TMUX") != "" {
-					out, err := exec.Command("tmux", "display-message", "-p", "#{session_name}").Output()
-					if err == nil {
-						name := strings.TrimSpace(string(out))
-						if matched, _ := regexp.MatchString(`^jeff-\d+$`, name); matched {
-							orchestratorID = name
-							fmt.Fprintf(os.Stderr, "Auto-detected orchestrator: %s\n", orchestratorID)
-						}
-					}
+				orchestratorID = detectOrchestratorID()
+				if orchestratorID != "" {
+					fmt.Fprintf(os.Stderr, "Auto-detected orchestrator: %s\n", orchestratorID)
 				}
 			}
 
@@ -126,6 +124,30 @@ func crewStartCmd() *cobra.Command {
 	cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)
 	cmd.RegisterFlagCompletionFunc("orchestrator", orchestratorCompletion)
 	return cmd
+}
+
+// detectOrchestratorID returns the orchestrator session ID for the current
+// process, or "" if it cannot be determined. It checks, in order:
+//  1. JEFF_ORCHESTRATOR_SESSION env var (set by StartOrchestrator via tmux set-environment)
+//  2. tmux query via TMUX_PANE targeting (fallback for older sessions)
+func detectOrchestratorID() string {
+	// Prefer explicit env var — most reliable; no TTY required.
+	if val := os.Getenv("JEFF_ORCHESTRATOR_SESSION"); val != "" {
+		return val
+	}
+	// Fallback: query tmux, targeting our own pane via TMUX_PANE.
+	if os.Getenv("TMUX") == "" {
+		return ""
+	}
+	out, err := exec.Command("tmux", "display-message", "-t", os.Getenv("TMUX_PANE"), "-p", "#{session_name}").Output()
+	if err != nil {
+		return ""
+	}
+	name := strings.TrimSpace(string(out))
+	if orchestratorSessionRe.MatchString(name) {
+		return name
+	}
+	return ""
 }
 
 func crewResumeCmd() *cobra.Command {

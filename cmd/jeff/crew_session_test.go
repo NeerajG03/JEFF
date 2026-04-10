@@ -1,16 +1,11 @@
 package main
 
 import (
-	"regexp"
 	"testing"
 )
 
-// orchestratorSessionRegex is the pattern used to validate tmux session names
-// as orchestrator sessions. Tested here to document accepted/rejected forms.
-const orchestratorSessionRegex = `^jeff-[a-z0-9][a-z0-9-]*$`
-
 func TestOrchestratorSessionRegex(t *testing.T) {
-	re := regexp.MustCompile(orchestratorSessionRegex)
+	re := orchestratorSessionRe
 
 	match := []string{
 		"jeff-1",

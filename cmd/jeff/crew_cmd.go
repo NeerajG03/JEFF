@@ -19,6 +19,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// orchestratorSessionRe matches valid orchestrator tmux session names.
+// Covers numeric auto-assigned IDs (jeff-1) and named sessions (jeff-work).
+var orchestratorSessionRe = regexp.MustCompile(`^jeff-[a-z0-9][a-z0-9-]*$`)
+
 func crewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "crew",
@@ -135,16 +139,12 @@ func detectOrchestratorID() string {
 	if os.Getenv("TMUX") == "" {
 		return ""
 	}
-	target := os.Getenv("TMUX_PANE")
-	if target == "" {
-		target = "-"
-	}
-	out, err := exec.Command("tmux", "display-message", "-t", target, "-p", "#{session_name}").Output()
+	out, err := exec.Command("tmux", "display-message", "-t", os.Getenv("TMUX_PANE"), "-p", "#{session_name}").Output()
 	if err != nil {
 		return ""
 	}
 	name := strings.TrimSpace(string(out))
-	if matched, _ := regexp.MatchString(`^jeff-[a-z0-9][a-z0-9-]*$`, name); matched {
+	if orchestratorSessionRe.MatchString(name) {
 		return name
 	}
 	return ""

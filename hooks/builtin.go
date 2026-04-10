@@ -484,8 +484,8 @@ func buildOrchestratorInboxScript(orchestratorID string) string {
 		detection = `# Auto-detect orchestrator ID from tmux session name.
 ORCH_ID=""
 if [ -n "${TMUX:-}" ]; then
-  SESSION_NAME=$(tmux display-message -p '#{session_name}' 2>/dev/null || true)
-  if echo "$SESSION_NAME" | grep -qE '^jeff-[0-9]+$'; then
+  SESSION_NAME=$(tmux display-message -t "${TMUX_PANE:--}" -p '#{session_name}' 2>/dev/null || true)
+  if echo "$SESSION_NAME" | grep -qE '^jeff-[a-z0-9][a-z0-9-]*$'; then
     ORCH_ID="$SESSION_NAME"
   fi
 fi

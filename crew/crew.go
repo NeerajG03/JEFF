@@ -365,6 +365,12 @@ func (s *Store) NextOrchestratorID() (string, error) {
 	return fmt.Sprintf("jeff-%d", count+1), nil
 }
 
+// UpdateOrchestratorStatus updates an orchestrator's status.
+func (s *Store) UpdateOrchestratorStatus(id, status string) error {
+	_, err := s.db.Exec(`UPDATE orchestrators SET status = ? WHERE id = ?`, status, id)
+	return err
+}
+
 // WorkersForOrchestrator returns sessions belonging to an orchestrator.
 func (s *Store) WorkersForOrchestrator(orchestratorID string) ([]*Session, error) {
 	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, repos,

@@ -116,6 +116,27 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 		return nil, err
 	}
 
+	// Record session BEFORE launching agent so the SessionStart hook
+	// (which captures session_id) can find the row in the DB.
+	now := time.Now().UTC()
+	sess := &Session{
+		TaskID:         taskID,
+		TmuxSession:    orch.TmuxSession,
+		WindowName:     windowName,
+		TaskDir:        taskDir,
+		Persona:        opts.Persona,
+		Model:          opts.Model,
+		Repos:          opts.Repos,
+		OrchestratorID: orchestratorID,
+		Status:         "running",
+		StartedAt:      now,
+		LastSeen:       now,
+	}
+	if err := store.PutSession(sess); err != nil {
+		KillWindow(target)
+		return nil, fmt.Errorf("record session: %w", err)
+	}
+
 	agentCmd := buildAgentCmd(opts.Agent, opts.Model, opts.ResumeSessionID)
 	if err := SendCommand(target, agentCmd); err != nil {
 		KillWindow(target)
@@ -129,29 +150,12 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 		return nil, fmt.Errorf("send initial prompt: %w", err)
 	}
 
+	// Update with PID and pane ID now that the agent is running.
 	pid, _ := WindowPID(target)
 	paneID, _ := PaneID(target)
-
-	now := time.Now().UTC()
-	sess := &Session{
-		TaskID:         taskID,
-		TmuxSession:    orch.TmuxSession,
-		WindowName:     windowName,
-		TmuxPane:       paneID,
-		TaskDir:        taskDir,
-		Persona:        opts.Persona,
-		Model:          opts.Model,
-		Repos:          opts.Repos,
-		OrchestratorID: orchestratorID,
-		PID:            pid,
-		Status:         "running",
-		StartedAt:      now,
-		LastSeen:       now,
-	}
-
-	if err := store.PutSession(sess); err != nil {
-		return nil, fmt.Errorf("record session: %w", err)
-	}
+	sess.PID = pid
+	sess.TmuxPane = paneID
+	_ = store.PutSession(sess)
 
 	return sess, nil
 }
@@ -174,10 +178,29 @@ func Start(store *Store, taskID, taskDir string, opts StartOpts) (*Session, erro
 		return nil, err
 	}
 
+	// Record session BEFORE launching agent so the SessionStart hook
+	// (which captures session_id) can find the row in the DB.
+	now := time.Now().UTC()
+	sess := &Session{
+		TaskID:      taskID,
+		TmuxSession: TmuxSessionName,
+		WindowName:  windowName,
+		TaskDir:     taskDir,
+		Persona:     opts.Persona,
+		Model:       opts.Model,
+		Repos:       opts.Repos,
+		Status:      "running",
+		StartedAt:   now,
+		LastSeen:    now,
+	}
+	if err := store.PutSession(sess); err != nil {
+		KillWindow(target)
+		return nil, fmt.Errorf("record session: %w", err)
+	}
+
 	// Launch agent.
 	agentCmd := buildAgentCmd(opts.Agent, opts.Model, opts.ResumeSessionID)
 	if err := SendCommand(target, agentCmd); err != nil {
-		// Clean up the window if agent launch fails.
 		KillWindow(target)
 		return nil, fmt.Errorf("launch agent: %w", err)
 	}
@@ -189,27 +212,10 @@ func Start(store *Store, taskID, taskDir string, opts StartOpts) (*Session, erro
 		return nil, fmt.Errorf("send initial prompt: %w", err)
 	}
 
-	// Get PID of the agent process.
+	// Update with PID now that the agent is running.
 	pid, _ := WindowPID(target)
-
-	now := time.Now().UTC()
-	sess := &Session{
-		TaskID:      taskID,
-		TmuxSession: TmuxSessionName,
-		WindowName:  windowName,
-		TaskDir:     taskDir,
-		Persona:     opts.Persona,
-		Model:       opts.Model,
-		Repos:       opts.Repos,
-		PID:         pid,
-		Status:      "running",
-		StartedAt:   now,
-		LastSeen:    now,
-	}
-
-	if err := store.PutSession(sess); err != nil {
-		return nil, fmt.Errorf("record session: %w", err)
-	}
+	sess.PID = pid
+	_ = store.PutSession(sess)
 
 	return sess, nil
 }

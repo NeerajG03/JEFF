@@ -143,7 +143,7 @@ func TestUpdatePersona(t *testing.T) {
 	writePersona(t, srcDir, "updatable")
 	AddPersona(home, filepath.Join(srcDir, "updatable"), "", true)
 
-	if err := UpdatePersona(home, "updatable", "new desc", "capture bugs"); err != nil {
+	if err := UpdatePersona(home, "updatable", "new desc", "capture bugs", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -161,16 +161,29 @@ func TestUpdatePersonaPartial(t *testing.T) {
 	srcDir := t.TempDir()
 	writePersona(t, srcDir, "partial")
 	AddPersona(home, filepath.Join(srcDir, "partial"), "", true)
-	UpdatePersona(home, "partial", "original", "original hint")
+	UpdatePersona(home, "partial", "original", "original hint", "sonnet")
 
 	// Update only description.
-	UpdatePersona(home, "partial", "new desc", "")
+	UpdatePersona(home, "partial", "new desc", "", "")
 	entry, _ := GetPersona(home, "partial")
 	if entry.Description != "new desc" {
 		t.Errorf("description = %q", entry.Description)
 	}
 	if entry.MemoryHint != "original hint" {
 		t.Errorf("memory_hint should be unchanged, got %q", entry.MemoryHint)
+	}
+	if entry.Model != "sonnet" {
+		t.Errorf("model should be unchanged, got %q", entry.Model)
+	}
+
+	// Update only model.
+	UpdatePersona(home, "partial", "", "", "opus")
+	entry, _ = GetPersona(home, "partial")
+	if entry.Model != "opus" {
+		t.Errorf("model = %q, want opus", entry.Model)
+	}
+	if entry.Description != "new desc" {
+		t.Errorf("description should be unchanged after model update, got %q", entry.Description)
 	}
 }
 
@@ -231,6 +244,14 @@ func TestSeedDefaults(t *testing.T) {
 		if entry.Description == "" {
 			t.Errorf("%s missing description", name)
 		}
+	}
+
+	// Model should be populated for built-in personas.
+	if m := pc.Personas["jenko"].Model; m != "opus" {
+		t.Errorf("jenko model = %q, want opus", m)
+	}
+	if m := pc.Personas["eric"].Model; m != "sonnet" {
+		t.Errorf("eric model = %q, want sonnet", m)
 	}
 
 	// Idempotent — second call doesn't duplicate.

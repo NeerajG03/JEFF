@@ -13,12 +13,25 @@ import (
 // working immediately instead of sitting idle.
 const initialPrompt = "Read your CLAUDE.md for task context and begin working on the task."
 
+// buildAgentCmd constructs the agent CLI command with optional --model flag.
+func buildAgentCmd(agent, model string) string {
+	if agent == "" {
+		agent = "claude"
+	}
+	cmd := agent + " --dangerously-skip-permissions"
+	if model != "" {
+		cmd += " --model " + model
+	}
+	return cmd
+}
+
 // StartOpts configures a new crew session.
 type StartOpts struct {
 	Persona string
 	Repos   []string
 	Resume  bool   // if true, skip pickup (workspace exists)
 	Agent   string // agent command (e.g. "claude"), defaults to "claude"
+	Model   string // Claude model override (e.g. "sonnet", "opus", "haiku")
 }
 
 // StartOrchestrator creates a new tmux session (jeff-N or jeff-<name>) and launches the
@@ -102,11 +115,7 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 		return nil, err
 	}
 
-	agent := opts.Agent
-	if agent == "" {
-		agent = "claude"
-	}
-	agentCmd := agent + " --dangerously-skip-permissions"
+	agentCmd := buildAgentCmd(opts.Agent, opts.Model)
 	if err := SendCommand(target, agentCmd); err != nil {
 		KillWindow(target)
 		return nil, fmt.Errorf("launch agent: %w", err)
@@ -164,11 +173,7 @@ func Start(store *Store, taskID, taskDir string, opts StartOpts) (*Session, erro
 	}
 
 	// Launch agent.
-	agent := opts.Agent
-	if agent == "" {
-		agent = "claude"
-	}
-	agentCmd := agent + " --dangerously-skip-permissions"
+	agentCmd := buildAgentCmd(opts.Agent, opts.Model)
 	if err := SendCommand(target, agentCmd); err != nil {
 		// Clean up the window if agent launch fails.
 		KillWindow(target)

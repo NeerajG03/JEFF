@@ -16,6 +16,7 @@ type PersonaEntry struct {
 	Location    string `json:"location"`
 	Description string `json:"description,omitempty"`
 	MemoryHint  string `json:"memory_hint,omitempty"`
+	Model       string `json:"model,omitempty"`
 }
 
 // PersonaConfig is the top-level structure of personas.json.
@@ -149,9 +150,9 @@ func RemovePersona(jeffHome, name string, deleteFiles bool) error {
 	return SavePersonas(jeffHome, pc)
 }
 
-// UpdatePersona updates the description and/or memory hint.
+// UpdatePersona updates the description, memory hint, and/or model.
 // Empty strings leave the field unchanged.
-func UpdatePersona(jeffHome, name, description, memoryHint string) error {
+func UpdatePersona(jeffHome, name, description, memoryHint, model string) error {
 	pc, err := LoadPersonas(jeffHome)
 	if err != nil {
 		return err
@@ -167,6 +168,9 @@ func UpdatePersona(jeffHome, name, description, memoryHint string) error {
 	}
 	if memoryHint != "" {
 		entry.MemoryHint = memoryHint
+	}
+	if model != "" {
+		entry.Model = model
 	}
 
 	return SavePersonas(jeffHome, pc)
@@ -262,6 +266,15 @@ func RegisteredMemoryHint(jeffHome, name string) string {
 	return entry.MemoryHint
 }
 
+// RegisteredModel returns the default model for a registered persona.
+func RegisteredModel(jeffHome, name string) string {
+	entry, err := GetPersona(jeffHome, name)
+	if err != nil {
+		return ""
+	}
+	return entry.Model
+}
+
 // SeedDefaults copies the embedded persona templates to disk and registers them.
 // Skips any persona that already exists in the registry.
 func SeedDefaults(jeffHome string) error {
@@ -290,13 +303,15 @@ func SeedDefaults(jeffHome string) error {
 			return fmt.Errorf("write PERSONA.md for %s: %w", name, err)
 		}
 
-		// Register with description and memory hint from embedded sources.
+		// Register with description, memory hint, and default model from embedded sources.
 		desc := Description(name)
 		hint := MemoryHint(name)
+		model := DefaultModel(name)
 		pc.Personas[name] = &PersonaEntry{
 			Location:    dir,
 			Description: desc,
 			MemoryHint:  hint,
+			Model:       model,
 		}
 	}
 

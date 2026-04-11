@@ -95,3 +95,17 @@ func MemoryHint(name string) string {
 	}
 	return hints[name]
 }
+
+// DefaultModel returns the default Claude model for a persona.
+// Personas that need deeper reasoning get "opus"; lighter roles get "sonnet".
+// Returns "" if persona has no default (falls back to Claude's own default).
+func DefaultModel(name string) string {
+	models := map[string]string{
+		"jenko":   "opus",
+		"schmidt": "opus",
+		"dickson": "opus",
+		"eric":    "sonnet",
+		"hardy":   "sonnet",
+	}
+	return models[name]
+}

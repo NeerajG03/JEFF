@@ -13,6 +13,7 @@ import (
 	"github.com/NeerajG03/JEFF/crew"
 	"github.com/NeerajG03/JEFF/hooks"
 	"github.com/NeerajG03/JEFF/memory"
+	"github.com/NeerajG03/JEFF/persona"
 	"github.com/NeerajG03/JEFF/skill"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/NeerajG03/gig"
@@ -58,6 +59,7 @@ func crewStartCmd() *cobra.Command {
 		personaName    string
 		repos          []string
 		orchestratorID string
+		modelOverride  string
 	)
 
 	cmd := &cobra.Command{
@@ -82,6 +84,12 @@ func crewStartCmd() *cobra.Command {
 				return err
 			}
 
+			// Resolve model: --model flag takes priority, then persona default.
+			model := modelOverride
+			if model == "" && personaName != "" {
+				model = persona.RegisteredModel(cfg.Home, personaName)
+			}
+
 			// Open crew store and start tmux session.
 			cs, err := crew.Open(cfg.Home)
 			if err != nil {
@@ -96,12 +104,14 @@ func crewStartCmd() *cobra.Command {
 					Persona: personaName,
 					Repos:   repos,
 					Agent:   string(cfg.Agent),
+					Model:   model,
 				})
 			} else {
 				sess, err = crew.Start(cs, taskID, taskDir, crew.StartOpts{
 					Persona: personaName,
 					Repos:   repos,
 					Agent:   string(cfg.Agent),
+					Model:   model,
 				})
 			}
 			if err != nil {
@@ -119,6 +129,7 @@ func crewStartCmd() *cobra.Command {
 	cmd.Flags().StringVar(&personaName, "persona", "", "Persona template")
 	cmd.Flags().StringSliceVar(&repos, "repos", nil, "Repos to set up worktrees for")
 	cmd.Flags().StringVar(&orchestratorID, "orchestrator", "", "Orchestrator ID to attach worker to")
+	cmd.Flags().StringVar(&modelOverride, "model", "", "Claude model override (e.g. sonnet, opus, haiku)")
 	cmd.ValidArgsFunction = readyTaskCompletion
 	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
 	cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)
@@ -172,12 +183,14 @@ func crewResumeCmd() *cobra.Command {
 			// Detect persona and repos from existing workspace.
 			personaName := detectPersona(td.Path)
 			repos := detectRepos(td.Path)
+			model := persona.RegisteredModel(cfg.Home, personaName)
 
 			sess, err := crew.Start(cs, taskID, td.Path, crew.StartOpts{
 				Persona: personaName,
 				Repos:   repos,
 				Resume:  true,
 				Agent:   string(cfg.Agent),
+				Model:   model,
 			})
 			if err != nil {
 				return err
@@ -232,8 +245,8 @@ func crewListCmd() *cobra.Command {
 			}
 
 			// Header.
-			fmt.Fprintf(os.Stdout, "%-12s %-10s %-12s %-12s %s\n",
-				"TASK", "PERSONA", "STATUS", "STARTED", "LAST CHECKPOINT")
+			fmt.Fprintf(os.Stdout, "%-12s %-10s %-8s %-12s %-12s %s\n",
+				"TASK", "PERSONA", "MODEL", "STATUS", "STARTED", "LAST CHECKPOINT")
 
 			for _, sess := range sessions {
 				started := relativeTime(sess.StartedAt)
@@ -249,14 +262,19 @@ func crewListCmd() *cobra.Command {
 					}
 				}
 
+				model := persona.RegisteredModel(cfg.Home, sess.Persona)
+				if model == "" {
+					model = "-"
+				}
+
 				status := crewStatusLabel(sess.Status)
 				// Pad status to 12 visible chars; ANSI escapes don't count toward width.
 				visPad := 12 - visibleLen(status)
 				if visPad < 0 {
 					visPad = 0
 				}
-				fmt.Fprintf(os.Stdout, "%-12s %-10s %s%-*s %-12s %s\n",
-					sess.TaskID, sess.Persona, status, visPad, "", started, ckpt)
+				fmt.Fprintf(os.Stdout, "%-12s %-10s %-8s %s%-*s %-12s %s\n",
+					sess.TaskID, sess.Persona, model, status, visPad, "", started, ckpt)
 			}
 
 			crewLegend()

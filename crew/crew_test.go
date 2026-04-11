@@ -303,3 +303,23 @@ func TestGenerateMsgID(t *testing.T) {
 		t.Errorf("id length = %d, want 12", len(id1))
 	}
 }
+
+func TestBuildAgentCmd(t *testing.T) {
+	tests := []struct {
+		agent string
+		model string
+		want  string
+	}{
+		{"claude", "", "claude --dangerously-skip-permissions"},
+		{"claude", "sonnet", "claude --dangerously-skip-permissions --model sonnet"},
+		{"claude", "opus", "claude --dangerously-skip-permissions --model opus"},
+		{"", "", "claude --dangerously-skip-permissions"},
+		{"", "haiku", "claude --dangerously-skip-permissions --model haiku"},
+	}
+	for _, tc := range tests {
+		got := buildAgentCmd(tc.agent, tc.model)
+		if got != tc.want {
+			t.Errorf("buildAgentCmd(%q, %q) = %q, want %q", tc.agent, tc.model, got, tc.want)
+		}
+	}
+}

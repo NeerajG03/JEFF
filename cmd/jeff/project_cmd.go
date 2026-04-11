@@ -75,7 +75,7 @@ func projectOpenCmd() *cobra.Command {
 				return fmt.Errorf("project %q not found — run: jeff project init %s", name, name)
 			}
 
-			return launchAgent(projectDir, cfg.Agent)
+			return launchAgent(projectDir, cfg.Agent, "")
 		},
 	}
 }

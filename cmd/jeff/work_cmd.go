@@ -22,7 +22,7 @@ func workCmd() *cobra.Command {
 			}
 
 			fmt.Fprintf(os.Stderr, "Resuming %s in %s...\n", taskID, taskDir)
-			return launchAgent(taskDir, cfg.Agent)
+			return launchAgent(taskDir, cfg.Agent, "")
 		},
 	}
 	cmd.ValidArgsFunction = activeTaskCompletion

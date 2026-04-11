@@ -36,7 +36,9 @@ func pickupCmd() *cobra.Command {
 
 			// Launch agent tool in task directory (foreground, blocks).
 			fmt.Fprintf(os.Stderr, "\nLaunching %s in %s...\n", cfg.Agent, taskDir)
-			return launchAgent(taskDir, cfg.Agent)
+			// Resolve persona model for foreground launch.
+			model := persona.RegisteredModel(cfg.Home, personaName)
+			return launchAgent(taskDir, cfg.Agent, model)
 		},
 	}
 

@@ -114,3 +114,23 @@ func TestMemoryHint(t *testing.T) {
 		t.Errorf("nonexistent should have empty hint, got %q", hint)
 	}
 }
+
+func TestDefaultModel(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{"jenko", "opus"},
+		{"schmidt", "opus"},
+		{"dickson", "opus"},
+		{"eric", "sonnet"},
+		{"hardy", "sonnet"},
+		{"nonexistent", ""},
+	}
+	for _, tc := range tests {
+		got := DefaultModel(tc.name)
+		if got != tc.want {
+			t.Errorf("DefaultModel(%q) = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

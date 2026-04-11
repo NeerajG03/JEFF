@@ -160,26 +160,30 @@ func personaRemoveCmd() *cobra.Command {
 }
 
 func personaTagCmd() *cobra.Command {
-	var description, memoryHint string
+	var description, memoryHint, model string
 
 	cmd := &cobra.Command{
 		Use:               "tag <name>",
-		Short:             "Update persona description and memory hint",
+		Short:             "Update persona description, memory hint, and model",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: registeredPersonaCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			d := ""
 			m := ""
+			mdl := ""
 			if cmd.Flags().Changed("description") {
 				d = description
 			}
 			if cmd.Flags().Changed("memory-hint") {
 				m = memoryHint
 			}
-			if d == "" && m == "" {
-				return fmt.Errorf("specify --description and/or --memory-hint")
+			if cmd.Flags().Changed("model") {
+				mdl = model
 			}
-			if err := persona.UpdatePersona(cfg.Home, args[0], d, m); err != nil {
+			if d == "" && m == "" && mdl == "" {
+				return fmt.Errorf("specify --description, --memory-hint, and/or --model")
+			}
+			if err := persona.UpdatePersona(cfg.Home, args[0], d, m, mdl); err != nil {
 				return err
 			}
 			fmt.Printf("Updated persona %s\n", args[0])
@@ -189,6 +193,7 @@ func personaTagCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&description, "description", "", "Short role description")
 	cmd.Flags().StringVar(&memoryHint, "memory-hint", "", "What this persona should capture in the scratchpad")
+	cmd.Flags().StringVar(&model, "model", "", "Default Claude model (e.g. sonnet, opus, haiku)")
 	return cmd
 }
 

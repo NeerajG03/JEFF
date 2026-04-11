@@ -20,6 +20,7 @@ func orchestratorCmd() *cobra.Command {
 		orchestratorStartCmd(),
 		orchestratorListCmd(),
 		orchestratorAttachCmd(),
+		orchestratorStopCmd(),
 	)
 
 	return cmd
@@ -68,6 +69,19 @@ func orchestratorListCmd() *cobra.Command {
 			}
 			defer cs.Close()
 
+			// Refresh state from tmux before listing.
+			gigStore, _ := openGigStore()
+			if gigStore != nil {
+				defer gigStore.Close()
+			}
+			crew.Refresh(cs, func(taskID string) bool {
+				if gigStore == nil {
+					return false
+				}
+				t, err := gigStore.Get(taskID)
+				return err == nil && t.Status.IsTerminal()
+			})
+
 			orchs, err := cs.ListOrchestrators(false)
 			if err != nil {
 				return err
@@ -107,6 +121,33 @@ func orchestratorAttachCmd() *cobra.Command {
 
 			fmt.Fprintf(os.Stderr, "Attaching to %s...\n", orch.TmuxSession)
 			return crew.AttachToSession(orch.TmuxSession, "")
+		},
+	}
+	cmd.ValidArgsFunction = orchestratorCompletion
+	return cmd
+}
+
+func orchestratorStopCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "stop <orchestrator-id>",
+		Short: "Stop an orchestrator and all its workers",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cs, err := crew.Open(cfg.Home)
+			if err != nil {
+				return err
+			}
+			defer cs.Close()
+
+			orchID := args[0]
+			fmt.Fprintf(os.Stderr, "Stopping orchestrator %s...\n", orchID)
+
+			if err := crew.StopOrchestrator(cs, orchID); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(os.Stderr, "Orchestrator %s stopped.\n", orchID)
+			return nil
 		},
 	}
 	cmd.ValidArgsFunction = orchestratorCompletion

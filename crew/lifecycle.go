@@ -243,9 +243,10 @@ func StopAll(store *Store) error {
 	return lastErr
 }
 
-// Refresh syncs session state with tmux.
+// Refresh syncs session and orchestrator state with tmux.
 // Marks sessions as "failed" if their window no longer exists,
 // or "done" if the window is gone and the task is closed in gig.
+// Marks orchestrators as "stopped" if their tmux session is gone.
 func Refresh(store *Store, isTaskClosed func(taskID string) bool) error {
 	sessions, err := store.ListSessions(true)
 	if err != nil {
@@ -265,7 +266,48 @@ func Refresh(store *Store, isTaskClosed func(taskID string) bool) error {
 			_ = store.UpdateStatus(sess.TaskID, "failed")
 		}
 	}
+
+	// Sync orchestrator state: mark stopped if tmux session is gone.
+	orchs, err := store.ListOrchestrators(true)
+	if err != nil {
+		return nil // non-fatal: worker refresh already succeeded
+	}
+	for _, o := range orchs {
+		if !HasSession(o.TmuxSession) {
+			_ = store.UpdateOrchestratorStatus(o.ID, "stopped")
+		}
+	}
+
 	return nil
+}
+
+// StopOrchestrator gracefully stops an orchestrator and all its workers.
+// It first stops all workers belonging to the orchestrator, then kills the
+// tmux session, and updates the orchestrator status in the DB.
+func StopOrchestrator(store *Store, orchestratorID string) error {
+	orch, err := store.GetOrchestrator(orchestratorID)
+	if err != nil {
+		return fmt.Errorf("get orchestrator: %w", err)
+	}
+
+	// Stop all workers in this orchestrator's session first.
+	workers, err := store.WorkersForOrchestrator(orchestratorID)
+	if err != nil {
+		return fmt.Errorf("list workers: %w", err)
+	}
+	for _, w := range workers {
+		if w.Status == "done" || w.Status == "failed" || w.Status == "stopped" {
+			continue
+		}
+		_ = Stop(store, w.TaskID)
+	}
+
+	// Kill the orchestrator's tmux session.
+	if HasSession(orch.TmuxSession) {
+		_ = KillSession(orch.TmuxSession)
+	}
+
+	return store.UpdateOrchestratorStatus(orchestratorID, "stopped")
 }
 
 // Send delivers a message to a worker based on its type.

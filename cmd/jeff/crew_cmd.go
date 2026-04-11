@@ -61,6 +61,7 @@ func crewStartCmd() *cobra.Command {
 		repos          []string
 		orchestratorID string
 		modelOverride  string
+		promptOverride string
 	)
 
 	cmd := &cobra.Command{
@@ -99,21 +100,18 @@ func crewStartCmd() *cobra.Command {
 			defer cs.Close()
 
 			var sess *crew.Session
+			opts := crew.StartOpts{
+				Persona: personaName,
+				Repos:   repos,
+				Agent:   string(cfg.Agent),
+				Model:   model,
+				Prompt:  promptOverride,
+			}
 			if orchestratorID != "" {
 				// Launch as a tab in the orchestrator's tmux session.
-				sess, err = crew.StartWorkerForOrchestrator(cs, orchestratorID, taskID, taskDir, crew.StartOpts{
-					Persona: personaName,
-					Repos:   repos,
-					Agent:   string(cfg.Agent),
-					Model:   model,
-				})
+				sess, err = crew.StartWorkerForOrchestrator(cs, orchestratorID, taskID, taskDir, opts)
 			} else {
-				sess, err = crew.Start(cs, taskID, taskDir, crew.StartOpts{
-					Persona: personaName,
-					Repos:   repos,
-					Agent:   string(cfg.Agent),
-					Model:   model,
-				})
+				sess, err = crew.Start(cs, taskID, taskDir, opts)
 			}
 			if err != nil {
 				return err
@@ -131,6 +129,7 @@ func crewStartCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&repos, "repos", nil, "Repos to set up worktrees for")
 	cmd.Flags().StringVar(&orchestratorID, "orchestrator", "", "Orchestrator ID to attach worker to")
 	cmd.Flags().StringVar(&modelOverride, "model", "", "Claude model override (e.g. sonnet, opus, haiku)")
+	cmd.Flags().StringVar(&promptOverride, "prompt", "", "Custom initial prompt (overrides default)")
 	cmd.ValidArgsFunction = readyTaskCompletion
 	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
 	cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)

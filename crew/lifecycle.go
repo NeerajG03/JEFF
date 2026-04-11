@@ -9,9 +9,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// initialPrompt is sent to workers after the agent launches so they begin
+// DefaultPrompt is sent to workers after the agent launches so they begin
 // working immediately instead of sitting idle.
-const initialPrompt = "Read your CLAUDE.md for task context and begin working on the task."
+const DefaultPrompt = "Read your task context using `gig show` for your task ID and begin working."
 
 // buildAgentCmd constructs the agent CLI command with optional --model and --resume flags.
 func buildAgentCmd(agent, model, resumeSessionID string) string {
@@ -36,6 +36,7 @@ type StartOpts struct {
 	Agent           string // agent command (e.g. "claude"), defaults to "claude"
 	Model           string // Claude model override (e.g. "sonnet", "opus", "haiku")
 	ResumeSessionID string // Claude session ID to resume via --resume
+	Prompt          string // custom initial prompt (overrides DefaultPrompt; empty = default; ignored on resume)
 }
 
 // StartOrchestrator creates a new tmux session (jeff-N or jeff-<name>) and launches the
@@ -143,11 +144,17 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 		return nil, fmt.Errorf("launch agent: %w", err)
 	}
 
-	// Send initial prompt so the worker starts immediately.
-	time.Sleep(3 * time.Second)
-	if err := SendCommand(target, initialPrompt); err != nil {
-		KillWindow(target)
-		return nil, fmt.Errorf("send initial prompt: %w", err)
+	// Send initial prompt unless resuming an existing session.
+	if opts.ResumeSessionID == "" {
+		prompt := opts.Prompt
+		if prompt == "" {
+			prompt = DefaultPrompt
+		}
+		time.Sleep(3 * time.Second)
+		if err := SendCommand(target, prompt); err != nil {
+			KillWindow(target)
+			return nil, fmt.Errorf("send initial prompt: %w", err)
+		}
 	}
 
 	// Update with PID and pane ID now that the agent is running.
@@ -205,11 +212,17 @@ func Start(store *Store, taskID, taskDir string, opts StartOpts) (*Session, erro
 		return nil, fmt.Errorf("launch agent: %w", err)
 	}
 
-	// Send initial prompt so the worker starts immediately.
-	time.Sleep(3 * time.Second)
-	if err := SendCommand(target, initialPrompt); err != nil {
-		KillWindow(target)
-		return nil, fmt.Errorf("send initial prompt: %w", err)
+	// Send initial prompt unless resuming an existing session.
+	if opts.ResumeSessionID == "" {
+		prompt := opts.Prompt
+		if prompt == "" {
+			prompt = DefaultPrompt
+		}
+		time.Sleep(3 * time.Second)
+		if err := SendCommand(target, prompt); err != nil {
+			KillWindow(target)
+			return nil, fmt.Errorf("send initial prompt: %w", err)
+		}
 	}
 
 	// Update with PID now that the agent is running.

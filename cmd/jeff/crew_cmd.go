@@ -186,24 +186,37 @@ func crewResumeCmd() *cobra.Command {
 			repos := detectRepos(td.Path)
 			model := persona.RegisteredModel(cfg.Home, personaName)
 
-			// Look up latest captured Claude session ID so we can --resume into
-			// the same conversation context.
-			var resumeSessionID string
+			// Look up existing session for resume context.
+			var resumeSessionID, orchestratorID string
 			if existing, err := cs.GetSession(taskID); err == nil {
 				resumeSessionID = existing.LatestSessionID()
 				if resumeSessionID != "" {
 					fmt.Fprintf(os.Stderr, "Resuming Claude session %s\n", resumeSessionID)
 				}
+				orchestratorID = existing.OrchestratorID
 			}
 
-			sess, err := crew.Start(cs, taskID, td.Path, crew.StartOpts{
+			// Prefer current orchestrator, fall back to the one from original session.
+			if detected := detectOrchestratorID(); detected != "" {
+				orchestratorID = detected
+			}
+
+			opts := crew.StartOpts{
 				Persona:         personaName,
 				Repos:           repos,
 				Resume:          true,
 				Agent:           string(cfg.Agent),
 				Model:           model,
 				ResumeSessionID: resumeSessionID,
-			})
+			}
+
+			var sess *crew.Session
+			if orchestratorID != "" {
+				fmt.Fprintf(os.Stderr, "Auto-detected orchestrator: %s\n", orchestratorID)
+				sess, err = crew.StartWorkerForOrchestrator(cs, orchestratorID, taskID, td.Path, opts)
+			} else {
+				sess, err = crew.Start(cs, taskID, td.Path, opts)
+			}
 			if err != nil {
 				return err
 			}

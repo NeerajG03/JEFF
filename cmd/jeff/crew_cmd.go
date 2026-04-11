@@ -190,11 +190,13 @@ func crewResumeCmd() *cobra.Command {
 }
 
 func crewListCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "Show all crew sessions",
+		Short: "Show crew sessions (running only by default)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			showAll, _ := cmd.Flags().GetBool("all")
+
 			cs, err := crew.Open(cfg.Home)
 			if err != nil {
 				return err
@@ -214,18 +216,23 @@ func crewListCmd() *cobra.Command {
 				return err == nil && t.Status.IsTerminal()
 			})
 
-			sessions, err := cs.ListSessions(false)
+			activeOnly := !showAll
+			sessions, err := cs.ListSessions(activeOnly)
 			if err != nil {
 				return err
 			}
 
 			if len(sessions) == 0 {
-				fmt.Fprintln(os.Stderr, "(no crew sessions)")
+				if activeOnly {
+					fmt.Fprintln(os.Stderr, "(no running sessions — use --all to see all)")
+				} else {
+					fmt.Fprintln(os.Stderr, "(no crew sessions)")
+				}
 				return nil
 			}
 
 			// Header.
-			fmt.Fprintf(os.Stdout, "%-12s %-10s %-10s %-12s %s\n",
+			fmt.Fprintf(os.Stdout, "%-12s %-10s %-12s %-12s %s\n",
 				"TASK", "PERSONA", "STATUS", "STARTED", "LAST CHECKPOINT")
 
 			for _, sess := range sessions {
@@ -243,12 +250,22 @@ func crewListCmd() *cobra.Command {
 				}
 
 				status := crewStatusLabel(sess.Status)
-				fmt.Fprintf(os.Stdout, "%-12s %-10s %-10s %-12s %s\n",
-					sess.TaskID, sess.Persona, status, started, ckpt)
+				// Pad status to 12 visible chars; ANSI escapes don't count toward width.
+				visPad := 12 - visibleLen(status)
+				if visPad < 0 {
+					visPad = 0
+				}
+				fmt.Fprintf(os.Stdout, "%-12s %-10s %s%-*s %-12s %s\n",
+					sess.TaskID, sess.Persona, status, visPad, "", started, ckpt)
 			}
+
+			crewLegend()
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolP("all", "a", false, "Show all sessions, including done/failed/stopped")
+	return cmd
 }
 
 func crewStatusCmd() *cobra.Command {

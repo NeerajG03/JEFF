@@ -13,8 +13,8 @@ import (
 // working immediately instead of sitting idle.
 const initialPrompt = "Read your CLAUDE.md for task context and begin working on the task."
 
-// buildAgentCmd constructs the agent CLI command with optional --model flag.
-func buildAgentCmd(agent, model string) string {
+// buildAgentCmd constructs the agent CLI command with optional --model and --resume flags.
+func buildAgentCmd(agent, model, resumeSessionID string) string {
 	if agent == "" {
 		agent = "claude"
 	}
@@ -22,16 +22,20 @@ func buildAgentCmd(agent, model string) string {
 	if model != "" {
 		cmd += " --model " + model
 	}
+	if resumeSessionID != "" {
+		cmd += " --resume " + resumeSessionID
+	}
 	return cmd
 }
 
 // StartOpts configures a new crew session.
 type StartOpts struct {
-	Persona string
-	Repos   []string
-	Resume  bool   // if true, skip pickup (workspace exists)
-	Agent   string // agent command (e.g. "claude"), defaults to "claude"
-	Model   string // Claude model override (e.g. "sonnet", "opus", "haiku")
+	Persona         string
+	Repos           []string
+	Resume          bool   // if true, skip pickup (workspace exists)
+	Agent           string // agent command (e.g. "claude"), defaults to "claude"
+	Model           string // Claude model override (e.g. "sonnet", "opus", "haiku")
+	ResumeSessionID string // Claude session ID to resume via --resume
 }
 
 // StartOrchestrator creates a new tmux session (jeff-N or jeff-<name>) and launches the
@@ -70,10 +74,7 @@ func StartOrchestrator(store *Store, jeffHome string, agent string, name string)
 	_ = tmuxRun("set-environment", "-t", id, "JEFF_ORCHESTRATOR_SESSION", id)
 
 	// Launch agent in the orchestrator window.
-	if agent == "" {
-		agent = "claude"
-	}
-	agentCmd := agent + " --dangerously-skip-permissions"
+	agentCmd := buildAgentCmd(agent, "", "")
 	if err := SendCommand(target, agentCmd); err != nil {
 		return nil, fmt.Errorf("launch orchestrator agent: %w", err)
 	}
@@ -115,7 +116,7 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 		return nil, err
 	}
 
-	agentCmd := buildAgentCmd(opts.Agent, opts.Model)
+	agentCmd := buildAgentCmd(opts.Agent, opts.Model, opts.ResumeSessionID)
 	if err := SendCommand(target, agentCmd); err != nil {
 		KillWindow(target)
 		return nil, fmt.Errorf("launch agent: %w", err)
@@ -174,7 +175,7 @@ func Start(store *Store, taskID, taskDir string, opts StartOpts) (*Session, erro
 	}
 
 	// Launch agent.
-	agentCmd := buildAgentCmd(opts.Agent, opts.Model)
+	agentCmd := buildAgentCmd(opts.Agent, opts.Model, opts.ResumeSessionID)
 	if err := SendCommand(target, agentCmd); err != nil {
 		// Clean up the window if agent launch fails.
 		KillWindow(target)

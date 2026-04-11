@@ -17,6 +17,7 @@ func builtinHooks() []*Hook {
 		inboxCheckHook(),
 		workerHeartbeatHook(),
 		workerStopHook(),
+		sessionCaptureHook(),
 	}
 }
 
@@ -433,6 +434,45 @@ func workerStopHook() *Hook {
 			return ""
 		},
 	}
+}
+
+// sessionCaptureHook fires at SessionStart for task-level workers.
+// It reads the session_id from the hook input JSON and stores it in the crew DB
+// via `jeff crew session-id`, enabling `jeff crew resume` to use --resume.
+func sessionCaptureHook() *Hook {
+	return &Hook{
+		Name:    "session-capture",
+		Source:  SourceTask,
+		Event:   "SessionStart",
+		Matcher: "*",
+		Timeout: 5,
+		ClaudeScript: func(ctx HookContext) string {
+			return buildSessionCaptureScript(ctx.TaskID)
+		},
+		OpenCodeSnippet: func(ctx HookContext) string {
+			return ""
+		},
+	}
+}
+
+func buildSessionCaptureScript(taskID string) string {
+	if taskID == "" {
+		return `#!/bin/bash
+set -euo pipefail
+cat > /dev/null
+`
+	}
+
+	return `#!/bin/bash
+set -euo pipefail
+
+INPUT=$(cat)
+SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // ""')
+
+[ -z "$SESSION_ID" ] && exit 0
+
+jeff crew session-id ` + taskID + ` "$SESSION_ID" 2>/dev/null || true
+`
 }
 
 func buildWorkerStopScript(taskID, orchestratorID string) string {

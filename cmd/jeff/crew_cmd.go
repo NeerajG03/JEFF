@@ -262,7 +262,7 @@ func crewListCmd() *cobra.Command {
 					}
 				}
 
-				model := persona.RegisteredModel(cfg.Home, sess.Persona)
+				model := sess.Model
 				if model == "" {
 					model = "-"
 				}
@@ -277,7 +277,6 @@ func crewListCmd() *cobra.Command {
 					sess.TaskID, sess.Persona, model, status, visPad, "", started, ckpt)
 			}
 
-			crewLegend()
 			return nil
 		},
 	}

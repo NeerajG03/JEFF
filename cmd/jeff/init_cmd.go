@@ -8,6 +8,7 @@ import (
 	"github.com/NeerajG03/JEFF"
 	jeffembed "github.com/NeerajG03/JEFF/embed"
 	"github.com/NeerajG03/JEFF/persona"
+	"github.com/NeerajG03/JEFF/skill"
 	"github.com/spf13/cobra"
 )
 
@@ -89,6 +90,11 @@ func runInit(here bool) error {
 		fmt.Fprintf(os.Stderr, "Warning: seed personas: %v\n", err)
 	}
 
+	// Seed built-in skills.
+	if err := skill.SeedDefaults(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: seed skills: %v\n", err)
+	}
+
 	// Install hooks.
 	if err := syncHomeHooks(home, &c); err != nil {
 		return fmt.Errorf("install hooks: %w", err)
@@ -133,6 +139,11 @@ func runUpdate() error {
 	// Seed default personas (adds any new built-in personas, doesn't overwrite existing).
 	if err := persona.SeedDefaults(home); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: seed personas: %v\n", err)
+	}
+
+	// Refresh built-in skills (updates files, clears persona injection tags).
+	if err := skill.SeedDefaults(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: seed skills: %v\n", err)
 	}
 
 	// Sync hooks.

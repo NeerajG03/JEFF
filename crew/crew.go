@@ -37,6 +37,7 @@ type Session struct {
 	TmuxPane       string     `json:"tmux_pane,omitempty"`
 	TaskDir        string     `json:"task_dir"`
 	Persona        string     `json:"persona,omitempty"`
+	Model          string     `json:"model,omitempty"`
 	Repos          []string   `json:"repos,omitempty"`
 	OrchestratorID string     `json:"orchestrator_id,omitempty"`
 	PID            int        `json:"pid,omitempty"`
@@ -181,6 +182,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_task
 	addCol := []string{
 		"ALTER TABLE sessions ADD COLUMN orchestrator_id TEXT DEFAULT ''",
 		"ALTER TABLE sessions ADD COLUMN tmux_pane TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE sessions ADD COLUMN model TEXT DEFAULT ''",
 	}
 	for _, stmt := range addCol {
 		_, _ = db.Exec(stmt) // ignore "duplicate column" errors
@@ -205,14 +207,15 @@ func (s *Store) PutSession(sess *Session) error {
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO sessions (task_id, tmux_session, window_name, tmux_pane, task_dir, persona, repos, orchestrator_id, pid, status, started_at, stopped_at, last_seen)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO sessions (task_id, tmux_session, window_name, tmux_pane, task_dir, persona, model, repos, orchestrator_id, pid, status, started_at, stopped_at, last_seen)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(task_id) DO UPDATE SET
 			tmux_session    = excluded.tmux_session,
 			window_name     = excluded.window_name,
 			tmux_pane       = excluded.tmux_pane,
 			task_dir        = excluded.task_dir,
 			persona         = excluded.persona,
+			model           = excluded.model,
 			repos           = excluded.repos,
 			orchestrator_id = excluded.orchestrator_id,
 			pid             = excluded.pid,
@@ -220,7 +223,7 @@ func (s *Store) PutSession(sess *Session) error {
 			stopped_at      = excluded.stopped_at,
 			last_seen       = excluded.last_seen`,
 		sess.TaskID, sess.TmuxSession, sess.WindowName, sess.TmuxPane, sess.TaskDir,
-		sess.Persona, string(repos), sess.OrchestratorID, sess.PID, sess.Status,
+		sess.Persona, sess.Model, string(repos), sess.OrchestratorID, sess.PID, sess.Status,
 		sess.StartedAt.UTC().Format(timeLayout), stoppedAt,
 		sess.LastSeen.UTC().Format(timeLayout),
 	)
@@ -230,7 +233,7 @@ func (s *Store) PutSession(sess *Session) error {
 // GetSession retrieves a session by task ID.
 func (s *Store) GetSession(taskID string) (*Session, error) {
 	row := s.db.QueryRow(`
-		SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, repos,
+		SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, model, repos,
 		       orchestrator_id, pid, status, started_at, stopped_at, last_seen
 		FROM sessions WHERE task_id = ?`, taskID)
 	return scanSession(row)
@@ -238,7 +241,7 @@ func (s *Store) GetSession(taskID string) (*Session, error) {
 
 // ListSessions returns sessions. If activeOnly is true, excludes terminal statuses.
 func (s *Store) ListSessions(activeOnly bool) ([]*Session, error) {
-	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, repos,
+	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, model, repos,
 	                 orchestrator_id, pid, status, started_at, stopped_at, last_seen
 	          FROM sessions`
 	if activeOnly {
@@ -373,7 +376,7 @@ func (s *Store) UpdateOrchestratorStatus(id, status string) error {
 
 // WorkersForOrchestrator returns sessions belonging to an orchestrator.
 func (s *Store) WorkersForOrchestrator(orchestratorID string) ([]*Session, error) {
-	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, repos,
+	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, model, repos,
 	                 orchestrator_id, pid, status, started_at, stopped_at, last_seen
 	          FROM sessions WHERE orchestrator_id = ? ORDER BY started_at DESC`
 	rows, err := s.db.Query(query, orchestratorID)
@@ -495,7 +498,7 @@ func scanSession(row scannable) (*Session, error) {
 
 	err := row.Scan(
 		&sess.TaskID, &sess.TmuxSession, &sess.WindowName, &sess.TmuxPane, &sess.TaskDir,
-		&sess.Persona, &repos, &sess.OrchestratorID, &sess.PID, &sess.Status,
+		&sess.Persona, &sess.Model, &repos, &sess.OrchestratorID, &sess.PID, &sess.Status,
 		&startedAt, &stoppedAt, &lastSeen,
 	)
 	if err != nil {

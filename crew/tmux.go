@@ -45,7 +45,7 @@ func SanitizeWindowName(name string) string {
 func CreateWindow(name, dir string) (string, error) {
 	name = SanitizeWindowName(name)
 	target := TmuxSessionName + ":" + name
-	err := tmuxRun("new-window", "-a", "-t", TmuxSessionName, "-n", name, "-c", dir)
+	err := tmuxRun("new-window", "-d", "-a", "-t", TmuxSessionName, "-n", name, "-c", dir)
 	if err != nil {
 		return "", fmt.Errorf("create tmux window %q: %w", name, err)
 	}
@@ -199,7 +199,7 @@ func CreateSession(sessionName, windowName, dir string) (string, error) {
 func CreateWindowInSession(sessionName, windowName, dir string) (string, error) {
 	windowName = SanitizeWindowName(windowName)
 	target := sessionName + ":" + windowName
-	err := tmuxRun("new-window", "-a", "-t", sessionName, "-n", windowName, "-c", dir)
+	err := tmuxRun("new-window", "-d", "-a", "-t", sessionName, "-n", windowName, "-c", dir)
 	if err != nil {
 		return "", fmt.Errorf("create tmux window %q in %q: %w", windowName, sessionName, err)
 	}

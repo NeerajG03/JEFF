@@ -34,6 +34,7 @@ func crewCmd() *cobra.Command {
 	cmd.AddCommand(
 		crewStartCmd(),
 		crewResumeCmd(),
+		crewSessionIDCmd(),
 		crewListCmd(),
 		crewStatusCmd(),
 		crewSendCmd(),
@@ -185,18 +186,52 @@ func crewResumeCmd() *cobra.Command {
 			repos := detectRepos(td.Path)
 			model := persona.RegisteredModel(cfg.Home, personaName)
 
+			// Look up latest captured Claude session ID so we can --resume into
+			// the same conversation context.
+			var resumeSessionID string
+			if existing, err := cs.GetSession(taskID); err == nil {
+				resumeSessionID = existing.LatestSessionID()
+				if resumeSessionID != "" {
+					fmt.Fprintf(os.Stderr, "Resuming Claude session %s\n", resumeSessionID)
+				}
+			}
+
 			sess, err := crew.Start(cs, taskID, td.Path, crew.StartOpts{
-				Persona: personaName,
-				Repos:   repos,
-				Resume:  true,
-				Agent:   string(cfg.Agent),
-				Model:   model,
+				Persona:         personaName,
+				Repos:           repos,
+				Resume:          true,
+				Agent:           string(cfg.Agent),
+				Model:           model,
+				ResumeSessionID: resumeSessionID,
 			})
 			if err != nil {
 				return err
 			}
 
 			fmt.Fprintf(os.Stderr, "Resumed %s in tmux window %s\n", taskID, sess.WindowName)
+			return nil
+		},
+	}
+}
+
+func crewSessionIDCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "session-id <gig-id> <session-id>",
+		Short: "Record a Claude session ID for a worker (called by SessionStart hook)",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			taskID := args[0]
+			sessionID := args[1]
+
+			cs, err := crew.Open(cfg.Home)
+			if err != nil {
+				return fmt.Errorf("open crew store: %w", err)
+			}
+			defer cs.Close()
+
+			if err := cs.AppendSessionID(taskID, sessionID); err != nil {
+				return fmt.Errorf("append session ID: %w", err)
+			}
 			return nil
 		},
 	}

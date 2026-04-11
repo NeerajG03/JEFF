@@ -306,20 +306,120 @@ func TestGenerateMsgID(t *testing.T) {
 
 func TestBuildAgentCmd(t *testing.T) {
 	tests := []struct {
-		agent string
-		model string
-		want  string
+		agent     string
+		model     string
+		resumeID  string
+		want      string
 	}{
-		{"claude", "", "claude --dangerously-skip-permissions"},
-		{"claude", "sonnet", "claude --dangerously-skip-permissions --model sonnet"},
-		{"claude", "opus", "claude --dangerously-skip-permissions --model opus"},
-		{"", "", "claude --dangerously-skip-permissions"},
-		{"", "haiku", "claude --dangerously-skip-permissions --model haiku"},
+		{"claude", "", "", "claude --dangerously-skip-permissions"},
+		{"claude", "sonnet", "", "claude --dangerously-skip-permissions --model sonnet"},
+		{"claude", "opus", "", "claude --dangerously-skip-permissions --model opus"},
+		{"", "", "", "claude --dangerously-skip-permissions"},
+		{"", "haiku", "", "claude --dangerously-skip-permissions --model haiku"},
+		{"claude", "", "abc123", "claude --dangerously-skip-permissions --resume abc123"},
+		{"claude", "sonnet", "abc123", "claude --dangerously-skip-permissions --model sonnet --resume abc123"},
 	}
 	for _, tc := range tests {
-		got := buildAgentCmd(tc.agent, tc.model)
+		got := buildAgentCmd(tc.agent, tc.model, tc.resumeID)
 		if got != tc.want {
-			t.Errorf("buildAgentCmd(%q, %q) = %q, want %q", tc.agent, tc.model, got, tc.want)
+			t.Errorf("buildAgentCmd(%q, %q, %q) = %q, want %q", tc.agent, tc.model, tc.resumeID, got, tc.want)
 		}
+	}
+}
+
+func TestAppendSessionID(t *testing.T) {
+	store := tempStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	sess := &Session{
+		TaskID:      "gig-sid1",
+		TmuxSession: TmuxSessionName,
+		WindowName:  "gig-sid1",
+		TaskDir:     "/tmp",
+		Status:      "running",
+		StartedAt:   now,
+		LastSeen:    now,
+	}
+	if err := store.PutSession(sess); err != nil {
+		t.Fatal(err)
+	}
+
+	// Initially no session IDs.
+	got, err := store.GetSession("gig-sid1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.SessionIDs) != 0 {
+		t.Errorf("initial session_ids = %v, want empty", got.SessionIDs)
+	}
+	if got.LatestSessionID() != "" {
+		t.Errorf("LatestSessionID() = %q, want empty", got.LatestSessionID())
+	}
+
+	// Append first session ID.
+	if err := store.AppendSessionID("gig-sid1", "sess-aaa"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err = store.GetSession("gig-sid1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.SessionIDs) != 1 || got.SessionIDs[0] != "sess-aaa" {
+		t.Errorf("session_ids = %v, want [sess-aaa]", got.SessionIDs)
+	}
+	if got.LatestSessionID() != "sess-aaa" {
+		t.Errorf("LatestSessionID() = %q, want sess-aaa", got.LatestSessionID())
+	}
+
+	// Append second session ID (e.g. after context limit restart).
+	if err := store.AppendSessionID("gig-sid1", "sess-bbb"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err = store.GetSession("gig-sid1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.SessionIDs) != 2 || got.SessionIDs[1] != "sess-bbb" {
+		t.Errorf("session_ids = %v, want [sess-aaa sess-bbb]", got.SessionIDs)
+	}
+	if got.LatestSessionID() != "sess-bbb" {
+		t.Errorf("LatestSessionID() = %q, want sess-bbb", got.LatestSessionID())
+	}
+}
+
+func TestPutSessionPreservesSessionIDs(t *testing.T) {
+	store := tempStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	sess := &Session{
+		TaskID:      "gig-sid2",
+		TmuxSession: TmuxSessionName,
+		WindowName:  "gig-sid2",
+		TaskDir:     "/tmp",
+		Status:      "running",
+		StartedAt:   now,
+		LastSeen:    now,
+	}
+	if err := store.PutSession(sess); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendSessionID("gig-sid2", "sess-xyz"); err != nil {
+		t.Fatal(err)
+	}
+
+	// PutSession upsert should NOT overwrite session_ids.
+	sess.Status = "running"
+	if err := store.PutSession(sess); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := store.GetSession("gig-sid2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.SessionIDs) != 1 || got.SessionIDs[0] != "sess-xyz" {
+		t.Errorf("session_ids after upsert = %v, want [sess-xyz]", got.SessionIDs)
 	}
 }

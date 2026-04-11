@@ -45,6 +45,15 @@ type Session struct {
 	StartedAt      time.Time  `json:"started_at"`
 	StoppedAt      *time.Time `json:"stopped_at,omitempty"`
 	LastSeen       time.Time  `json:"last_seen"`
+	SessionIDs     []string   `json:"session_ids,omitempty"` // Claude session IDs captured via SessionStart hook
+}
+
+// LatestSessionID returns the most recently captured Claude session ID, or "" if none.
+func (s *Session) LatestSessionID() string {
+	if len(s.SessionIDs) == 0 {
+		return ""
+	}
+	return s.SessionIDs[len(s.SessionIDs)-1]
 }
 
 // MessageType determines delivery mechanism and expected behavior.
@@ -183,6 +192,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_task
 		"ALTER TABLE sessions ADD COLUMN orchestrator_id TEXT DEFAULT ''",
 		"ALTER TABLE sessions ADD COLUMN tmux_pane TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE sessions ADD COLUMN model TEXT DEFAULT ''",
+		"ALTER TABLE sessions ADD COLUMN session_ids TEXT DEFAULT '[]'",
 	}
 	for _, stmt := range addCol {
 		_, _ = db.Exec(stmt) // ignore "duplicate column" errors
@@ -194,10 +204,16 @@ CREATE INDEX IF NOT EXISTS idx_messages_task
 // --- Session CRUD ---
 
 // PutSession inserts or updates a session.
+// session_ids is intentionally excluded from the DO UPDATE SET clause so that
+// AppendSessionID is the only way to grow the list after initial insert.
 func (s *Store) PutSession(sess *Session) error {
 	repos, err := json.Marshal(sess.Repos)
 	if err != nil {
 		return fmt.Errorf("marshal repos: %w", err)
+	}
+	sessionIDs, err := json.Marshal(sess.SessionIDs)
+	if err != nil {
+		return fmt.Errorf("marshal session_ids: %w", err)
 	}
 
 	var stoppedAt *string
@@ -207,8 +223,8 @@ func (s *Store) PutSession(sess *Session) error {
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO sessions (task_id, tmux_session, window_name, tmux_pane, task_dir, persona, model, repos, orchestrator_id, pid, status, started_at, stopped_at, last_seen)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO sessions (task_id, tmux_session, window_name, tmux_pane, task_dir, persona, model, repos, orchestrator_id, pid, status, started_at, stopped_at, last_seen, session_ids)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(task_id) DO UPDATE SET
 			tmux_session    = excluded.tmux_session,
 			window_name     = excluded.window_name,
@@ -225,8 +241,32 @@ func (s *Store) PutSession(sess *Session) error {
 		sess.TaskID, sess.TmuxSession, sess.WindowName, sess.TmuxPane, sess.TaskDir,
 		sess.Persona, sess.Model, string(repos), sess.OrchestratorID, sess.PID, sess.Status,
 		sess.StartedAt.UTC().Format(timeLayout), stoppedAt,
-		sess.LastSeen.UTC().Format(timeLayout),
+		sess.LastSeen.UTC().Format(timeLayout), string(sessionIDs),
 	)
+	return err
+}
+
+// AppendSessionID appends a Claude session ID to the session_ids array for a task.
+func (s *Store) AppendSessionID(taskID, sessionID string) error {
+	// Read existing array, append, write back atomically.
+	var raw string
+	err := s.db.QueryRow(`SELECT COALESCE(session_ids, '[]') FROM sessions WHERE task_id = ?`, taskID).Scan(&raw)
+	if err != nil {
+		return fmt.Errorf("get session_ids for %s: %w", taskID, err)
+	}
+
+	var ids []string
+	if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+		ids = []string{}
+	}
+	ids = append(ids, sessionID)
+
+	updated, err := json.Marshal(ids)
+	if err != nil {
+		return fmt.Errorf("marshal session_ids: %w", err)
+	}
+
+	_, err = s.db.Exec(`UPDATE sessions SET session_ids = ? WHERE task_id = ?`, string(updated), taskID)
 	return err
 }
 
@@ -234,7 +274,8 @@ func (s *Store) PutSession(sess *Session) error {
 func (s *Store) GetSession(taskID string) (*Session, error) {
 	row := s.db.QueryRow(`
 		SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, model, repos,
-		       orchestrator_id, pid, status, started_at, stopped_at, last_seen
+		       orchestrator_id, pid, status, started_at, stopped_at, last_seen,
+		       COALESCE(session_ids, '[]')
 		FROM sessions WHERE task_id = ?`, taskID)
 	return scanSession(row)
 }
@@ -242,7 +283,8 @@ func (s *Store) GetSession(taskID string) (*Session, error) {
 // ListSessions returns sessions. If activeOnly is true, excludes terminal statuses.
 func (s *Store) ListSessions(activeOnly bool) ([]*Session, error) {
 	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, model, repos,
-	                 orchestrator_id, pid, status, started_at, stopped_at, last_seen
+	                 orchestrator_id, pid, status, started_at, stopped_at, last_seen,
+	                 COALESCE(session_ids, '[]')
 	          FROM sessions`
 	if activeOnly {
 		query += ` WHERE status NOT IN ('done', 'failed', 'stopped')`
@@ -377,7 +419,8 @@ func (s *Store) UpdateOrchestratorStatus(id, status string) error {
 // WorkersForOrchestrator returns sessions belonging to an orchestrator.
 func (s *Store) WorkersForOrchestrator(orchestratorID string) ([]*Session, error) {
 	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, model, repos,
-	                 orchestrator_id, pid, status, started_at, stopped_at, last_seen
+	                 orchestrator_id, pid, status, started_at, stopped_at, last_seen,
+	                 COALESCE(session_ids, '[]')
 	          FROM sessions WHERE orchestrator_id = ? ORDER BY started_at DESC`
 	rows, err := s.db.Query(query, orchestratorID)
 	if err != nil {
@@ -493,19 +536,20 @@ type scannable interface {
 
 func scanSession(row scannable) (*Session, error) {
 	var sess Session
-	var repos, startedAt, lastSeen string
+	var repos, sessionIDs, startedAt, lastSeen string
 	var stoppedAt *string
 
 	err := row.Scan(
 		&sess.TaskID, &sess.TmuxSession, &sess.WindowName, &sess.TmuxPane, &sess.TaskDir,
 		&sess.Persona, &sess.Model, &repos, &sess.OrchestratorID, &sess.PID, &sess.Status,
-		&startedAt, &stoppedAt, &lastSeen,
+		&startedAt, &stoppedAt, &lastSeen, &sessionIDs,
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	_ = json.Unmarshal([]byte(repos), &sess.Repos)
+	_ = json.Unmarshal([]byte(sessionIDs), &sess.SessionIDs)
 	sess.StartedAt = parseTime(startedAt)
 	sess.LastSeen = parseTime(lastSeen)
 	if stoppedAt != nil {

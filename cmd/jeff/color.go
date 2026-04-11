@@ -3,11 +3,14 @@ package main
 import (
 	"fmt"
 	"os"
+	"regexp"
 
 	"golang.org/x/term"
 
 	"github.com/NeerajG03/gig"
 )
+
+var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 // ANSI color codes.
 const (
@@ -72,4 +75,20 @@ func colorPriority(p gig.Priority) string {
 	default:
 		return label
 	}
+}
+
+// visibleLen returns the display width of s, ignoring ANSI escape sequences.
+func visibleLen(s string) int {
+	return len([]rune(ansiRE.ReplaceAllString(s, "")))
+}
+
+// crewLegend prints a status icon legend to stdout.
+func crewLegend() {
+	fmt.Fprintf(os.Stdout, "\nLegend: %s  %s  %s  %s  %s\n",
+		colorize(cGreen+cBold, "● running"),
+		colorize(cYellow, "◉ starting"),
+		colorize(cDim, "○ done"),
+		colorize(cRed+cBold, "✕ failed"),
+		colorize(cYellow, "■ stopped"),
+	)
 }

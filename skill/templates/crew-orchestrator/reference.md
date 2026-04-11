@@ -45,16 +45,21 @@ jeff crew start <gig-id> --persona jenko --repos backend,frontend
 # Start with model override
 jeff crew start <gig-id> --persona eric --model opus
 
-# Resume a previously stopped worker (workspace already exists)
+# Start with custom initial prompt
+jeff crew start <gig-id> --persona jenko --repos backend --prompt "Focus on the API layer only"
+
+# Resume a previously stopped worker (resumes into same Claude session)
 jeff crew resume <gig-id>
 ```
 
 Workers automatically:
 - Detect which orchestrator session they're in (from `$TMUX` → `jeff-N` session name)
-- Get hooks injected at pickup time (heartbeat, stop signal, inbox check, etc.)
+- Get hooks injected at pickup time (heartbeat, stop signal, inbox check, session capture, etc.)
 - Send a heartbeat on every tool call (updates `last_seen` for stall detection)
 - Signal the orchestrator on stop (via the Stop hook)
+- Capture Claude session ID via SessionStart hook (enables true resume)
 - Receive initial prompt 3 seconds after launch so they begin work immediately
+- Resume opens in the same orchestrator session and attaches to the previous Claude conversation
 
 ## Monitoring Workers
 

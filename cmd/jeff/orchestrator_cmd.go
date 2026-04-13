@@ -19,6 +19,7 @@ func orchestratorCmd() *cobra.Command {
 	cmd.AddCommand(
 		orchestratorStartCmd(),
 		orchestratorListCmd(),
+		orchestratorInfoCmd(),
 		orchestratorAttachCmd(),
 		orchestratorStopCmd(),
 	)
@@ -100,6 +101,89 @@ func orchestratorListCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func orchestratorInfoCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "info [orchestrator-id]",
+		Short: "Show all tasks worked under an orchestrator session",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cs, err := crew.Open(cfg.Home)
+			if err != nil {
+				return err
+			}
+			defer cs.Close()
+
+			// Auto-detect orchestrator if no arg given.
+			orchID := ""
+			if len(args) > 0 {
+				orchID = args[0]
+			} else {
+				orchID = detectOrchestratorID()
+			}
+			if orchID == "" {
+				return fmt.Errorf("no orchestrator specified and none detected from current session")
+			}
+
+			orch, err := cs.GetOrchestrator(orchID)
+			if err != nil {
+				return fmt.Errorf("orchestrator not found: %w", err)
+			}
+
+			fmt.Fprintf(os.Stdout, "Orchestrator: %s (session: %s, status: %s, started: %s)\n\n",
+				orch.ID, orch.TmuxSession, orch.Status, relativeTime(orch.StartedAt))
+
+			gigStore, _ := openGigStore()
+			if gigStore != nil {
+				defer gigStore.Close()
+			}
+
+			workers, err := cs.WorkersForOrchestrator(orchID)
+			if err != nil {
+				return err
+			}
+
+			if len(workers) == 0 {
+				fmt.Fprintln(os.Stderr, "(no workers)")
+				return nil
+			}
+
+			fmt.Fprintf(os.Stdout, "%-12s %-10s %-8s %-12s %-12s %s\n",
+				"TASK", "PERSONA", "MODEL", "STATUS", "STARTED", "LAST CHECKPOINT")
+
+			for _, sess := range workers {
+				started := relativeTime(sess.StartedAt)
+				ckpt := "(none)"
+
+				if gigStore != nil {
+					if cp, err := gigStore.LatestCheckpoint(sess.TaskID); err == nil && cp != nil {
+						summary := cp.Done
+						if len(summary) > 50 {
+							summary = summary[:47] + "..."
+						}
+						ckpt = fmt.Sprintf("%q (%s ago)", summary, relativeTime(cp.CreatedAt))
+					}
+				}
+
+				model := sess.Model
+				if model == "" {
+					model = "-"
+				}
+
+				status := crewStatusLabel(sess.Status)
+				visPad := 12 - visibleLen(status)
+				if visPad < 0 {
+					visPad = 0
+				}
+				fmt.Fprintf(os.Stdout, "%-12s %-10s %-8s %s%-*s %-12s %s\n",
+					sess.TaskID, sess.Persona, model, status, visPad, "", started, ckpt)
+			}
+			return nil
+		},
+	}
+	cmd.ValidArgsFunction = orchestratorCompletion
+	return cmd
 }
 
 func orchestratorAttachCmd() *cobra.Command {

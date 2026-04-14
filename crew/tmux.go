@@ -66,16 +66,14 @@ func SendEnter(target string) error {
 }
 
 // SendCommand sends text followed by Enter to a tmux pane.
-// Both operations are sent in a single tmux invocation using ";"
-// command chaining so the server processes them atomically — this
-// prevents the Enter from being lost when the pane is still
-// processing the pasted text from send-keys -l.
+// The paste and Enter are sent as two separate tmux invocations
+// so the pane has time to process the pasted text before receiving
+// the Enter keypress.
 func SendCommand(target, command string) error {
-	return tmuxRun(
-		"send-keys", "-t", target, "-l", command,
-		";",
-		"send-keys", "-t", target, "Enter",
-	)
+	if err := tmuxRun("send-keys", "-t", target, "-l", command); err != nil {
+		return err
+	}
+	return tmuxRun("send-keys", "-t", target, "Enter")
 }
 
 // SendInterrupt sends C-c to a tmux pane.

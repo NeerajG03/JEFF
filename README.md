@@ -1,6 +1,6 @@
 # JEFF
 
-Agent workspace manager built on [gig](https://github.com/NeerajG03/gig). JEFF gives AI agents structured workspaces, personas, skills, and lifecycle management for task-driven development.
+Agent workspace manager built on [gig](https://github.com/NeerajG03/gig). JEFF gives AI agents structured workspaces, personas, skills, and lifecycle management for task-driven development — from solo tasks to multi-agent crews.
 
 ## Install
 
@@ -64,10 +64,74 @@ jeff done gig-ab12
   Agent works ──► jeff checkpoint ──► jeff ship ──► jeff done
 ```
 
+## Multi-Agent Crews
+
+Run multiple AI agents in parallel, each in its own tmux window with dedicated task workspace.
+
+```
+jeff-work (tmux session)
+├── tab 1: orchestrator  ← you live here, coordinating
+├── tab 2: gig-abc1      ← worker 1 (jenko, implementing)
+├── tab 3: gig-def2      ← worker 2 (eric, researching)
+└── tab 4: gig-ghi3      ← worker 3 (hardy, reviewing)
+```
+
+### Start an orchestrator
+
+```bash
+jeff orchestrator start --name work     # creates tmux session jeff-work
+```
+
+### Launch workers
+
+```bash
+# Start workers on tasks (each gets its own workspace + worktrees)
+jeff crew start gig-ab12 --persona jenko --repos backend
+jeff crew start gig-cd34 --persona eric --repos backend,frontend
+jeff crew start gig-ef56 --persona hardy --repos backend --model opus
+```
+
+### Monitor and communicate
+
+```bash
+jeff crew list                          # show running workers
+jeff crew status gig-ab12               # detailed worker status + pane output
+jeff crew events --since 5m             # recent activity across all workers
+jeff crew capture gig-ab12 --lines 30   # raw terminal output
+
+# Message workers (4 types, lightest to heaviest)
+jeff crew send gig-ab12 "add error handling" --type nudge     # low context impact
+jeff crew send gig-ab12 "what are you working on?" --type status  # sidechain, no pollution
+jeff crew send gig-ab12 "API spec changed" --type normal      # full conversation turn
+jeff crew send gig-ab12 "stop, focus on payments" --type divert  # interrupts agent
+
+# Workers can ask the orchestrator questions
+jeff crew ask "should I use JWT or session tokens?"
+jeff crew ack <msg-id> "use JWT"
+```
+
+### Manage lifecycle
+
+```bash
+jeff crew resume gig-ab12               # resume stopped worker (restores Claude session)
+jeff crew stop gig-ab12                 # graceful stop
+jeff crew stop --all                    # stop all workers
+jeff crew cleanup                       # reconcile tmux vs DB state
+jeff orchestrator info                  # show all tasks under orchestrator
+jeff orchestrator stop jeff-work        # stop orchestrator + all workers
+```
+
+### Dashboard
+
+```bash
+jeff dashboard                          # interactive TUI (auto-refreshes every 2s)
+```
+
 ## Commands
 
 | Command | Description |
 |---------|-------------|
+| **Task lifecycle** | |
 | `jeff init [--here] [--update]` | Initialize or update JEFF home |
 | `jeff pickup <id> [--persona] [--repos]` | Claim task, set up workspace, launch agent |
 | `jeff work [id]` | Resume work in existing task workspace |
@@ -76,13 +140,71 @@ jeff done gig-ab12
 | `jeff done [id] [--reason]` | Close task and clean up workspace |
 | `jeff status [--all]` | Overview of active tasks and workspaces |
 | `jeff open [id]` | Open workspace in IDE |
+| **Crew orchestration** | |
+| `jeff orchestrator start [--name]` | Launch orchestrator tmux session |
+| `jeff orchestrator list` | List orchestrator sessions |
+| `jeff orchestrator info [id]` | Show all tasks under an orchestrator |
+| `jeff orchestrator attach <id>` | Attach to orchestrator session |
+| `jeff orchestrator stop <id>` | Stop orchestrator and all workers |
+| `jeff crew start <id> [--persona] [--repos] [--model] [--prompt]` | Launch worker in tmux |
+| `jeff crew resume <id>` | Resume stopped worker (restores Claude session) |
+| `jeff crew list [--all]` | List workers (running only by default) |
+| `jeff crew status <id>` | Worker detail + checkpoint + pane output |
+| `jeff crew send <id> "msg" [--type]` | Message a worker (nudge/status/normal/divert) |
+| `jeff crew ask "question"` | Worker asks orchestrator a question |
+| `jeff crew ack <msg-id> ["response"]` | Acknowledge worker question |
+| `jeff crew events [--since]` | Recent gig activity across workers |
+| `jeff crew capture <id> [--lines]` | Raw terminal output from worker pane |
+| `jeff crew stop <id> [--all]` | Stop worker(s) |
+| `jeff crew cleanup` | Reconcile tmux state vs DB |
+| `jeff dashboard` | Interactive TUI dashboard |
+| **Resources** | |
 | `jeff repo add\|list\|remove\|sync` | Manage registered codebases |
 | `jeff worktree add\|rm\|list` | Manage git worktrees |
 | `jeff skill doc\|list\|show\|add\|remove\|tag\|inject\|eject` | Manage agent skills |
+| `jeff persona list\|show\|set-model` | Manage personas and model defaults |
 | `jeff config [agent\|ide\|hooks\|reset-claude-md]` | View and update configuration |
 | `jeff completion [bash\|zsh\|fish]` | Shell completions |
 
-See [docs/usage.md](docs/usage.md) for detailed command reference.
+## Personas
+
+Shape agent behavior with embedded personas. Each has a default model for cost optimization.
+
+| Persona | Role | Default model | Use when |
+|---------|------|--------------|----------|
+| **jenko** | Implementer — writes code, ships | opus | Building features, fixing bugs |
+| **schmidt** | Debugger — traces root causes | opus | Investigating issues, debugging |
+| **dickson** | Orchestrator — plans, delegates | sonnet | Breaking down epics, coordinating |
+| **eric** | Researcher — explores, documents | sonnet | Investigating code, researching |
+| **hardy** | Reviewer — checks quality | sonnet | Code review, PR review |
+
+```bash
+jeff pickup gig-ab12 --persona jenko --repos backend
+jeff crew start gig-ab12 --persona schmidt --repos backend --model opus
+```
+
+## Skills
+
+Skills are reusable SKILL.md instructions auto-injected into task workspaces based on persona, task type, or tags.
+
+```bash
+jeff skill add ./my-skill              # register a skill
+jeff skill tag my-skill --persona jenko # tag for auto-injection
+jeff skill inject slack notion         # inject into JEFF home
+jeff skill list                        # see all skills
+```
+
+The `crew-orchestrator` skill is embedded in the binary and auto-installed on `jeff init`.
+
+## Agent Memory
+
+JEFF maintains persistent memory across sessions:
+
+- **Persona memory** (`personas/<name>/memory/`) — per-persona knowledge that carries across tasks
+- **Repo learnings** (`learnings/<repo>/`) — repo-specific quirks and patterns
+- **Scratchpad** (`scratchpad.md` in task dir) — raw observations during a session
+
+Run `/learn` at the end of a session to curate scratchpad observations into persistent memory.
 
 ## Configuration
 
@@ -109,40 +231,11 @@ JEFF is configured via `jeff.json` with [JSON schema](https://raw.githubusercont
 
 See [docs/config.md](docs/config.md) for full configuration reference.
 
-## Personas
-
-Shape agent behavior with embedded personas:
-
-| Persona | Role | Use when |
-|---------|------|----------|
-| **dickson** | Orchestrator — plans, delegates, reviews | Breaking down epics, coordinating work |
-| **eric** | Researcher — explores, documents, recommends | Investigating code, researching approaches |
-| **jenko** | Implementer — writes code, runs tests, ships | Building features, fixing bugs |
-| **hardy** | Reviewer — reviews code, checks quality | Code review, quality checks |
-
-```bash
-jeff pickup gig-ab12 --persona jenko --repos backend
-```
-
-## Skills
-
-Skills are reusable SKILL.md instructions auto-injected into task workspaces.
-
-```bash
-jeff skill add ./my-skill              # register a skill
-jeff skill tag my-skill --persona jenko # tag for auto-injection
-jeff skill inject slack notion         # inject into JEFF home
-jeff skill list                        # see all skills
-```
-
-Skills auto-inject on `jeff pickup` when persona, task type, or tags match. See [docs/usage.md](docs/usage.md) for details.
-
 ## Requirements
 
 - [gig](https://github.com/NeerajG03/gig) — task management
 - [Claude Code](https://claude.com/product/claude-code) or [opencode](https://github.com/anomalyco/opencode) — agent tool
-- Git
-- `gh` CLI (for `jeff ship`)
+- Git, `gh` CLI (for `jeff ship`), tmux (for crew mode)
 
 ## License
 

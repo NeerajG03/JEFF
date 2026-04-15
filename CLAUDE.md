@@ -10,15 +10,20 @@ JEFF/
 ├── config.go           # LoadConfig, SaveConfig, ResolveHome, RepoConfig
 ├── repo.go             # AddRepo, RemoveRepo, ListRepos, SetPostSetup
 ├── attrs.go            # EnsureAttrs — define JEFF custom attributes in gig
+├── crew/               # Multi-agent orchestration (SQLite + tmux)
 ├── embed/              # Embedded assets (CLAUDE.md template, claude-settings.json)
 ├── hooks/              # Hook system: registry, builtin hooks, claude/opencode delivery
+├── memory/             # Persona memory + repo learnings management
 ├── persona/            # Embedded persona templates (dickson, eric, hardy, jenko, schmidt)
 ├── skill/              # Skill registry, matching, and injection (symlinks into task dirs)
+├── tui/                # Bubbletea dashboard (jeff dashboard)
 ├── workspace/          # Task workspace + worktree management + branch naming
 ├── cmd/jeff/           # CLI (cobra) — thin wrapper over SDK
 ├── docs/               # Guides (testing, adding commands, config reference)
 └── *_test.go           # Unit tests alongside source
 ```
+
+Each package has its own `CLAUDE.md` with contextual detail — auto-loaded when working in that area.
 
 ## Build & Test
 
@@ -32,7 +37,7 @@ go vet ./...
 
 - **SDK-first**: All logic in root package + sub-packages. CLI is a thin cobra wrapper.
 - **gig is the brain**: All task state in gig via SDK (`import "github.com/NeerajG03/gig"`). Never shell out to gig CLI.
-- **No database**: JEFF uses filesystem + gig. jeff.json for config, dirs for workspaces.
+- **SQLite for crew only**: `crew/` uses SQLite (`modernc.org/sqlite`, no CGO) for session state. Everything else uses filesystem + gig.
 - **Module path**: `github.com/NeerajG03/JEFF` — must match GitHub repo URL.
 - All public SDK functions return `(*Type, error)` or `error`.
 - Tests use `t.TempDir()` for isolation.
@@ -81,31 +86,20 @@ JEFF_HOME/
 
 See `docs/config.md` for full reference.
 
-## Hooks
+## Package Guides
 
-Located in `hooks/` package. Four built-in hooks inject context at agent session start:
+Each package has a `CLAUDE.md` with types, file roles, and extension patterns:
 
-| Hook | Content |
-|------|---------|
-| `gig-instructions` | gig CLI reference (agent-usable commands only) |
-| `gig-ready-tasks` | `gig ready` output (dynamic) |
-| `jeff-instructions` | jeff CLI reference (agent-usable commands only) |
-| `jeff-repos` | Registered repo list (dynamic) |
-
-Delivery: Claude Code gets bash scripts in `hooks/` + settings.json wiring. OpenCode gets a combined JS plugin.
-
-Key files: `hooks/hook.go` (types), `hooks/registry.go` (collection), `hooks/builtin.go` (definitions + content), `hooks/claude.go` (Claude delivery), `hooks/opencode.go` (OpenCode delivery), `hooks/manager.go` (orchestrator).
-
-## Skills
-
-`skill/` package manages agent skills. Skills are registered in `.skills/skills.json` (JSON with schema) and auto-injected into task workspaces on pickup via symlinks. Matching: any non-empty dimension (persona, gig_type, tags) match triggers injection. See `docs/skill_mgmt.md` for full reference.
-
-## Worktrees
-
-`workspace/worktree.go` manages git worktrees. Key behavior:
-- **Base branch**: `RepoConfig.BaseBranch` (default `origin/main`). Fetches remote before branching.
-- **Branch naming**: `RepoConfig.BranchName` script receives task JSON (with attrs) on stdin. Default: task ID.
-- **`.jeff-base`**: Written in each worktree, records base branch for `jeff ship`.
+| Package | Guide | What it covers |
+|---------|-------|---------------|
+| `crew/` | `crew/CLAUDE.md` | SQLite store, session lifecycle, tmux ops, message types |
+| `hooks/` | `hooks/CLAUDE.md` | 13 built-in hooks, static vs dynamic scripts, delivery |
+| `memory/` | `memory/CLAUDE.md` | Persona memory, repo learnings, /learn command |
+| `persona/` | `persona/CLAUDE.md` | Embedded templates, model defaults, adding personas |
+| `skill/` | `skill/CLAUDE.md` | Registry, matching logic, injection, embedded skills |
+| `tui/` | `tui/CLAUDE.md` | Bubbletea dashboard, tabs, refresh, styles |
+| `workspace/` | `workspace/CLAUDE.md` | Task dirs, worktrees, branch naming, .jeff-base |
+| `cmd/jeff/` | `cmd/jeff/CLAUDE.md` | CLI conventions, key helpers, thin wrapper pattern |
 
 ## What NOT to Do
 

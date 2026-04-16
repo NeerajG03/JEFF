@@ -25,6 +25,10 @@
           "memory_hint": {
             "type": "string",
             "description": "Persona-specific guidance for what to capture in the scratchpad."
+          },
+          "model": {
+            "type": "string",
+            "description": "Default model for this persona (e.g. sonnet, opus, haiku)."
           }
         },
         "additionalProperties": false

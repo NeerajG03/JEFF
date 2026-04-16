@@ -115,6 +115,7 @@ Embedded in binary via `persona/templates/`. Used via `--persona` flag on pickup
 | Persona | Role |
 |---------|------|
 | **dickson** | Orchestrator — plans, delegates, reviews. Does NOT write code. |
+| **doug** | Tester — API testing (mcquaid), frontend E2E via Chrome, MongoDB data verification. |
 | **eric** | Researcher — explores, documents, recommends. Does NOT change code. |
 | **hardy** | Reviewer — reviews diffs, checks quality, flags issues. |
 | **jenko** | Implementer — writes code, runs tests, ships. Default persona. |

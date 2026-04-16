@@ -41,6 +41,7 @@ Before spinning up workers, assess complexity. Present your plan to the user and
 | **hardy**  | reviewer   | sonnet        | PR reviews, code quality checks       |
 | **eric**   | researcher | sonnet        | Exploring codebases, documenting      |
 | **dickson**| planner    | sonnet        | Decomposing epics, writing plans      |
+| **doug**   | tester     | sonnet        | API testing (mcquaid), frontend E2E via Chrome, MongoDB data verification |
 
 Override model with `--model` on `jeff crew start` for one-off needs.
 

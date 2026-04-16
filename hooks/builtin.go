@@ -494,7 +494,10 @@ set -euo pipefail
 INPUT=$(cat)
 
 # Signal orchestrator directly via tmux — DB may already be cleaned up.
-tmux send-keys -t "` + target + `" -l "` + message + `" \; send-keys -t "` + target + `" Enter 2>/dev/null || true
+# Two separate tmux invocations: paste text first, then send Enter.
+# Chaining with \; in a single invocation drops the Enter (same class of bug as gig-4040).
+tmux send-keys -t "` + target + `" -l "` + message + `" 2>/dev/null || true
+tmux send-keys -t "` + target + `" Enter 2>/dev/null || true
 `
 }
 

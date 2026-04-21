@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/NeerajG03/JEFF/internal/testutil"
 )
@@ -94,6 +95,124 @@ func TestReadBaseBranch_Empty(t *testing.T) {
 	got := ReadBaseBranch(dir)
 	if got != defaultBaseBranch {
 		t.Errorf("expected default for empty file, got %q", got)
+	}
+}
+
+func TestFindExistingWorktree_None(t *testing.T) {
+	home := testutil.TempHome(t, "tasks")
+	_, ok := FindExistingWorktree(home, "nonexistent")
+	if ok {
+		t.Error("expected false for missing repo worktrees")
+	}
+}
+
+func TestFindExistingWorktree_Found(t *testing.T) {
+	home := testutil.TempHome(t, "tasks")
+	wtDir := filepath.Join(home, "worktrees", "backend", "gig-ab12")
+	os.MkdirAll(wtDir, 0o755)
+
+	got, ok := FindExistingWorktree(home, "backend")
+	if !ok {
+		t.Fatal("expected worktree to be found")
+	}
+	if got != wtDir {
+		t.Errorf("expected %s, got %s", wtDir, got)
+	}
+}
+
+func TestFindExistingWorktree_MostRecent(t *testing.T) {
+	home := testutil.TempHome(t, "tasks")
+
+	older := filepath.Join(home, "worktrees", "backend", "gig-ab12")
+	os.MkdirAll(older, 0o755)
+
+	// Ensure the second dir has a newer mtime.
+	newer := filepath.Join(home, "worktrees", "backend", "gig-cd34")
+	os.MkdirAll(newer, 0o755)
+	// Touch newer dir to guarantee mtime ordering.
+	now := time.Now().Add(time.Second)
+	os.Chtimes(newer, now, now)
+
+	got, ok := FindExistingWorktree(home, "backend")
+	if !ok {
+		t.Fatal("expected worktree to be found")
+	}
+	if got != newer {
+		t.Errorf("expected most-recent worktree %s, got %s", newer, got)
+	}
+}
+
+func TestReadonlyLink_MissingRepo(t *testing.T) {
+	home := testutil.TempHome(t, "tasks")
+	taskDir := filepath.Join(home, "tasks", "gig-ab12-test")
+	os.MkdirAll(taskDir, 0o755)
+
+	_, err := ReadonlyLink(home, "nonexistent", taskDir)
+	if err == nil {
+		t.Error("expected error for missing repo")
+	}
+}
+
+func TestReadonlyLink_FallsBackToMainClone(t *testing.T) {
+	home := testutil.TempHome(t, "tasks")
+	repoDir := filepath.Join(home, "repos", "backend")
+	os.MkdirAll(repoDir, 0o755)
+
+	taskDir := filepath.Join(home, "tasks", "gig-ab12-test")
+	os.MkdirAll(taskDir, 0o755)
+
+	target, err := ReadonlyLink(home, "backend", taskDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if target != repoDir {
+		t.Errorf("expected symlink to main clone %s, got %s", repoDir, target)
+	}
+
+	link := filepath.Join(taskDir, "backend")
+	resolved, _ := os.Readlink(link)
+	if resolved != repoDir {
+		t.Errorf("symlink target: expected %s, got %s", repoDir, resolved)
+	}
+}
+
+func TestReadonlyLink_PrefersExistingWorktree(t *testing.T) {
+	home := testutil.TempHome(t, "tasks")
+	repoDir := filepath.Join(home, "repos", "backend")
+	os.MkdirAll(repoDir, 0o755)
+
+	wtDir := filepath.Join(home, "worktrees", "backend", "gig-xy99")
+	os.MkdirAll(wtDir, 0o755)
+
+	taskDir := filepath.Join(home, "tasks", "gig-ab12-test")
+	os.MkdirAll(taskDir, 0o755)
+
+	target, err := ReadonlyLink(home, "backend", taskDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if target != wtDir {
+		t.Errorf("expected symlink to existing worktree %s, got %s", wtDir, target)
+	}
+
+	link := filepath.Join(taskDir, "backend")
+	resolved, _ := os.Readlink(link)
+	if resolved != wtDir {
+		t.Errorf("symlink target: expected %s, got %s", wtDir, resolved)
+	}
+}
+
+func TestReadonlyLink_NoTaskDir(t *testing.T) {
+	home := testutil.TempHome(t, "tasks")
+	repoDir := filepath.Join(home, "repos", "backend")
+	os.MkdirAll(repoDir, 0o755)
+
+	target, err := ReadonlyLink(home, "backend", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if target != repoDir {
+		t.Errorf("expected %s, got %s", repoDir, target)
 	}
 }
 

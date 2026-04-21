@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/NeerajG03/JEFF/internal/gitutil"
 )
@@ -189,6 +190,59 @@ func WorktreeList(jeffHome, repoName string) ([]string, error) {
 		}
 	}
 	return branches, nil
+}
+
+// FindExistingWorktree returns the path of the most recently modified worktree for repoName.
+// Returns ("", false) if none exist. Used to share an existing worktree instead of creating
+// a duplicate (e.g. for a readonly worker joining a crew that already checked out the repo).
+func FindExistingWorktree(jeffHome, repoName string) (string, bool) {
+	wtBase := filepath.Join(jeffHome, "worktrees", repoName)
+	entries, err := os.ReadDir(wtBase)
+	if err != nil {
+		return "", false
+	}
+	var best string
+	var bestMod time.Time
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		path := filepath.Join(wtBase, e.Name())
+		if info.ModTime().After(bestMod) {
+			bestMod = info.ModTime()
+			best = path
+		}
+	}
+	if best == "" {
+		return "", false
+	}
+	return best, true
+}
+
+// ReadonlyLink creates a symlink in taskDir pointing to the repo for read-only access.
+// No git worktree is created and no post-setup hooks are run.
+// If an existing worktree is found (e.g. created by another crew member), the symlink
+// points there; otherwise it falls back to the main repo clone (repos/<name>).
+func ReadonlyLink(jeffHome, repoName, taskDir string) (string, error) {
+	repoDir := filepath.Join(jeffHome, "repos", repoName)
+	if _, err := os.Stat(repoDir); err != nil {
+		return "", fmt.Errorf("repo %q not found at %s", repoName, repoDir)
+	}
+
+	// Prefer an existing worktree — more likely to have up-to-date work-in-progress.
+	target := repoDir
+	if wtDir, ok := FindExistingWorktree(jeffHome, repoName); ok {
+		target = wtDir
+	}
+
+	if taskDir != "" {
+		return target, symlinkIntoTask(taskDir, repoName, target)
+	}
+	return target, nil
 }
 
 // symlinkIntoTask creates a symlink from taskDir/<repoName> → worktree path.

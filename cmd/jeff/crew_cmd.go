@@ -59,6 +59,7 @@ func crewStartCmd() *cobra.Command {
 	var (
 		personaName    string
 		repos          []string
+		reposReadonly  []string
 		orchestratorID string
 		modelOverride  string
 		promptOverride string
@@ -81,7 +82,7 @@ func crewStartCmd() *cobra.Command {
 			}
 
 			// Run the pickup sequence (claim, workspace, worktrees, hooks, skills).
-			taskDir, err := pickupTask(taskID, personaName, repos, orchestratorID)
+			taskDir, err := pickupTask(taskID, personaName, repos, reposReadonly, orchestratorID)
 			if err != nil {
 				return err
 			}
@@ -127,12 +128,14 @@ func crewStartCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&personaName, "persona", "", "Persona template")
 	cmd.Flags().StringSliceVar(&repos, "repos", nil, "Repos to set up worktrees for")
+	cmd.Flags().StringSliceVar(&reposReadonly, "repos-readonly", nil, "Repos to symlink read-only (no worktree, no post-setup)")
 	cmd.Flags().StringVar(&orchestratorID, "orchestrator", "", "Orchestrator ID to attach worker to")
 	cmd.Flags().StringVar(&modelOverride, "model", "", "Claude model override (e.g. sonnet, opus, haiku)")
 	cmd.Flags().StringVar(&promptOverride, "prompt", "", "Custom initial prompt (overrides default)")
 	cmd.ValidArgsFunction = readyTaskCompletion
 	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
 	cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)
+	cmd.RegisterFlagCompletionFunc("repos-readonly", repoNameCompletion)
 	cmd.RegisterFlagCompletionFunc("orchestrator", orchestratorCompletion)
 	return cmd
 }
@@ -948,7 +951,7 @@ Use --dry-run to preview what would be cleaned up without making changes.`,
 
 // pickupTask runs the full pickup sequence and returns the task directory.
 // Extracted from pickupCmd for reuse by crew start.
-func pickupTask(taskID, personaName string, repos []string, orchestratorID string) (string, error) {
+func pickupTask(taskID, personaName string, repos, reposReadonly []string, orchestratorID string) (string, error) {
 	store, err := openGigStore()
 	if err != nil {
 		return "", err
@@ -979,8 +982,9 @@ func pickupTask(taskID, personaName string, repos []string, orchestratorID strin
 	}
 	fmt.Fprintf(os.Stderr, "Workspace: %s\n", td.Path)
 
-	if len(repos) > 0 {
-		reposJSON, _ := json.Marshal(repos)
+	allRepos := append(repos, reposReadonly...)
+	if len(allRepos) > 0 {
+		reposJSON, _ := json.Marshal(allRepos)
 		if err := store.SetAttr(taskID, jeff.AttrRepos, string(reposJSON)); err != nil {
 			return "", fmt.Errorf("set repos attr: %w", err)
 		}
@@ -1014,23 +1018,39 @@ func pickupTask(taskID, personaName string, repos []string, orchestratorID strin
 		fmt.Fprintf(os.Stderr, "Worktree: %s → %s\n", repoName, wtDir)
 	}
 
+	for _, repoName := range reposReadonly {
+		target, err := workspace.ReadonlyLink(cfg.Home, repoName, td.Path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: readonly link for %s: %v\n", repoName, err)
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "Readonly: %s → %s\n", repoName, target)
+	}
+
 	if personaName != "" {
 		if err := memory.EnsurePersonaDir(cfg.Home, personaName); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: persona memory: %v\n", err)
 		}
 	}
-	for _, repoName := range repos {
+	for _, repoName := range allRepos {
 		if err := memory.EnsureRepoDir(cfg.Home, repoName); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: repo learnings: %v\n", err)
 		}
 	}
 
-	if err := writeTaskClaudeMD(td.Path, cfg.Home, task, personaName, repos); err != nil {
+	if err := writeTaskClaudeMD(td.Path, cfg.Home, task, personaName, allRepos); err != nil {
 		return "", fmt.Errorf("write task CLAUDE.md: %w", err)
 	}
 
-	if personaName != "" || len(repos) > 0 {
-		if err := memory.InstallLearnCommand(td.Path, taskID, personaName, cfg.Home, repos); err != nil {
+	// Append a readonly notice so the agent knows which repos it must not modify.
+	if len(reposReadonly) > 0 {
+		if err := appendReadonlyNote(td.Path, reposReadonly); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: readonly note: %v\n", err)
+		}
+	}
+
+	if personaName != "" || len(allRepos) > 0 {
+		if err := memory.InstallLearnCommand(td.Path, taskID, personaName, cfg.Home, allRepos); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: learn command: %v\n", err)
 		}
 	}

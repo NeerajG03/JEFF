@@ -29,7 +29,7 @@ func pickupCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			taskID := args[0]
 
-			taskDir, err := pickupTask(taskID, personaName, repos, "")
+			taskDir, err := pickupTask(taskID, personaName, repos, nil, "")
 			if err != nil {
 				return err
 			}
@@ -296,6 +296,25 @@ func buildTaskJSON(store *gig.Store, task *gig.Task) []byte {
 	}
 	data, _ := json.Marshal(full)
 	return data
+}
+
+// appendReadonlyNote appends a warning to CLAUDE.md listing repos the agent must not modify.
+func appendReadonlyNote(taskDir string, reposReadonly []string) error {
+	claudeMDPath := filepath.Join(taskDir, "CLAUDE.md")
+	f, err := os.OpenFile(claudeMDPath, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("open CLAUDE.md: %w", err)
+	}
+	defer f.Close()
+
+	names := make([]string, len(reposReadonly))
+	for i, r := range reposReadonly {
+		names[i] = "`" + r + "`"
+	}
+	note := fmt.Sprintf("\n> **Read-only repos:** %s — symlinked for reading only. Do not commit changes to these repos.\n",
+		strings.Join(names, ", "))
+	_, err = f.WriteString(note)
+	return err
 }
 
 // resolveRepoBranch determines the branch name for a repo.

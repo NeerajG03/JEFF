@@ -982,7 +982,8 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 	}
 	fmt.Fprintf(os.Stderr, "Workspace: %s\n", td.Path)
 
-	allRepos := append(repos, reposReadonly...)
+	allRepos := append([]string{}, repos...)
+	allRepos = append(allRepos, reposReadonly...)
 	if len(allRepos) > 0 {
 		reposJSON, _ := json.Marshal(allRepos)
 		if err := store.SetAttr(taskID, jeff.AttrRepos, string(reposJSON)); err != nil {

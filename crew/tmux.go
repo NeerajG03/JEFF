@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // TmuxSessionName is the fixed tmux session name for all crew windows.
@@ -67,12 +68,14 @@ func SendEnter(target string) error {
 
 // SendCommand sends text followed by Enter to a tmux pane.
 // The paste and Enter are sent as two separate tmux invocations
-// so the pane has time to process the pasted text before receiving
-// the Enter keypress.
+// with a small delay between them so the pane has time to process
+// the pasted text before receiving the Enter keypress. Without this
+// delay, tmux can swallow the Enter on large pastes.
 func SendCommand(target, command string) error {
 	if err := tmuxRun("send-keys", "-t", target, "-l", command); err != nil {
 		return err
 	}
+	time.Sleep(100 * time.Millisecond)
 	return tmuxRun("send-keys", "-t", target, "Enter")
 }
 

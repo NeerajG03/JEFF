@@ -81,7 +81,21 @@ func doneCmd() *cobra.Command {
 			if tdErr == nil {
 				personaName := detectPersona(td.Path)
 				repoNames := detectRepos(td.Path)
-				if err := memory.AutoCurate(td.Path, taskID, personaName, cfg.Home, repoNames); err != nil {
+				provider := jeff.GetProvider(cfg.Agent)
+				var curateCmd string
+				var curateArgs []string
+				if provider != nil {
+					curateCmd = provider.Command()
+					// Read the learn command and build curate args.
+					learnExt := provider.CommandFileExt()
+					if learnExt != "" && provider.CommandsSubdir() != "" {
+						learnPath := filepath.Join(td.Path, provider.ConfigDir(), provider.CommandsSubdir(), "learn."+learnExt)
+						if promptData, err := os.ReadFile(learnPath); err == nil {
+							curateArgs = provider.BuildCurateArgs(string(promptData))
+						}
+					}
+				}
+				if err := memory.AutoCurate(td.Path, taskID, personaName, cfg.Home, repoNames, curateCmd, curateArgs); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: auto-curate: %v\n", err)
 				} else {
 					fmt.Fprintf(os.Stderr, "Auto-curated scratchpad for %s\n", taskID)

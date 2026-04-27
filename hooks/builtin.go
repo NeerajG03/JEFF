@@ -28,11 +28,16 @@ func gigInstructionsHook() *Hook {
 		Source:  SourceHome,
 		Event:   "SessionStart",
 		Matcher: "*",
-		ClaudeScript: func(ctx HookContext) string {
-			return claudeSessionStartStatic(gigInstructionsContext)
-		},
-		OpenCodeSnippet: func(ctx HookContext) string {
-			return jsStaticSnippet("gig-instructions", gigInstructionsContext)
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return claudeSessionStartStatic(gigInstructionsContext)
+			},
+			"opencode": func(ctx HookContext) string {
+				return jsStaticSnippet("gig-instructions", gigInstructionsContext)
+			},
+			"gemini": func(ctx HookContext) string {
+				return claudeSessionStartStatic(gigInstructionsContext)
+			},
 		},
 	}
 }
@@ -44,12 +49,18 @@ func gigReadyTasksHook() *Hook {
 		Source:  SourceHome,
 		Event:   "SessionStart",
 		Matcher: "*",
-		ClaudeScript: func(ctx HookContext) string {
-			return claudeSessionStartDynamic(`## Tasks ready for pickup
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return claudeSessionStartDynamic(`## Tasks ready for pickup
 ` + "$(gig ready 2>/dev/null || echo '(no tasks)')")
-		},
-		OpenCodeSnippet: func(ctx HookContext) string {
-			return jsDynamicSnippet("gig-ready-tasks", `gig ready 2>/dev/null`)
+			},
+			"opencode": func(ctx HookContext) string {
+				return jsDynamicSnippet("gig-ready-tasks", `gig ready 2>/dev/null`)
+			},
+			"gemini": func(ctx HookContext) string {
+				return claudeSessionStartDynamic(`## Tasks ready for pickup
+` + "$(gig ready 2>/dev/null || echo '(no tasks)')")
+			},
 		},
 	}
 }
@@ -61,12 +72,18 @@ func jeffReposHook() *Hook {
 		Source:  SourceHome,
 		Event:   "SessionStart",
 		Matcher: "*",
-		ClaudeScript: func(ctx HookContext) string {
-			return claudeSessionStartDynamic(`## Registered repos
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return claudeSessionStartDynamic(`## Registered repos
 ` + "$(jeff repo list 2>/dev/null || echo '(none)')")
-		},
-		OpenCodeSnippet: func(ctx HookContext) string {
-			return jsDynamicSnippet("jeff-repos", `jeff repo list 2>/dev/null`)
+			},
+			"opencode": func(ctx HookContext) string {
+				return jsDynamicSnippet("jeff-repos", `jeff repo list 2>/dev/null`)
+			},
+			"gemini": func(ctx HookContext) string {
+				return claudeSessionStartDynamic(`## Registered repos
+` + "$(jeff repo list 2>/dev/null || echo '(none)')")
+			},
 		},
 	}
 }
@@ -78,11 +95,16 @@ func jeffInstructionsHook() *Hook {
 		Source:  SourceHome,
 		Event:   "SessionStart",
 		Matcher: "*",
-		ClaudeScript: func(ctx HookContext) string {
-			return claudeSessionStartStatic(jeffInstructionsContext)
-		},
-		OpenCodeSnippet: func(ctx HookContext) string {
-			return jsStaticSnippet("jeff-instructions", jeffInstructionsContext)
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return claudeSessionStartStatic(jeffInstructionsContext)
+			},
+			"opencode": func(ctx HookContext) string {
+				return jsStaticSnippet("jeff-instructions", jeffInstructionsContext)
+			},
+			"gemini": func(ctx HookContext) string {
+				return claudeSessionStartStatic(jeffInstructionsContext)
+			},
 		},
 	}
 }
@@ -193,18 +215,27 @@ func taskContextHook() *Hook {
 		Source:  SourceTask,
 		Event:   "SessionStart",
 		Matcher: "*",
-		ClaudeScript: func(ctx HookContext) string {
-			if ctx.TaskID == "" {
-				return claudeSessionStartStatic("(no task context — TaskID not set)")
-			}
-			return claudeSessionStartDynamic(`## Current Task
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				if ctx.TaskID == "" {
+					return claudeSessionStartStatic("(no task context — TaskID not set)")
+				}
+				return claudeSessionStartDynamic(`## Current Task
 ` + "$(gig show " + ctx.TaskID + " 2>/dev/null || echo '(task not found)')")
-		},
-		OpenCodeSnippet: func(ctx HookContext) string {
-			if ctx.TaskID == "" {
-				return ""
-			}
-			return jsDynamicSnippet("task-context", `gig show `+ctx.TaskID+` 2>/dev/null`)
+			},
+			"opencode": func(ctx HookContext) string {
+				if ctx.TaskID == "" {
+					return ""
+				}
+				return jsDynamicSnippet("task-context", `gig show `+ctx.TaskID+` 2>/dev/null`)
+			},
+			"gemini": func(ctx HookContext) string {
+				if ctx.TaskID == "" {
+					return claudeSessionStartStatic("(no task context — TaskID not set)")
+				}
+				return claudeSessionStartDynamic(`## Current Task
+` + "$(gig show " + ctx.TaskID + " 2>/dev/null || echo '(task not found)')")
+			},
 		},
 	}
 }
@@ -216,11 +247,16 @@ func taskCommandsHook() *Hook {
 		Source:  SourceTask,
 		Event:   "SessionStart",
 		Matcher: "*",
-		ClaudeScript: func(ctx HookContext) string {
-			return claudeSessionStartStatic(taskCommandsContext)
-		},
-		OpenCodeSnippet: func(ctx HookContext) string {
-			return jsStaticSnippet("task-commands", taskCommandsContext)
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return claudeSessionStartStatic(taskCommandsContext)
+			},
+			"opencode": func(ctx HookContext) string {
+				return jsStaticSnippet("task-commands", taskCommandsContext)
+			},
+			"gemini": func(ctx HookContext) string {
+				return claudeSessionStartStatic(taskCommandsContext)
+			},
 		},
 	}
 }
@@ -235,12 +271,14 @@ func checkpointNudgeHook() *Hook {
 		Event:   "PostToolUse",
 		Matcher: "Bash",
 		Timeout: 5,
-		ClaudeScript: func(ctx HookContext) string {
-			return buildCheckpointNudgeScript(ctx.CheckpointPatterns)
-		},
-		OpenCodeSnippet: func(ctx HookContext) string {
-			// PostToolUse is Claude Code specific; no OpenCode equivalent.
-			return ""
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return buildCheckpointNudgeScript(ctx.CheckpointPatterns)
+			},
+			// Gemini maps PostToolUse → AfterTool; same bash script works.
+			"gemini": func(ctx HookContext) string {
+				return buildCheckpointNudgeScript(ctx.CheckpointPatterns)
+			},
 		},
 	}
 }
@@ -315,12 +353,18 @@ func crewContextHook() *Hook {
 		Source:  SourceHome,
 		Event:   "SessionStart",
 		Matcher: "*",
-		ClaudeScript: func(ctx HookContext) string {
-			return claudeSessionStartDynamic(`## Active Crew Sessions
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return claudeSessionStartDynamic(`## Active Crew Sessions
 ` + "$(jeff crew list 2>/dev/null || echo '(no active sessions)')")
-		},
-		OpenCodeSnippet: func(ctx HookContext) string {
-			return jsDynamicSnippet("crew-context", `jeff crew list 2>/dev/null`)
+			},
+			"opencode": func(ctx HookContext) string {
+				return jsDynamicSnippet("crew-context", `jeff crew list 2>/dev/null`)
+			},
+			"gemini": func(ctx HookContext) string {
+				return claudeSessionStartDynamic(`## Active Crew Sessions
+` + "$(jeff crew list 2>/dev/null || echo '(no active sessions)')")
+			},
 		},
 	}
 }
@@ -335,12 +379,13 @@ func inboxCheckHook() *Hook {
 		Event:   "PostToolUse",
 		Matcher: "*",
 		Timeout: 3,
-		ClaudeScript: func(ctx HookContext) string {
-			return buildInboxCheckScript(ctx.TaskID)
-		},
-		OpenCodeSnippet: func(ctx HookContext) string {
-			// PostToolUse hook; no OpenCode equivalent.
-			return ""
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return buildInboxCheckScript(ctx.TaskID)
+			},
+			"gemini": func(ctx HookContext) string {
+				return buildInboxCheckScript(ctx.TaskID)
+			},
 		},
 	}
 }
@@ -389,11 +434,13 @@ func workerHeartbeatHook() *Hook {
 		Event:   "PostToolUse",
 		Matcher: "*",
 		Timeout: 3,
-		ClaudeScript: func(ctx HookContext) string {
-			return buildWorkerHeartbeatScript(ctx.TaskID)
-		},
-		OpenCodeSnippet: func(ctx HookContext) string {
-			return ""
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return buildWorkerHeartbeatScript(ctx.TaskID)
+			},
+			"gemini": func(ctx HookContext) string {
+				return buildWorkerHeartbeatScript(ctx.TaskID)
+			},
 		},
 	}
 }
@@ -417,7 +464,7 @@ jeff crew touch ` + taskID + ` 2>/dev/null || true
 `
 }
 
-// workerStopHook fires when the worker's Claude Code session ends.
+// workerStopHook fires when the worker's agent session ends.
 // Signals the orchestrator that the worker has stopped so it can check
 // if this was intentional (jeff done) or unexpected (crash/timeout).
 func workerStopHook() *Hook {
@@ -427,11 +474,13 @@ func workerStopHook() *Hook {
 		Event:   "Stop",
 		Matcher: "*",
 		Timeout: 5,
-		ClaudeScript: func(ctx HookContext) string {
-			return buildWorkerStopScript(ctx.TaskID, ctx.OrchestratorID)
-		},
-		OpenCodeSnippet: func(ctx HookContext) string {
-			return ""
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return buildWorkerStopScript(ctx.TaskID, ctx.OrchestratorID)
+			},
+			"gemini": func(ctx HookContext) string {
+				return buildWorkerStopScript(ctx.TaskID, ctx.OrchestratorID)
+			},
 		},
 	}
 }
@@ -446,11 +495,13 @@ func sessionCaptureHook() *Hook {
 		Event:   "SessionStart",
 		Matcher: "*",
 		Timeout: 5,
-		ClaudeScript: func(ctx HookContext) string {
-			return buildSessionCaptureScript(ctx.TaskID)
-		},
-		OpenCodeSnippet: func(ctx HookContext) string {
-			return ""
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return buildSessionCaptureScript(ctx.TaskID)
+			},
+			"gemini": func(ctx HookContext) string {
+				return buildSessionCaptureScript(ctx.TaskID)
+			},
 		},
 	}
 }
@@ -511,11 +562,13 @@ func orchestratorInboxHook() *Hook {
 		Event:   "PostToolUse",
 		Matcher: "*",
 		Timeout: 5,
-		ClaudeScript: func(ctx HookContext) string {
-			return buildOrchestratorInboxScript(ctx.OrchestratorID)
-		},
-		OpenCodeSnippet: func(ctx HookContext) string {
-			return ""
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return buildOrchestratorInboxScript(ctx.OrchestratorID)
+			},
+			"gemini": func(ctx HookContext) string {
+				return buildOrchestratorInboxScript(ctx.OrchestratorID)
+			},
 		},
 	}
 }
@@ -561,4 +614,3 @@ jq -n \
   }'
 `
 }
-

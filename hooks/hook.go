@@ -1,5 +1,5 @@
 // Package hooks provides a hook management system for injecting context
-// into agent sessions (Claude Code and OpenCode).
+// into agent sessions (Claude Code, OpenCode, Gemini CLI).
 package hooks
 
 // Source identifies where a hook gets installed.
@@ -16,15 +16,13 @@ const (
 type Hook struct {
 	Name    string // unique identifier, e.g. "gig-instructions"
 	Source  Source  // where this hook belongs (home or task)
-	Event   string // agent event: "SessionStart", "PreCompact", "PostToolUse"
+	Event   string // agent event: "SessionStart", "PreCompact", "PostToolUse", "Stop"
 	Matcher string // event matcher: "*", "Bash"
 	Timeout int    // seconds; 0 defaults to 10
 
-	// ClaudeScript generates bash script content for Claude Code hooks.
-	ClaudeScript func(ctx HookContext) string
-
-	// OpenCodeSnippet generates a JS code snippet for the OpenCode plugin.
-	OpenCodeSnippet func(ctx HookContext) string
+	// Scripts maps delivery keys to script generators.
+	// Key = Delivery.ScriptKey() (e.g. "claude", "opencode", "gemini").
+	Scripts map[string]func(ctx HookContext) string
 }
 
 // HookContext provides data that hook generators need.

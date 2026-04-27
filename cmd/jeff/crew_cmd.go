@@ -101,12 +101,30 @@ func crewStartCmd() *cobra.Command {
 			defer cs.Close()
 
 			var sess *crew.Session
+			// Build full launch command via provider (includes inline prompt).
+			prompt := promptOverride
+			if prompt == "" {
+				prompt = crew.DefaultPrompt
+			}
+			provider := jeff.GetProvider(cfg.Agent)
+			var launchCmd string
+			if provider != nil && provider.SupportsInlinePrompt() {
+				launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{
+					Model:  model,
+					Prompt: prompt,
+				})
+				launchCmd = provider.Command()
+				for _, a := range launchArgs {
+					launchCmd += " " + a
+				}
+			}
 			opts := crew.StartOpts{
-				Persona: personaName,
-				Repos:   repos,
-				Agent:   string(cfg.Agent),
-				Model:   model,
-				Prompt:  promptOverride,
+				Persona:   personaName,
+				Repos:     repos,
+				Agent:     string(cfg.Agent),
+				Model:     model,
+				Prompt:    promptOverride,
+				LaunchCmd: launchCmd,
 			}
 			if orchestratorID != "" {
 				// Launch as a tab in the orchestrator's tmux session.
@@ -203,6 +221,19 @@ func crewResumeCmd() *cobra.Command {
 				orchestratorID = detected
 			}
 
+			// Build launch command via provider.
+			provider := jeff.GetProvider(cfg.Agent)
+			var launchCmd string
+			if provider != nil {
+				launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{
+					Model:           model,
+					ResumeSessionID: resumeSessionID,
+				})
+				launchCmd = provider.Command()
+				for _, a := range launchArgs {
+					launchCmd += " " + a
+				}
+			}
 			opts := crew.StartOpts{
 				Persona:         personaName,
 				Repos:           repos,
@@ -210,6 +241,7 @@ func crewResumeCmd() *cobra.Command {
 				Agent:           string(cfg.Agent),
 				Model:           model,
 				ResumeSessionID: resumeSessionID,
+				LaunchCmd:       launchCmd,
 			}
 
 			var sess *crew.Session
@@ -1050,9 +1082,14 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 		}
 	}
 
+	// Install learn command for each agent that supports custom commands.
 	if personaName != "" || len(allRepos) > 0 {
-		if err := memory.InstallLearnCommand(td.Path, taskID, personaName, cfg.Home, allRepos); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: learn command: %v\n", err)
+		provider := jeff.GetProvider(cfg.Agent)
+		if provider != nil && provider.CommandsSubdir() != "" {
+			if err := memory.InstallLearnCommandTo(td.Path, taskID, personaName, cfg.Home, allRepos,
+				provider.ConfigDir(), provider.CommandsSubdir(), provider.CommandFileExt()); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: learn command: %v\n", err)
+			}
 		}
 	}
 
@@ -1068,18 +1105,20 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 	}
 	taskEnabled := hooks.EnabledForSource(cfg.Hooks, hooks.SourceTask, reg)
 	if len(taskEnabled) > 0 {
-		agent := hooks.AgentTool(cfg.Agent)
-		if err := mgr.Sync(td.Path, taskEnabled, agent, hctx); err != nil {
+		deliveryKey := jeff.GetProvider(cfg.Agent).HookDeliveryKey()
+		if err := mgr.Sync(td.Path, taskEnabled, deliveryKey, hctx); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: task hooks: %v\n", err)
 		}
 	}
 
+	// Inject matching skills using provider-aware paths.
+	provider := jeff.GetProvider(cfg.Agent)
 	mctx := &skill.MatchContext{
 		Persona: personaName,
 		GigType: string(task.Type),
 		Labels:  task.Labels,
 	}
-	injected, err := skill.InjectMatching(cfg.Home, td.Path, mctx)
+	injected, err := skill.InjectMatchingTo(cfg.Home, td.Path, provider.ConfigDir(), provider.SkillsSubdir(), mctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: skill injection: %v\n", err)
 	} else if len(injected) > 0 {

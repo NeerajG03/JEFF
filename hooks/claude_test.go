@@ -9,17 +9,18 @@ import (
 
 func TestReadWriteSettingsRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".claude"), 0o755)
+	sp := settingsPath(dir)
+	os.MkdirAll(filepath.Dir(sp), 0o755)
 
 	original := map[string]any{
 		"$schema": "https://json.schemastore.org/claude-code-settings.json",
 		"foo":     "bar",
 	}
-	if err := writeSettings(dir, original); err != nil {
+	if err := writeSettingsFile(sp, original); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := readSettings(dir)
+	got, err := readSettingsFile(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,12 +31,13 @@ func TestReadWriteSettingsRoundTrip(t *testing.T) {
 
 func TestReadSettingsNotExist(t *testing.T) {
 	dir := t.TempDir()
-	settings, err := readSettings(dir)
+	settings, err := readSettingsFile(settingsPath(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings["$schema"] == nil {
-		t.Fatal("expected $schema in fresh settings")
+	// Fresh settings may be an empty map.
+	if settings == nil {
+		t.Fatal("expected non-nil settings")
 	}
 }
 
@@ -102,7 +104,7 @@ func TestRemoveHookCleansUpEmptyEvent(t *testing.T) {
 	}
 }
 
-func TestInstallClaude(t *testing.T) {
+func TestInstallClaudeDelivery(t *testing.T) {
 	dir := t.TempDir()
 
 	h := &Hook{
@@ -111,13 +113,16 @@ func TestInstallClaude(t *testing.T) {
 		Event:   "SessionStart",
 		Matcher: "*",
 		Timeout: 5,
-		ClaudeScript: func(ctx HookContext) string {
-			return "#!/bin/bash\necho hello"
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return "#!/bin/bash\necho hello"
+			},
 		},
 	}
 
 	ctx := HookContext{JeffHome: dir, TargetDir: dir}
-	if err := installClaude(h, dir, ctx); err != nil {
+	d := GetDelivery("claude")
+	if err := d.Install(h, dir, ctx); err != nil {
 		t.Fatal(err)
 	}
 
@@ -132,7 +137,7 @@ func TestInstallClaude(t *testing.T) {
 	}
 
 	// Check settings.json was updated.
-	settings, _ := readSettings(dir)
+	settings, _ := readSettingsFile(settingsPath(dir))
 	hooks, _ := settings["hooks"].(map[string]any)
 	blocks, _ := hooks["SessionStart"].([]any)
 	if len(blocks) != 1 {
@@ -148,16 +153,19 @@ func TestInstallClaudeIdempotent(t *testing.T) {
 		Source:  SourceHome,
 		Event:   "SessionStart",
 		Matcher: "*",
-		ClaudeScript: func(ctx HookContext) string {
-			return "#!/bin/bash\necho hello"
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return "#!/bin/bash\necho hello"
+			},
 		},
 	}
 
 	ctx := HookContext{JeffHome: dir, TargetDir: dir}
-	installClaude(h, dir, ctx)
-	installClaude(h, dir, ctx)
+	d := GetDelivery("claude")
+	d.Install(h, dir, ctx)
+	d.Install(h, dir, ctx)
 
-	settings, _ := readSettings(dir)
+	settings, _ := readSettingsFile(settingsPath(dir))
 	hooks, _ := settings["hooks"].(map[string]any)
 	blocks, _ := hooks["SessionStart"].([]any)
 	if len(blocks) != 1 {
@@ -165,7 +173,7 @@ func TestInstallClaudeIdempotent(t *testing.T) {
 	}
 }
 
-func TestUninstallClaude(t *testing.T) {
+func TestUninstallClaudeDelivery(t *testing.T) {
 	dir := t.TempDir()
 
 	h := &Hook{
@@ -173,15 +181,18 @@ func TestUninstallClaude(t *testing.T) {
 		Source:  SourceHome,
 		Event:   "SessionStart",
 		Matcher: "*",
-		ClaudeScript: func(ctx HookContext) string {
-			return "#!/bin/bash\necho hello"
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return "#!/bin/bash\necho hello"
+			},
 		},
 	}
 
 	ctx := HookContext{JeffHome: dir, TargetDir: dir}
-	installClaude(h, dir, ctx)
+	d := GetDelivery("claude")
+	d.Install(h, dir, ctx)
 
-	if err := uninstallClaude("test-hook", dir); err != nil {
+	if err := d.Uninstall("test-hook", dir); err != nil {
 		t.Fatal(err)
 	}
 
@@ -191,7 +202,7 @@ func TestUninstallClaude(t *testing.T) {
 	}
 
 	// Settings cleaned up.
-	settings, _ := readSettings(dir)
+	settings, _ := readSettingsFile(settingsPath(dir))
 	if _, exists := settings["hooks"]; exists {
 		t.Fatal("expected hooks key to be removed")
 	}
@@ -199,6 +210,7 @@ func TestUninstallClaude(t *testing.T) {
 
 func TestUninstallPreservesOtherHooks(t *testing.T) {
 	dir := t.TempDir()
+	sp := settingsPath(dir)
 
 	// Simulate a pre-existing non-jeff hook in settings.json.
 	settings := map[string]any{
@@ -218,7 +230,7 @@ func TestUninstallPreservesOtherHooks(t *testing.T) {
 			},
 		},
 	}
-	writeSettings(dir, settings)
+	writeSettingsFile(sp, settings)
 
 	// Install jeff hook.
 	h := &Hook{
@@ -226,17 +238,20 @@ func TestUninstallPreservesOtherHooks(t *testing.T) {
 		Source:  SourceHome,
 		Event:   "SessionStart",
 		Matcher: "*",
-		ClaudeScript: func(ctx HookContext) string {
-			return "#!/bin/bash\necho jeff"
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return "#!/bin/bash\necho jeff"
+			},
 		},
 	}
 	ctx := HookContext{JeffHome: dir, TargetDir: dir}
-	installClaude(h, dir, ctx)
+	d := GetDelivery("claude")
+	d.Install(h, dir, ctx)
 
 	// Uninstall jeff hook — other hook should remain.
-	uninstallClaude("jeff-test", dir)
+	d.Uninstall("jeff-test", dir)
 
-	settings, _ = readSettings(dir)
+	settings, _ = readSettingsFile(sp)
 	hooks, _ := settings["hooks"].(map[string]any)
 	blocks, _ := hooks["SessionStart"].([]any)
 	if len(blocks) != 1 {

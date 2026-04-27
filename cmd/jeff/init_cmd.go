@@ -172,11 +172,15 @@ func ensureDirs(home string) {
 		filepath.Join(home, "projects"),
 		filepath.Join(home, ".skills"),
 		filepath.Join(home, ".personas"),
-		filepath.Join(home, ".claude"),
-		filepath.Join(home, ".opencode"),
 	}
 	for _, d := range dirs {
 		os.MkdirAll(d, 0o755)
+	}
+	// Create agent-specific config dirs via providers.
+	for _, agent := range jeff.RegisteredAgents() {
+		if p := jeff.GetProvider(agent); p != nil {
+			p.EnsureHomeDirs(home)
+		}
 	}
 }
 
@@ -184,10 +188,12 @@ func ensureDirs(home string) {
 func writeDefaults(home string) {
 	writeIfMissing(filepath.Join(home, ".skills", "skills.json"),
 		"{\"$schema\":\"https://raw.githubusercontent.com/NeerajG03/JEFF/main/schemas/skills.json\",\"skills\":{}}\n")
-	writeIfMissing(filepath.Join(home, ".claude", "settings.json"), jeffembed.DefaultClaudeSettings)
-	writeIfMissing(filepath.Join(home, ".claude", "settings.local.json"), "{}\n")
-	writeIfMissing(filepath.Join(home, ".opencode", "settings.json"), "{}\n")
-	writeIfMissing(filepath.Join(home, ".opencode", "settings.local.json"), "{}\n")
+	// Write agent-specific default files via providers.
+	for _, agent := range jeff.RegisteredAgents() {
+		if p := jeff.GetProvider(agent); p != nil {
+			p.WriteHomeDefaults(home)
+		}
+	}
 }
 
 // writeIfMissing writes content to path only if the file doesn't exist.

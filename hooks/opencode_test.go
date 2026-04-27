@@ -13,9 +13,11 @@ func TestSyncOpenCodeGeneratesPlugin(t *testing.T) {
 	hooks := []*Hook{
 		{
 			Name: "test-hook",
-			OpenCodeSnippet: func(ctx HookContext) string {
-				return `  // [test-hook]
+			Scripts: map[string]func(ctx HookContext) string{
+				"opencode": func(ctx HookContext) string {
+					return `  // [test-hook]
   parts.push("hello from test");`
+				},
 			},
 		},
 	}
@@ -48,16 +50,20 @@ func TestSyncOpenCodeMultipleHooks(t *testing.T) {
 	hooks := []*Hook{
 		{
 			Name: "hook-a",
-			OpenCodeSnippet: func(ctx HookContext) string {
-				return `  // [hook-a]
+			Scripts: map[string]func(ctx HookContext) string{
+				"opencode": func(ctx HookContext) string {
+					return `  // [hook-a]
   parts.push("aaa");`
+				},
 			},
 		},
 		{
 			Name: "hook-b",
-			OpenCodeSnippet: func(ctx HookContext) string {
-				return `  // [hook-b]
+			Scripts: map[string]func(ctx HookContext) string{
+				"opencode": func(ctx HookContext) string {
+					return `  // [hook-b]
   parts.push("bbb");`
+				},
 			},
 		},
 	}
@@ -80,8 +86,10 @@ func TestSyncOpenCodeEmptyRemovesFile(t *testing.T) {
 	// First create a plugin file.
 	hooks := []*Hook{
 		{
-			Name:            "temp",
-			OpenCodeSnippet: func(ctx HookContext) string { return `parts.push("temp");` },
+			Name: "temp",
+			Scripts: map[string]func(ctx HookContext) string{
+				"opencode": func(ctx HookContext) string { return `parts.push("temp");` },
+			},
 		},
 	}
 	syncOpenCode(hooks, dir, ctx)
@@ -101,7 +109,7 @@ func TestSyncOpenCodeSkipsNilSnippets(t *testing.T) {
 	ctx := HookContext{JeffHome: dir, TargetDir: dir}
 
 	hooks := []*Hook{
-		{Name: "no-opencode", OpenCodeSnippet: nil},
+		{Name: "no-opencode", Scripts: map[string]func(ctx HookContext) string{}},
 	}
 
 	if err := syncOpenCode(hooks, dir, ctx); err != nil {
@@ -110,6 +118,6 @@ func TestSyncOpenCodeSkipsNilSnippets(t *testing.T) {
 
 	// No snippets → file removed.
 	if _, err := os.Stat(openCodePluginPath(dir)); !os.IsNotExist(err) {
-		t.Fatal("expected no plugin file for hook without OpenCodeSnippet")
+		t.Fatal("expected no plugin file for hook without opencode script")
 	}
 }

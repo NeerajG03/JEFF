@@ -13,12 +13,14 @@ func testRegistry() *Registry {
 		Source:  SourceHome,
 		Event:   "SessionStart",
 		Matcher: "*",
-		ClaudeScript: func(ctx HookContext) string {
-			return "#!/bin/bash\necho hook-a"
-		},
-		OpenCodeSnippet: func(ctx HookContext) string {
-			return `  // [hook-a]
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return "#!/bin/bash\necho hook-a"
+			},
+			"opencode": func(ctx HookContext) string {
+				return `  // [hook-a]
   parts.push("a");`
+			},
 		},
 	})
 	r.Register(&Hook{
@@ -26,12 +28,14 @@ func testRegistry() *Registry {
 		Source:  SourceHome,
 		Event:   "SessionStart",
 		Matcher: "*",
-		ClaudeScript: func(ctx HookContext) string {
-			return "#!/bin/bash\necho hook-b"
-		},
-		OpenCodeSnippet: func(ctx HookContext) string {
-			return `  // [hook-b]
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return "#!/bin/bash\necho hook-b"
+			},
+			"opencode": func(ctx HookContext) string {
+				return `  // [hook-b]
   parts.push("b");`
+			},
 		},
 	})
 	r.Register(&Hook{
@@ -39,8 +43,10 @@ func testRegistry() *Registry {
 		Source:  SourceTask,
 		Event:   "SessionStart",
 		Matcher: "*",
-		ClaudeScript: func(ctx HookContext) string {
-			return "#!/bin/bash\necho hook-c"
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string {
+				return "#!/bin/bash\necho hook-c"
+			},
 		},
 	})
 	return r
@@ -52,7 +58,7 @@ func TestSyncInstallsEnabled(t *testing.T) {
 	ctx := HookContext{JeffHome: dir, TargetDir: dir}
 
 	enabled := map[string]bool{"hook-a": true, "hook-b": true}
-	if err := mgr.Sync(dir, enabled, AgentClaudeCode, ctx); err != nil {
+	if err := mgr.Sync(dir, enabled, "claude", ctx); err != nil {
 		t.Fatal(err)
 	}
 
@@ -77,11 +83,11 @@ func TestSyncUninstallsExtra(t *testing.T) {
 
 	// Install both.
 	enabled := map[string]bool{"hook-a": true, "hook-b": true}
-	mgr.Sync(dir, enabled, AgentClaudeCode, ctx)
+	mgr.Sync(dir, enabled, "claude", ctx)
 
 	// Sync with only hook-a.
 	enabled = map[string]bool{"hook-a": true}
-	if err := mgr.Sync(dir, enabled, AgentClaudeCode, ctx); err != nil {
+	if err := mgr.Sync(dir, enabled, "claude", ctx); err != nil {
 		t.Fatal(err)
 	}
 
@@ -102,8 +108,8 @@ func TestSyncIdempotent(t *testing.T) {
 	ctx := HookContext{JeffHome: dir, TargetDir: dir}
 
 	enabled := map[string]bool{"hook-a": true}
-	mgr.Sync(dir, enabled, AgentClaudeCode, ctx)
-	mgr.Sync(dir, enabled, AgentClaudeCode, ctx)
+	mgr.Sync(dir, enabled, "claude", ctx)
+	mgr.Sync(dir, enabled, "claude", ctx)
 
 	installed := mgr.Installed(dir)
 	if len(installed) != 1 {
@@ -117,7 +123,7 @@ func TestSyncOpenCodeAgent(t *testing.T) {
 	ctx := HookContext{JeffHome: dir, TargetDir: dir}
 
 	enabled := map[string]bool{"hook-a": true, "hook-b": true}
-	if err := mgr.Sync(dir, enabled, AgentOpenCode, ctx); err != nil {
+	if err := mgr.Sync(dir, enabled, "opencode", ctx); err != nil {
 		t.Fatal(err)
 	}
 
@@ -138,7 +144,7 @@ func TestSyncPreservesUnknownHooks(t *testing.T) {
 	os.WriteFile(scriptPath(dir, "external-hook"), []byte("#!/bin/bash"), 0o755)
 
 	enabled := map[string]bool{"hook-a": true}
-	mgr.Sync(dir, enabled, AgentClaudeCode, ctx)
+	mgr.Sync(dir, enabled, "claude", ctx)
 
 	// External hook should still exist.
 	if _, err := os.Stat(scriptPath(dir, "external-hook")); err != nil {
@@ -149,7 +155,7 @@ func TestSyncPreservesUnknownHooks(t *testing.T) {
 func TestInstallNotFound(t *testing.T) {
 	mgr := NewManager(NewRegistry())
 	ctx := HookContext{}
-	err := mgr.Install("nonexistent", t.TempDir(), AgentClaudeCode, ctx)
+	err := mgr.Install("nonexistent", t.TempDir(), "claude", ctx)
 	if err == nil {
 		t.Fatal("expected error for missing hook")
 	}

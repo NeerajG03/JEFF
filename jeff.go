@@ -8,10 +8,12 @@ type AgentTool string
 const (
 	AgentClaudeCode AgentTool = "claude"
 	AgentOpenCode   AgentTool = "opencode"
+	AgentGemini     AgentTool = "gemini"
 )
 
 // ValidAgentTools is the set of supported agent tools.
-var ValidAgentTools = []AgentTool{AgentClaudeCode, AgentOpenCode}
+// Kept for backward compatibility; derived from the provider registry.
+var ValidAgentTools = []AgentTool{AgentClaudeCode, AgentOpenCode, AgentGemini}
 
 // IsValid returns true if t is a recognized agent tool.
 func (t AgentTool) IsValid() bool {
@@ -28,15 +30,12 @@ func (AgentTool) ValidNames() []string {
 }
 
 // Command returns the CLI command name used to launch this agent tool.
+// Delegates to the registered provider if available.
 func (t AgentTool) Command() string {
-	switch t {
-	case AgentClaudeCode:
-		return "claude"
-	case AgentOpenCode:
-		return "opencode"
-	default:
-		return string(t)
+	if p := GetProvider(t); p != nil {
+		return p.Command()
 	}
+	return string(t)
 }
 
 // IDE represents a supported code editor / IDE.

@@ -16,25 +16,28 @@ func TestBuiltinHooksGenerateContent(t *testing.T) {
 
 	for _, h := range builtinHooks() {
 		t.Run(h.Name+"/claude", func(t *testing.T) {
-			if h.ClaudeScript == nil {
-				t.Fatal("ClaudeScript is nil")
+			gen := h.Scripts["claude"]
+			if gen == nil {
+				t.Fatal("Scripts[\"claude\"] is nil")
 			}
-			content := h.ClaudeScript(ctx)
+			content := gen(ctx)
 			if content == "" {
-				t.Fatal("ClaudeScript returned empty")
+				t.Fatal("Scripts[\"claude\"] returned empty")
 			}
 			if len(content) < 20 {
-				t.Fatalf("ClaudeScript suspiciously short: %q", content)
+				t.Fatalf("Scripts[\"claude\"] suspiciously short: %q", content)
 			}
 		})
 
-		t.Run(h.Name+"/opencode", func(t *testing.T) {
-			if h.OpenCodeSnippet == nil {
-				t.Fatal("OpenCodeSnippet is nil")
+		t.Run(h.Name+"/scripts", func(t *testing.T) {
+			if len(h.Scripts) == 0 {
+				t.Fatal("Scripts map is empty")
 			}
-			// Some task hooks return empty for OpenCode (e.g. PostToolUse hooks).
-			// Just verify no panic.
-			h.OpenCodeSnippet(ctx)
+			// Verify all script generators don't panic.
+			for key, gen := range h.Scripts {
+				_ = gen(ctx)
+				_ = key
+			}
 		})
 	}
 }
@@ -78,7 +81,7 @@ func TestTaskHookSources(t *testing.T) {
 func TestTaskContextHookIncludesTaskID(t *testing.T) {
 	ctx := HookContext{TaskID: "gig-ab12"}
 	h := taskContextHook()
-	script := h.ClaudeScript(ctx)
+	script := h.Scripts["claude"](ctx)
 	if !strings.Contains(script, "gig-ab12") {
 		t.Error("task-context script does not contain task ID")
 	}
@@ -87,7 +90,7 @@ func TestTaskContextHookIncludesTaskID(t *testing.T) {
 func TestCheckpointNudgeWithPatterns(t *testing.T) {
 	ctx := HookContext{CheckpointPatterns: []string{"git commit", "go test.*PASS"}}
 	h := checkpointNudgeHook()
-	script := h.ClaudeScript(ctx)
+	script := h.Scripts["claude"](ctx)
 	if !strings.Contains(script, "git commit") {
 		t.Error("checkpoint-nudge script missing pattern 'git commit'")
 	}
@@ -102,7 +105,7 @@ func TestCheckpointNudgeWithPatterns(t *testing.T) {
 func TestCheckpointNudgeWithoutPatterns(t *testing.T) {
 	ctx := HookContext{CheckpointPatterns: nil}
 	h := checkpointNudgeHook()
-	script := h.ClaudeScript(ctx)
+	script := h.Scripts["claude"](ctx)
 	// Should be a no-op script (no grep, just exits).
 	if strings.Contains(script, "grep") {
 		t.Error("checkpoint-nudge with no patterns should not grep")

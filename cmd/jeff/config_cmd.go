@@ -221,8 +221,8 @@ func syncHomeHooks(home string, c *jeff.Config) error {
 	mgr := hooks.NewManager(reg)
 	ctx := hooks.HookContext{JeffHome: home, TargetDir: home, GigHome: c.GigHome}
 	enabled := hooks.EnabledForSource(c.Hooks, hooks.SourceHome, reg)
-	agent := hooks.AgentTool(c.Agent)
-	return mgr.Sync(home, enabled, agent, ctx)
+	deliveryKey := jeff.GetProvider(c.Agent).HookDeliveryKey()
+	return mgr.Sync(home, enabled, deliveryKey, ctx)
 }
 
 // syncHooksFromConfig syncs hooks to disk using current config.

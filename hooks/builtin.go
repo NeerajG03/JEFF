@@ -486,7 +486,7 @@ cat > /dev/null
 	// Send directly to orchestrator pane via tmux — no DB lookup needed.
 	// The orchestrator is always in the "orchestrator" window of its session.
 	target := orchestratorID + ":orchestrator"
-	message := "[Worker " + taskID + " stopped]: Session ended — please check if this was intentional."
+	message := "[Worker " + taskID + " stopped]: Agent has stopped working — the tmux session is still active."
 
 	return `#!/bin/bash
 set -euo pipefail

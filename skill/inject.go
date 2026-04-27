@@ -107,6 +107,19 @@ func InjectTo(skillName, skillLocation, taskDir, configDir, skillsSubdir string)
 	return os.Symlink(skillLocation, link)
 }
 
+// EjectTo removes a skill symlink from taskDir/<configDir>/<skillsSubdir>.
+// This is the provider-aware variant of Eject.
+func EjectTo(skillName, taskDir, configDir, skillsSubdir string) error {
+	if skillsSubdir == "" {
+		return nil // agent doesn't support skills
+	}
+	link := filepath.Join(skillsDirFor(taskDir, configDir, skillsSubdir), skillName)
+	if !gitutil.IsSymlink(link) {
+		return nil
+	}
+	return os.Remove(link)
+}
+
 // InjectMatching loads the skill registry, finds all skills matching the
 // context, and injects them into the task directory via symlinks.
 // Returns the names of injected skills.

@@ -81,7 +81,12 @@ func (m *Manager) Sync(targetDir string, enabled map[string]bool, deliveryKey st
 	return nil
 }
 
-// Installed returns names of hooks currently installed at targetDir.
-func (m *Manager) Installed(targetDir string) []string {
-	return installedClaudeHooks(targetDir)
+// Installed returns names of hooks currently installed at targetDir
+// using the specified delivery mechanism.
+func (m *Manager) Installed(targetDir, deliveryKey string) []string {
+	d := GetDelivery(deliveryKey)
+	if d == nil {
+		return nil
+	}
+	return d.Installed(targetDir)
 }

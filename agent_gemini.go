@@ -30,7 +30,7 @@ func (g *geminiProvider) BuildLaunchArgs(opts LaunchOpts) []string {
 }
 
 func (g *geminiProvider) BuildCurateArgs(prompt string) []string {
-	return []string{"-p", prompt}
+	return []string{"--approval-mode=yolo", "-p", prompt}
 }
 
 func (g *geminiProvider) SupportsInlinePrompt() bool { return true }

@@ -11,19 +11,16 @@ const (
 	AgentGemini     AgentTool = "gemini"
 )
 
-// ValidAgentTools is the set of supported agent tools.
-// Kept for backward compatibility; derived from the provider registry.
-var ValidAgentTools = []AgentTool{AgentClaudeCode, AgentOpenCode, AgentGemini}
-
-// IsValid returns true if t is a recognized agent tool.
+// IsValid returns true if t is a recognized agent tool (has a registered provider).
 func (t AgentTool) IsValid() bool {
-	return slices.Contains(ValidAgentTools, t)
+	return GetProvider(t) != nil
 }
 
-// ValidNames returns the valid agent tool names as strings.
+// ValidNames returns the valid agent tool names as strings, derived from the provider registry.
 func (AgentTool) ValidNames() []string {
-	names := make([]string, len(ValidAgentTools))
-	for i, t := range ValidAgentTools {
+	agents := RegisteredAgents()
+	names := make([]string, len(agents))
+	for i, t := range agents {
 		names[i] = string(t)
 	}
 	return names

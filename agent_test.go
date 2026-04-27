@@ -8,7 +8,7 @@ import (
 )
 
 func TestAllProvidersRegistered(t *testing.T) {
-	for _, agent := range ValidAgentTools {
+	for _, agent := range RegisteredAgents() {
 		p := GetProvider(agent)
 		if p == nil {
 			t.Errorf("no provider registered for %s", agent)
@@ -87,9 +87,9 @@ func TestGeminiProviderArgs(t *testing.T) {
 		t.Errorf("resume args = %v", args)
 	}
 
-	// Curate args.
+	// Curate args (must include --approval-mode=yolo).
 	curate := p.BuildCurateArgs("curate this")
-	if len(curate) != 2 || curate[0] != "-p" || curate[1] != "curate this" {
+	if len(curate) != 3 || curate[0] != "--approval-mode=yolo" || curate[1] != "-p" || curate[2] != "curate this" {
 		t.Errorf("curate args = %v", curate)
 	}
 
@@ -158,7 +158,7 @@ func TestProviderLayout(t *testing.T) {
 
 func TestEnsureHomeDirs(t *testing.T) {
 	home := t.TempDir()
-	for _, agent := range ValidAgentTools {
+	for _, agent := range RegisteredAgents() {
 		p := GetProvider(agent)
 		if err := p.EnsureHomeDirs(home); err != nil {
 			t.Errorf("%s EnsureHomeDirs: %v", agent, err)
@@ -172,7 +172,7 @@ func TestEnsureHomeDirs(t *testing.T) {
 
 func TestWriteHomeDefaults(t *testing.T) {
 	home := t.TempDir()
-	for _, agent := range ValidAgentTools {
+	for _, agent := range RegisteredAgents() {
 		p := GetProvider(agent)
 		_ = p.EnsureHomeDirs(home)
 		if err := p.WriteHomeDefaults(home); err != nil {

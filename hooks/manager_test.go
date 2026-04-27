@@ -62,7 +62,7 @@ func TestSyncInstallsEnabled(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	installed := mgr.Installed(dir)
+	installed := mgr.Installed(dir, "claude")
 	sort.Strings(installed)
 	if len(installed) != 2 || installed[0] != "hook-a" || installed[1] != "hook-b" {
 		t.Fatalf("installed = %v, want [hook-a, hook-b]", installed)
@@ -91,7 +91,7 @@ func TestSyncUninstallsExtra(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	installed := mgr.Installed(dir)
+	installed := mgr.Installed(dir, "claude")
 	if len(installed) != 1 || installed[0] != "hook-a" {
 		t.Fatalf("installed = %v, want [hook-a]", installed)
 	}
@@ -111,7 +111,7 @@ func TestSyncIdempotent(t *testing.T) {
 	mgr.Sync(dir, enabled, "claude", ctx)
 	mgr.Sync(dir, enabled, "claude", ctx)
 
-	installed := mgr.Installed(dir)
+	installed := mgr.Installed(dir, "claude")
 	if len(installed) != 1 {
 		t.Fatalf("installed = %v after double sync, want [hook-a]", installed)
 	}

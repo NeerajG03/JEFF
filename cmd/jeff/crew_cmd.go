@@ -123,7 +123,14 @@ func crewStartCmd() *cobra.Command {
 				})
 				launchCmd = provider.Command()
 				for _, a := range launchArgs {
-					launchCmd += " " + a
+					// Shell-quote args that contain special characters
+					// (the prompt is passed as a positional arg and may
+					// contain parens, quotes, etc. that break the shell).
+					if needsShellQuoting(a) {
+						launchCmd += " " + shellQuote(a)
+					} else {
+						launchCmd += " " + a
+					}
 				}
 			}
 			opts := crew.StartOpts{
@@ -1232,4 +1239,23 @@ func crewStatusLabel(status string) string {
 	default:
 		return status
 	}
+}
+
+// needsShellQuoting returns true if a string contains characters that
+// would be interpreted by the shell (parens, quotes, semicolons, etc.).
+func needsShellQuoting(s string) bool {
+	for _, c := range s {
+		switch c {
+		case ' ', '(', ')', '\'', '"', '`', '$', '\\', ';', '&', '|', '<', '>', '{', '}', '!', '~', '#', '*', '?', '[', ']':
+			return true
+		}
+	}
+	return false
+}
+
+// shellQuote wraps a string in single quotes for safe shell passing.
+// Single quotes inside the string are handled by ending the quote,
+// adding an escaped single quote, and resuming the quote.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
 }

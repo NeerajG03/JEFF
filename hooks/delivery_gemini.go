@@ -34,9 +34,11 @@ func (d *geminiDelivery) Install(h *Hook, targetDir string, ctx HookContext) err
 	if gen == nil {
 		return nil
 	}
-	// Map Claude event name to Gemini equivalent before writing to settings.json.
+	// Map Claude event name to Gemini equivalent and convert timeout
+	// from seconds (JEFF internal) to milliseconds (Gemini CLI).
 	mapped := *h
 	mapped.Event = geminiEventName(h.Event)
+	mapped.Timeout = h.TimeoutOrDefault() * 1000
 	return installClaudeScript(&mapped, targetDir, ctx, gen, geminiSettingsPath(targetDir))
 }
 

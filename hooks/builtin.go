@@ -292,6 +292,7 @@ func buildCheckpointNudgeScript(patterns []string) string {
 		return `#!/bin/bash
 set -euo pipefail
 cat > /dev/null
+echo '{}'
 `
 	}
 
@@ -397,6 +398,7 @@ func buildInboxCheckScript(taskID string) string {
 		return `#!/bin/bash
 set -euo pipefail
 cat > /dev/null
+echo '{}'
 `
 	}
 
@@ -450,6 +452,7 @@ func buildWorkerHeartbeatScript(taskID string) string {
 		return `#!/bin/bash
 set -euo pipefail
 cat > /dev/null
+echo '{}'
 `
 	}
 
@@ -461,6 +464,8 @@ INPUT=$(cat)
 # Touch last_seen as heartbeat signal.
 # Stall detection is handled by jeff daemon, not here.
 jeff crew touch ` + taskID + ` 2>/dev/null || true
+
+echo '{}'
 `
 }
 
@@ -511,6 +516,7 @@ func buildSessionCaptureScript(taskID string) string {
 		return `#!/bin/bash
 set -euo pipefail
 cat > /dev/null
+echo '{}'
 `
 	}
 
@@ -520,9 +526,14 @@ set -euo pipefail
 INPUT=$(cat)
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // ""')
 
-[ -z "$SESSION_ID" ] && exit 0
+if [ -z "$SESSION_ID" ]; then
+  echo '{}'
+  exit 0
+fi
 
 jeff crew session-id ` + taskID + ` "$SESSION_ID" 2>/dev/null || true
+
+echo '{}'
 `
 }
 
@@ -531,6 +542,7 @@ func buildWorkerStopScript(taskID, orchestratorID string) string {
 		return `#!/bin/bash
 set -euo pipefail
 cat > /dev/null
+echo '{}'
 `
 	}
 
@@ -549,6 +561,8 @@ INPUT=$(cat)
 # Chaining with \; in a single invocation drops the Enter (same class of bug as gig-4040).
 tmux send-keys -t "` + target + `" -l "` + message + `" 2>/dev/null || true
 tmux send-keys -t "` + target + `" Enter 2>/dev/null || true
+
+echo '{}'
 `
 }
 

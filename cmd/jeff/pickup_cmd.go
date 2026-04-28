@@ -30,16 +30,24 @@ func pickupCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			taskID := args[0]
 
-			taskDir, err := pickupTask(taskID, personaName, repos, nil, "")
+			// Resolve agent from persona, fall back to global config.
+			agentTool := cfg.Agent
+			if personaName != "" {
+				if pa := persona.RegisteredAgent(cfg.Home, personaName); pa != "" {
+					agentTool = jeff.AgentTool(pa)
+				}
+			}
+
+			taskDir, err := pickupTask(taskID, personaName, repos, nil, "", agentTool)
 			if err != nil {
 				return err
 			}
 
 			// Launch agent tool in task directory (foreground, blocks).
-			fmt.Fprintf(os.Stderr, "\nLaunching %s in %s...\n", cfg.Agent, taskDir)
+			fmt.Fprintf(os.Stderr, "\nLaunching %s in %s...\n", agentTool, taskDir)
 			// Resolve persona model for foreground launch.
 			model := persona.RegisteredModel(cfg.Home, personaName)
-			return launchAgent(taskDir, cfg.Agent, model)
+			return launchAgent(taskDir, agentTool, model)
 		},
 	}
 

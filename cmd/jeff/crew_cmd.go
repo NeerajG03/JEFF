@@ -81,16 +81,24 @@ func crewStartCmd() *cobra.Command {
 				}
 			}
 
-			// Run the pickup sequence (claim, workspace, worktrees, hooks, skills).
-			taskDir, err := pickupTask(taskID, personaName, repos, reposReadonly, orchestratorID)
-			if err != nil {
-				return err
+			// Resolve agent: persona default takes priority over global config.
+			agentTool := cfg.Agent
+			if personaName != "" {
+				if pa := persona.RegisteredAgent(cfg.Home, personaName); pa != "" {
+					agentTool = jeff.AgentTool(pa)
+				}
 			}
 
 			// Resolve model: --model flag takes priority, then persona default.
 			model := modelOverride
 			if model == "" && personaName != "" {
 				model = persona.RegisteredModel(cfg.Home, personaName)
+			}
+
+			// Run the pickup sequence (claim, workspace, worktrees, hooks, skills).
+			taskDir, err := pickupTask(taskID, personaName, repos, reposReadonly, orchestratorID, agentTool)
+			if err != nil {
+				return err
 			}
 
 			// Open crew store and start tmux session.
@@ -106,7 +114,7 @@ func crewStartCmd() *cobra.Command {
 			if prompt == "" {
 				prompt = crew.DefaultPrompt
 			}
-			provider := jeff.GetProvider(cfg.Agent)
+			provider := jeff.GetProvider(agentTool)
 			var launchCmd string
 			if provider != nil && provider.SupportsInlinePrompt() {
 				launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{
@@ -121,7 +129,7 @@ func crewStartCmd() *cobra.Command {
 			opts := crew.StartOpts{
 				Persona:   personaName,
 				Repos:     repos,
-				Agent:     string(cfg.Agent),
+				Agent:     string(agentTool),
 				Model:     model,
 				Prompt:    promptOverride,
 				LaunchCmd: launchCmd,
@@ -983,7 +991,13 @@ Use --dry-run to preview what would be cleaned up without making changes.`,
 
 // pickupTask runs the full pickup sequence and returns the task directory.
 // Extracted from pickupCmd for reuse by crew start.
-func pickupTask(taskID, personaName string, repos, reposReadonly []string, orchestratorID string) (string, error) {
+func pickupTask(taskID, personaName string, repos, reposReadonly []string, orchestratorID string, agentOverride jeff.AgentTool) (string, error) {
+	// Use persona's agent if provided, otherwise fall back to global config.
+	effectiveAgent := cfg.Agent
+	if agentOverride != "" {
+		effectiveAgent = agentOverride
+	}
+
 	store, err := openGigStore()
 	if err != nil {
 		return "", err
@@ -1084,7 +1098,7 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 
 	// Install learn command for each agent that supports custom commands.
 	if personaName != "" || len(allRepos) > 0 {
-		provider := jeff.GetProvider(cfg.Agent)
+		provider := jeff.GetProvider(effectiveAgent)
 		if provider != nil && provider.CommandsSubdir() != "" {
 			if err := memory.InstallLearnCommandTo(td.Path, taskID, personaName, cfg.Home, allRepos,
 				provider.ConfigDir(), provider.CommandsSubdir(), provider.CommandFileExt()); err != nil {
@@ -1105,14 +1119,14 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 	}
 	taskEnabled := hooks.EnabledForSource(cfg.Hooks, hooks.SourceTask, reg)
 	if len(taskEnabled) > 0 {
-		deliveryKey := jeff.GetProvider(cfg.Agent).HookDeliveryKey()
+		deliveryKey := jeff.GetProvider(effectiveAgent).HookDeliveryKey()
 		if err := mgr.Sync(td.Path, taskEnabled, deliveryKey, hctx); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: task hooks: %v\n", err)
 		}
 	}
 
 	// Inject matching skills using provider-aware paths.
-	provider := jeff.GetProvider(cfg.Agent)
+	provider := jeff.GetProvider(effectiveAgent)
 	mctx := &skill.MatchContext{
 		Persona: personaName,
 		GigType: string(task.Type),

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	jeff "github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/skill"
 	"github.com/spf13/cobra"
 )
@@ -272,8 +273,11 @@ func skillInjectCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if err := skill.Inject(name, entry.Location, target); err != nil {
-					return err
+				for _, agent := range jeff.RegisteredAgents() {
+					p := jeff.GetProvider(agent)
+					if err := skill.InjectTo(name, entry.Location, target, p.ConfigDir(), p.SkillsSubdir()); err != nil {
+						return err
+					}
 				}
 				fmt.Printf("Injected %s into %s\n", name, label)
 			}
@@ -317,8 +321,11 @@ func skillEjectCmd() *cobra.Command {
 			}
 
 			for _, name := range args {
-				if err := skill.Eject(name, target); err != nil {
-					return err
+				for _, agent := range jeff.RegisteredAgents() {
+					p := jeff.GetProvider(agent)
+					if err := skill.EjectTo(name, target, p.ConfigDir(), p.SkillsSubdir()); err != nil {
+						return err
+					}
 				}
 				fmt.Printf("Ejected %s from %s\n", name, label)
 			}

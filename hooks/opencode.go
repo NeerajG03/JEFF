@@ -17,10 +17,11 @@ func openCodePluginPath(targetDir string) string {
 func syncOpenCode(enabledHooks []*Hook, targetDir string, ctx HookContext) error {
 	var snippets []string
 	for _, h := range enabledHooks {
-		if h.OpenCodeSnippet == nil {
+		gen := h.Scripts["opencode"]
+		if gen == nil {
 			continue
 		}
-		snippet := h.OpenCodeSnippet(ctx)
+		snippet := gen(ctx)
 		if snippet != "" {
 			snippets = append(snippets, snippet)
 		}

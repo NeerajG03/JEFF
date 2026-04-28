@@ -8,9 +8,15 @@ import (
 	"github.com/NeerajG03/JEFF/internal/gitutil"
 )
 
-// skillsDir returns the .claude/skills path inside a task directory.
+// skillsDir returns the skills path inside a task directory.
+// configDir is the agent config dir (e.g. ".claude"), skillsSubdir is "skills".
 func skillsDir(taskDir string) string {
-	return filepath.Join(taskDir, ".claude", "skills")
+	return skillsDirFor(taskDir, ".claude", "skills")
+}
+
+// skillsDirFor returns the skills path for a given config dir and subdirectory.
+func skillsDirFor(taskDir, configDir, skillsSubdir string) string {
+	return filepath.Join(taskDir, configDir, skillsSubdir)
 }
 
 // Inject creates a symlink from taskDir/.claude/skills/<name> → skillLocation.
@@ -71,10 +77,62 @@ func Injected(taskDir string) ([]string, error) {
 	return names, nil
 }
 
+// InjectTo creates a symlink from taskDir/<configDir>/<skillsSubdir>/<name> → skillLocation.
+// This is the provider-aware variant of Inject.
+func InjectTo(skillName, skillLocation, taskDir, configDir, skillsSubdir string) error {
+	if skillsSubdir == "" {
+		return nil // agent doesn't support skills
+	}
+	if _, err := os.Stat(skillLocation); err != nil {
+		return fmt.Errorf("skill location not found: %s", skillLocation)
+	}
+
+	dir := skillsDirFor(taskDir, configDir, skillsSubdir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create %s/%s: %w", configDir, skillsSubdir, err)
+	}
+
+	link := filepath.Join(dir, skillName)
+
+	if gitutil.IsSymlink(link) {
+		target, err := os.Readlink(link)
+		if err == nil && target == skillLocation {
+			return nil
+		}
+		os.Remove(link)
+	} else if _, err := os.Lstat(link); err == nil {
+		return fmt.Errorf("%s exists and is not a symlink", link)
+	}
+
+	return os.Symlink(skillLocation, link)
+}
+
+// EjectTo removes a skill symlink from taskDir/<configDir>/<skillsSubdir>.
+// This is the provider-aware variant of Eject.
+func EjectTo(skillName, taskDir, configDir, skillsSubdir string) error {
+	if skillsSubdir == "" {
+		return nil // agent doesn't support skills
+	}
+	link := filepath.Join(skillsDirFor(taskDir, configDir, skillsSubdir), skillName)
+	if !gitutil.IsSymlink(link) {
+		return nil
+	}
+	return os.Remove(link)
+}
+
 // InjectMatching loads the skill registry, finds all skills matching the
 // context, and injects them into the task directory via symlinks.
 // Returns the names of injected skills.
 func InjectMatching(jeffHome, taskDir string, ctx *MatchContext) ([]string, error) {
+	return InjectMatchingTo(jeffHome, taskDir, ".claude", "skills", ctx)
+}
+
+// InjectMatchingTo is like InjectMatching but uses the given configDir and skillsSubdir.
+func InjectMatchingTo(jeffHome, taskDir, configDir, skillsSubdir string, ctx *MatchContext) ([]string, error) {
+	if skillsSubdir == "" {
+		return nil, nil // agent doesn't support skills
+	}
+
 	sc, err := LoadSkills(jeffHome)
 	if err != nil {
 		return nil, err
@@ -84,7 +142,7 @@ func InjectMatching(jeffHome, taskDir string, ctx *MatchContext) ([]string, erro
 	var injected []string
 	for _, name := range names {
 		entry := sc.Skills[name]
-		if err := Inject(name, entry.Location, taskDir); err != nil {
+		if err := InjectTo(name, entry.Location, taskDir, configDir, skillsSubdir); err != nil {
 			return injected, fmt.Errorf("inject %s: %w", name, err)
 		}
 		injected = append(injected, name)

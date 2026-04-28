@@ -109,3 +109,17 @@ func DefaultModel(name string) string {
 	}
 	return models[name]
 }
+
+// DefaultAgent returns the default agent tool for a persona.
+// Currently all embedded personas default to "claude".
+// Returns "" to use the system default.
+func DefaultAgent(name string) string {
+	agents := map[string]string{
+		"jenko":   "claude",
+		"schmidt": "claude",
+		"dickson": "claude",
+		"eric":    "claude",
+		"hardy":   "claude",
+	}
+	return agents[name]
+}

@@ -23,52 +23,19 @@ func settingsPath(targetDir string) string {
 	return filepath.Join(targetDir, ".claude", "settings.json")
 }
 
-// installClaude writes the bash script and updates settings.json.
-func installClaude(h *Hook, targetDir string, ctx HookContext) error {
-	// Generate and write script.
-	content := h.ClaudeScript(ctx)
-	sp := scriptPath(targetDir, h.Name)
-
-	if err := os.MkdirAll(filepath.Dir(sp), 0o755); err != nil {
-		return fmt.Errorf("create hooks dir: %w", err)
-	}
-	if err := os.WriteFile(sp, []byte(content), 0o755); err != nil {
-		return fmt.Errorf("write script %s: %w", sp, err)
-	}
-
-	// Update settings.json.
-	settings, err := readSettings(targetDir)
-	if err != nil {
-		return fmt.Errorf("read settings: %w", err)
-	}
-
-	addHookToSettings(settings, h.Event, h.Matcher, sp, h.TimeoutOrDefault())
-
-	if err := writeSettings(targetDir, settings); err != nil {
-		return fmt.Errorf("write settings: %w", err)
-	}
-	return nil
+// mkdirAll creates parent directories for the given file path.
+func mkdirAll(filePath string) error {
+	return os.MkdirAll(filepath.Dir(filePath), 0o755)
 }
 
-// uninstallClaude removes the bash script and its settings.json entry.
-func uninstallClaude(name string, targetDir string) error {
-	sp := scriptPath(targetDir, name)
+// writeExecutable writes content as an executable file.
+func writeExecutable(path, content string) error {
+	return os.WriteFile(path, []byte(content), 0o755)
+}
 
-	// Remove from settings.json.
-	settings, err := readSettings(targetDir)
-	if err != nil {
-		return fmt.Errorf("read settings: %w", err)
-	}
-
-	removeHookFromSettings(settings, name+".sh")
-
-	if err := writeSettings(targetDir, settings); err != nil {
-		return fmt.Errorf("write settings: %w", err)
-	}
-
-	// Remove script file.
-	os.Remove(sp)
-	return nil
+// removeFile removes a file, ignoring errors.
+func removeFile(path string) {
+	os.Remove(path)
 }
 
 // installedClaudeHooks returns names of hooks installed at targetDir
@@ -90,16 +57,13 @@ func installedClaudeHooks(targetDir string) []string {
 	return names
 }
 
-// readSettings reads and parses the Claude Code settings.json.
+// readSettingsFile reads and parses a settings.json file.
 // Returns an empty map if the file doesn't exist.
-func readSettings(targetDir string) (map[string]any, error) {
-	path := settingsPath(targetDir)
+func readSettingsFile(path string) (map[string]any, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return map[string]any{
-				"$schema": "https://json.schemastore.org/claude-code-settings.json",
-			}, nil
+			return map[string]any{}, nil
 		}
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
@@ -111,9 +75,8 @@ func readSettings(targetDir string) (map[string]any, error) {
 	return settings, nil
 }
 
-// writeSettings writes settings.json back to disk.
-func writeSettings(targetDir string, settings map[string]any) error {
-	path := settingsPath(targetDir)
+// writeSettingsFile writes settings.json back to disk.
+func writeSettingsFile(path string, settings map[string]any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create settings dir: %w", err)
 	}

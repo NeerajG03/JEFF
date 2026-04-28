@@ -17,6 +17,7 @@ type PersonaEntry struct {
 	Description string `json:"description,omitempty"`
 	MemoryHint  string `json:"memory_hint,omitempty"`
 	Model       string `json:"model,omitempty"`
+	Agent       string `json:"agent,omitempty"` // default agent tool (e.g. "claude", "gemini")
 }
 
 // PersonaConfig is the top-level structure of personas.json.
@@ -275,6 +276,15 @@ func RegisteredModel(jeffHome, name string) string {
 	return entry.Model
 }
 
+// RegisteredAgent returns the default agent tool for a registered persona.
+func RegisteredAgent(jeffHome, name string) string {
+	entry, err := GetPersona(jeffHome, name)
+	if err != nil {
+		return ""
+	}
+	return entry.Agent
+}
+
 // SeedDefaults copies the embedded persona templates to disk and registers them.
 // Skips any persona that already exists in the registry.
 func SeedDefaults(jeffHome string) error {
@@ -303,15 +313,17 @@ func SeedDefaults(jeffHome string) error {
 			return fmt.Errorf("write PERSONA.md for %s: %w", name, err)
 		}
 
-		// Register with description, memory hint, and default model from embedded sources.
+		// Register with description, memory hint, default model, and default agent from embedded sources.
 		desc := Description(name)
 		hint := MemoryHint(name)
 		model := DefaultModel(name)
+		agent := DefaultAgent(name)
 		pc.Personas[name] = &PersonaEntry{
 			Location:    dir,
 			Description: desc,
 			MemoryHint:  hint,
 			Model:       model,
+			Agent:       agent,
 		}
 	}
 

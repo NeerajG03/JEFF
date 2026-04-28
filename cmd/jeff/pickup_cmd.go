@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	jeff "github.com/NeerajG03/JEFF"
+	jeffembed "github.com/NeerajG03/JEFF/embed"
 	"github.com/NeerajG03/JEFF/internal/gitutil"
 	"github.com/NeerajG03/JEFF/memory"
 	"github.com/NeerajG03/JEFF/persona"
@@ -131,7 +132,24 @@ func writeTaskClaudeMD(taskDir, jeffHome string, task *gig.Task, personaName str
 	}
 
 	path := filepath.Join(taskDir, "CLAUDE.md")
-	return os.WriteFile(path, []byte(sb.String()), 0o644)
+	if err := os.WriteFile(path, []byte(sb.String()), 0o644); err != nil {
+		return err
+	}
+
+	// Create context file aliases (e.g. GEMINI.md → CLAUDE.md) for all registered providers.
+	for _, agent := range jeff.RegisteredAgents() {
+		p := jeff.GetProvider(agent)
+		if p == nil {
+			continue
+		}
+		if aliases := p.ContextFileAliases(); len(aliases) > 0 {
+			if err := jeffembed.CreateContextAliases(taskDir, aliases); err != nil {
+				return fmt.Errorf("create context aliases for %s: %w", agent, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 // writeScratchpadGuide appends the scratchpad and memory usage instructions.

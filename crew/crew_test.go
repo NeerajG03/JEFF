@@ -321,9 +321,9 @@ func TestBuildAgentCmd(t *testing.T) {
 		{"claude", "sonnet", "abc123", "claude --dangerously-skip-permissions --model sonnet --resume abc123"},
 	}
 	for _, tc := range tests {
-		got := buildAgentCmd(tc.agent, tc.model, tc.resumeID)
+		got := buildAgentCmd("", tc.agent, tc.model, tc.resumeID)
 		if got != tc.want {
-			t.Errorf("buildAgentCmd(%q, %q, %q) = %q, want %q", tc.agent, tc.model, tc.resumeID, got, tc.want)
+			t.Errorf("buildAgentCmd(\"\", %q, %q, %q) = %q, want %q", tc.agent, tc.model, tc.resumeID, got, tc.want)
 		}
 	}
 }

@@ -8,35 +8,31 @@ type AgentTool string
 const (
 	AgentClaudeCode AgentTool = "claude"
 	AgentOpenCode   AgentTool = "opencode"
+	AgentGemini     AgentTool = "gemini"
 )
 
-// ValidAgentTools is the set of supported agent tools.
-var ValidAgentTools = []AgentTool{AgentClaudeCode, AgentOpenCode}
-
-// IsValid returns true if t is a recognized agent tool.
+// IsValid returns true if t is a recognized agent tool (has a registered provider).
 func (t AgentTool) IsValid() bool {
-	return slices.Contains(ValidAgentTools, t)
+	return GetProvider(t) != nil
 }
 
-// ValidNames returns the valid agent tool names as strings.
+// ValidNames returns the valid agent tool names as strings, derived from the provider registry.
 func (AgentTool) ValidNames() []string {
-	names := make([]string, len(ValidAgentTools))
-	for i, t := range ValidAgentTools {
+	agents := RegisteredAgents()
+	names := make([]string, len(agents))
+	for i, t := range agents {
 		names[i] = string(t)
 	}
 	return names
 }
 
 // Command returns the CLI command name used to launch this agent tool.
+// Delegates to the registered provider if available.
 func (t AgentTool) Command() string {
-	switch t {
-	case AgentClaudeCode:
-		return "claude"
-	case AgentOpenCode:
-		return "opencode"
-	default:
-		return string(t)
+	if p := GetProvider(t); p != nil {
+		return p.Command()
 	}
+	return string(t)
 }
 
 // IDE represents a supported code editor / IDE.

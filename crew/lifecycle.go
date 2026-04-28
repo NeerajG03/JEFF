@@ -13,8 +13,13 @@ import (
 // working immediately instead of sitting idle.
 const DefaultPrompt = "Read your task context using `gig show` for your task ID and begin working."
 
-// buildAgentCmd constructs the agent CLI command with optional --model and --resume flags.
-func buildAgentCmd(agent, model, resumeSessionID string) string {
+// buildAgentCmd constructs the agent CLI command using the LaunchCmd if provided,
+// or falls back to the legacy "claude --dangerously-skip-permissions" pattern.
+func buildAgentCmd(launchCmd, agent, model, resumeSessionID string) string {
+	if launchCmd != "" {
+		return launchCmd
+	}
+	// Legacy fallback.
 	if agent == "" {
 		agent = "claude"
 	}
@@ -34,9 +39,10 @@ type StartOpts struct {
 	Repos           []string
 	Resume          bool   // if true, skip pickup (workspace exists)
 	Agent           string // agent command (e.g. "claude"), defaults to "claude"
-	Model           string // Claude model override (e.g. "sonnet", "opus", "haiku")
-	ResumeSessionID string // Claude session ID to resume via --resume
+	Model           string // model override (e.g. "sonnet", "opus", "haiku")
+	ResumeSessionID string // session ID to resume via --resume
 	Prompt          string // custom initial prompt (overrides DefaultPrompt; empty = default; ignored on resume)
+	LaunchCmd       string // full CLI command (built by provider); if set, overrides Agent/Model/ResumeSessionID
 }
 
 // StartOrchestrator creates a new tmux session (jeff-N or jeff-<name>) and launches the
@@ -75,7 +81,7 @@ func StartOrchestrator(store *Store, jeffHome string, agent string, name string)
 	_ = tmuxRun("set-environment", "-t", id, "JEFF_ORCHESTRATOR_SESSION", id)
 
 	// Launch agent in the orchestrator window.
-	agentCmd := buildAgentCmd(agent, "", "")
+	agentCmd := buildAgentCmd("", agent, "", "")
 	if err := SendCommand(target, agentCmd); err != nil {
 		return nil, fmt.Errorf("launch orchestrator agent: %w", err)
 	}
@@ -138,14 +144,15 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 		return nil, fmt.Errorf("record session: %w", err)
 	}
 
-	agentCmd := buildAgentCmd(opts.Agent, opts.Model, opts.ResumeSessionID)
+	agentCmd := buildAgentCmd(opts.LaunchCmd, opts.Agent, opts.Model, opts.ResumeSessionID)
 	if err := SendCommand(target, agentCmd); err != nil {
 		KillWindow(target)
 		return nil, fmt.Errorf("launch agent: %w", err)
 	}
 
-	// Send initial prompt unless resuming an existing session.
-	if opts.ResumeSessionID == "" {
+	// If LaunchCmd includes an inline prompt, the agent starts working immediately.
+	// Only fall back to sleep+send for agents without inline prompt support.
+	if opts.LaunchCmd == "" && opts.ResumeSessionID == "" {
 		prompt := opts.Prompt
 		if prompt == "" {
 			prompt = DefaultPrompt
@@ -206,14 +213,15 @@ func Start(store *Store, taskID, taskDir string, opts StartOpts) (*Session, erro
 	}
 
 	// Launch agent.
-	agentCmd := buildAgentCmd(opts.Agent, opts.Model, opts.ResumeSessionID)
+	agentCmd := buildAgentCmd(opts.LaunchCmd, opts.Agent, opts.Model, opts.ResumeSessionID)
 	if err := SendCommand(target, agentCmd); err != nil {
 		KillWindow(target)
 		return nil, fmt.Errorf("launch agent: %w", err)
 	}
 
-	// Send initial prompt unless resuming an existing session.
-	if opts.ResumeSessionID == "" {
+	// If LaunchCmd includes an inline prompt, the agent starts working immediately.
+	// Only fall back to sleep+send for agents without inline prompt support.
+	if opts.LaunchCmd == "" && opts.ResumeSessionID == "" {
 		prompt := opts.Prompt
 		if prompt == "" {
 			prompt = DefaultPrompt

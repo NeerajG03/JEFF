@@ -999,12 +999,6 @@ Use --dry-run to preview what would be cleaned up without making changes.`,
 // pickupTask runs the full pickup sequence and returns the task directory.
 // Extracted from pickupCmd for reuse by crew start.
 func pickupTask(taskID, personaName string, repos, reposReadonly []string, orchestratorID string, agentOverride jeff.AgentTool) (string, error) {
-	// Use persona's agent if provided, otherwise fall back to global config.
-	effectiveAgent := cfg.Agent
-	if agentOverride != "" {
-		effectiveAgent = agentOverride
-	}
-
 	store, err := openGigStore()
 	if err != nil {
 		return "", err
@@ -1103,13 +1097,16 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 		}
 	}
 
-	// Install learn command for each agent that supports custom commands.
+	// Install learn command for ALL agents that support custom commands.
 	if personaName != "" || len(allRepos) > 0 {
-		provider := jeff.GetProvider(effectiveAgent)
-		if provider != nil && provider.CommandsSubdir() != "" {
+		for _, agent := range jeff.RegisteredAgents() {
+			p := jeff.GetProvider(agent)
+			if p == nil || p.CommandsSubdir() == "" {
+				continue
+			}
 			if err := memory.InstallLearnCommandTo(td.Path, taskID, personaName, cfg.Home, allRepos,
-				provider.ConfigDir(), provider.CommandsSubdir(), provider.CommandFileExt()); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: learn command: %v\n", err)
+				p.ConfigDir(), p.CommandsSubdir(), p.CommandFileExt()); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: learn command (%s): %v\n", agent, err)
 			}
 		}
 	}
@@ -1124,26 +1121,44 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 		OrchestratorID:     orchestratorID,
 		CheckpointPatterns: cfg.CheckpointPatterns,
 	}
+	// Install hooks for ALL registered agents so the workspace is ready
+	// regardless of which agent launches (same pattern as context aliases).
 	taskEnabled := hooks.EnabledForSource(cfg.Hooks, hooks.SourceTask, reg)
 	if len(taskEnabled) > 0 {
-		deliveryKey := jeff.GetProvider(effectiveAgent).HookDeliveryKey()
-		if err := mgr.Sync(td.Path, taskEnabled, deliveryKey, hctx); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: task hooks: %v\n", err)
+		for _, agent := range jeff.RegisteredAgents() {
+			p := jeff.GetProvider(agent)
+			if p == nil {
+				continue
+			}
+			if err := mgr.Sync(td.Path, taskEnabled, p.HookDeliveryKey(), hctx); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: task hooks (%s): %v\n", agent, err)
+			}
 		}
 	}
 
-	// Inject matching skills using provider-aware paths.
-	provider := jeff.GetProvider(effectiveAgent)
+	// Inject matching skills into ALL registered agent config dirs that support skills.
+	// This ensures skills are available regardless of which agent launches in this workspace.
 	mctx := &skill.MatchContext{
 		Persona: personaName,
 		GigType: string(task.Type),
 		Labels:  task.Labels,
 	}
-	injected, err := skill.InjectMatchingTo(cfg.Home, td.Path, provider.ConfigDir(), provider.SkillsSubdir(), mctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: skill injection: %v\n", err)
-	} else if len(injected) > 0 {
-		fmt.Fprintf(os.Stderr, "Skills: %s\n", strings.Join(injected, ", "))
+	var injectedNames []string
+	for _, agent := range jeff.RegisteredAgents() {
+		p := jeff.GetProvider(agent)
+		if p == nil || p.SkillsSubdir() == "" {
+			continue
+		}
+		names, err := skill.InjectMatchingTo(cfg.Home, td.Path, p.ConfigDir(), p.SkillsSubdir(), mctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: skill injection (%s): %v\n", agent, err)
+		}
+		if len(injectedNames) == 0 {
+			injectedNames = names
+		}
+	}
+	if len(injectedNames) > 0 {
+		fmt.Fprintf(os.Stderr, "Skills: %s\n", strings.Join(injectedNames, ", "))
 	}
 
 	return td.Path, nil

@@ -15,9 +15,19 @@ func init() {
 func (g *geminiProvider) Name() AgentTool    { return AgentGemini }
 func (g *geminiProvider) Command() string    { return "gemini" }
 
+// isGeminiModel returns true if the model name is valid for Gemini CLI.
+// Accepts aliases (auto, pro, flash, flash-lite) and full IDs (gemini-*).
+func isGeminiModel(m string) bool {
+	switch m {
+	case "auto", "pro", "flash", "flash-lite":
+		return true
+	}
+	return len(m) >= 7 && m[:7] == "gemini-"
+}
+
 func (g *geminiProvider) BuildLaunchArgs(opts LaunchOpts) []string {
 	args := []string{"--approval-mode=yolo"}
-	if opts.Model != "" {
+	if opts.Model != "" && isGeminiModel(opts.Model) {
 		args = append(args, "-m", opts.Model)
 	}
 	if opts.ResumeSessionID != "" {

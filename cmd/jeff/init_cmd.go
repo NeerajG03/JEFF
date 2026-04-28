@@ -83,6 +83,15 @@ func runInit(here bool) error {
 		return fmt.Errorf("write CLAUDE.md: %w", err)
 	}
 
+	// Create context file aliases (e.g. GEMINI.md → CLAUDE.md) at home level.
+	for _, agent := range jeff.RegisteredAgents() {
+		if p := jeff.GetProvider(agent); p != nil {
+			if aliases := p.ContextFileAliases(); len(aliases) > 0 {
+				_ = jeffembed.CreateContextAliases(home, aliases)
+			}
+		}
+	}
+
 	writeDefaults(home)
 
 	// Seed default personas.
@@ -135,6 +144,15 @@ func runUpdate() error {
 
 	// Write missing default files (never overwrites existing).
 	writeDefaults(home)
+
+	// Create context file aliases (e.g. GEMINI.md → CLAUDE.md) at home level.
+	for _, agent := range jeff.RegisteredAgents() {
+		if p := jeff.GetProvider(agent); p != nil {
+			if aliases := p.ContextFileAliases(); len(aliases) > 0 {
+				_ = jeffembed.CreateContextAliases(home, aliases)
+			}
+		}
+	}
 
 	// Seed default personas (adds any new built-in personas, doesn't overwrite existing).
 	if err := persona.SeedDefaults(home); err != nil {

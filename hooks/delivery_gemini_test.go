@@ -12,7 +12,7 @@ func TestGeminiEventNameMapping(t *testing.T) {
 		gemini string
 	}{
 		{"PostToolUse", "AfterTool"},
-		{"Stop", "SessionEnd"},
+		{"Stop", "AfterAgent"},
 		{"PreCompact", "PreCompress"},
 		{"SessionStart", "SessionStart"}, // unchanged
 		{"Unknown", "Unknown"},           // passthrough
@@ -102,8 +102,8 @@ func TestGeminiDeliveryInstallStopEvent(t *testing.T) {
 	json.Unmarshal(data, &settings)
 	hooksMap := settings["hooks"].(map[string]any)
 
-	if _, ok := hooksMap["SessionEnd"]; !ok {
-		t.Errorf("settings.json hooks keys = %v, want SessionEnd", keysOf(hooksMap))
+	if _, ok := hooksMap["AfterAgent"]; !ok {
+		t.Errorf("settings.json hooks keys = %v, want AfterAgent", keysOf(hooksMap))
 	}
 }
 

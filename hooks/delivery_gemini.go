@@ -18,7 +18,7 @@ func (d *geminiDelivery) ScriptKey() string { return "gemini" }
 // SessionStart is the same in both. Unknown events pass through unchanged.
 var geminiEventMap = map[string]string{
 	"PostToolUse": "AfterTool",
-	"Stop":        "SessionEnd",
+	"Stop":        "AfterAgent",
 	"PreCompact":  "PreCompress",
 }
 

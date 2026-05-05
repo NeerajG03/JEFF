@@ -15,6 +15,9 @@ var DefaultClaudeMD string
 //go:embed claude-settings.json
 var DefaultClaudeSettings string
 
+//go:embed personas/marlowe/GOAL.md
+var MarloweGoalMD string
+
 // CreateContextAliases creates symlinks from each alias filename to CLAUDE.md
 // in the given directory. CLAUDE.md is the single source of truth; other
 // context files (e.g. GEMINI.md) are symlinks to it.

@@ -9,6 +9,7 @@ import (
 )
 
 //go:embed templates/crew-orchestrator/*.md
+//go:embed templates/curation/SKILL.md
 var templateFS embed.FS
 
 // SeedDefaults seeds the built-in crew-orchestrator skill into jeffHome.
@@ -24,7 +25,7 @@ func SeedDefaults(jeffHome string) error {
 	destDir := filepath.Join(DefaultSkillsDir(jeffHome), name)
 
 	// Write (or refresh) embedded template files.
-	if err := writeEmbedded(destDir); err != nil {
+	if err := writeEmbeddedSkill(templateFS, "templates/crew-orchestrator", destDir); err != nil {
 		return fmt.Errorf("seed %s: %w", name, err)
 	}
 
@@ -42,10 +43,8 @@ func SeedDefaults(jeffHome string) error {
 
 	entry, exists := sc.Skills[name]
 	if !exists {
-		// First seed — register fresh.
 		sc.Skills[name] = &SkillEntry{Location: destDir}
 	} else {
-		// Update run — update location and strip any persona tags.
 		entry.Location = destDir
 		entry.Personas = nil
 		entry.Tags = nil
@@ -55,14 +54,53 @@ func SeedDefaults(jeffHome string) error {
 	return SaveSkills(jeffHome, sc)
 }
 
-// writeEmbedded writes the embedded crew-orchestrator template files to destDir.
+// SeedCuration seeds the built-in curation skill into jeffHome.
+// The curation skill is marlowe's operating contract — persona shapes,
+// routing matrix, rubrics, and worked examples.
+//
+// Called by Worker E (jeff init / --update). Safe to call repeatedly.
+func SeedCuration(jeffHome string) error {
+	const name = "curation"
+	destDir := filepath.Join(DefaultSkillsDir(jeffHome), name)
+
+	if err := writeEmbeddedSkill(templateFS, "templates/curation", destDir); err != nil {
+		return fmt.Errorf("seed %s: %w", name, err)
+	}
+
+	sc, err := LoadSkills(jeffHome)
+	if err != nil {
+		return err
+	}
+
+	entry, exists := sc.Skills[name]
+	if !exists {
+		sc.Skills[name] = &SkillEntry{Location: destDir}
+	} else {
+		entry.Location = destDir
+		// Curation skill is marlowe-only — keep persona tags if user set them.
+	}
+
+	return SaveSkills(jeffHome, sc)
+}
+
+// CurationSkillContent returns the embedded curation SKILL.md content.
+// Used by memory.Curate when the skill has not been installed to JEFF_HOME yet.
+func CurationSkillContent() (string, error) {
+	data, err := templateFS.ReadFile("templates/curation/SKILL.md")
+	if err != nil {
+		return "", fmt.Errorf("read embedded curation skill: %w", err)
+	}
+	return string(data), nil
+}
+
+// writeEmbeddedSkill writes embedded skill template files to destDir.
 // Overwrites existing files so updates pick up the latest embedded content.
-func writeEmbedded(destDir string) error {
-	return fs.WalkDir(templateFS, "templates/crew-orchestrator", func(path string, d fs.DirEntry, err error) error {
+func writeEmbeddedSkill(fsys embed.FS, srcDir, destDir string) error {
+	return fs.WalkDir(fsys, srcDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		rel, err := filepath.Rel("templates/crew-orchestrator", path)
+		rel, err := filepath.Rel(srcDir, path)
 		if err != nil {
 			return err
 		}
@@ -71,7 +109,7 @@ func writeEmbedded(destDir string) error {
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
-		data, err := templateFS.ReadFile(path)
+		data, err := fsys.ReadFile(path)
 		if err != nil {
 			return err
 		}

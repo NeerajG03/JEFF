@@ -13,56 +13,37 @@ func TestListEntries_Filtering(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mkCanonical := func(scopePath string, bucket Bucket, slug string, fm CanonicalFrontmatter) {
-		var dir string
-		var fp string
-		if bucket == BucketCore {
-			fp = filepath.Join(scopePath, "core.md")
-			dir = scopePath
-		} else {
-			dir = BucketPath(scopePath, bucket)
-			fp = filepath.Join(dir, slug+".md")
-		}
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		f, err := os.Create(fp)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer f.Close()
-		if err := WriteCanonical(f, fm, "body\n"); err != nil {
+	mkCanonical := func(scope string, bucket Bucket, fm CanonicalFrontmatter) {
+		if _, err := WriteCanonical(home, scope, string(bucket), fm, "body\n"); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	now := time.Date(2026, 5, 5, 0, 0, 0, 0, time.UTC)
 
-	jenScope := PersonaScopePath(home, "jenko")
-	mkCanonical(jenScope, BucketProcedural, "rule-a", CanonicalFrontmatter{
+	mkCanonical("persona:jenko", BucketProcedural, CanonicalFrontmatter{
 		Frontmatter: Frontmatter{Name: "rule-a", Description: "d", Type: TypeFeedback},
 		Status:      "accepted", Scope: "persona:jenko", ValidFrom: now,
 		Source: Source{Persona: "jenko", Task: "t", Trigger: "self-noted"},
 	})
-	mkCanonical(jenScope, BucketSemantic, "fact-1", CanonicalFrontmatter{
+	mkCanonical("persona:jenko", BucketSemantic, CanonicalFrontmatter{
 		Frontmatter: Frontmatter{Name: "fact-1", Description: "d", Type: TypeReference},
 		Status:      "superseded", Scope: "persona:jenko", ValidFrom: now,
 		Source: Source{Persona: "jenko", Task: "t", Trigger: "self-noted"},
 	})
-	mkCanonical(jenScope, BucketCore, "core", CanonicalFrontmatter{
+	mkCanonical("persona:jenko", BucketCore, CanonicalFrontmatter{
 		Frontmatter: Frontmatter{Name: "core", Description: "core block", Type: TypeProject},
 		Status:      "accepted", Scope: "persona:jenko", ValidFrom: now,
 		Source: Source{Persona: "jenko", Task: "t", Trigger: "self-noted"},
 	})
-
-	repoScope := RepoScopePath(home, "gig")
-	mkCanonical(repoScope, BucketProcedural, "use-sdk", CanonicalFrontmatter{
+	mkCanonical("repo:gig", BucketProcedural, CanonicalFrontmatter{
 		Frontmatter: Frontmatter{Name: "use-sdk", Description: "d", Type: TypeFeedback},
 		Status:      "accepted", Scope: "repo:gig", ValidFrom: now,
 		Source: Source{Persona: "jenko", Task: "t", Trigger: "self-noted"},
 	})
 
 	// Index files in bucket dirs must be ignored.
+	jenScope := PersonaScopePath(home, "jenko")
 	if err := os.WriteFile(filepath.Join(jenScope, "procedural", "INDEX.md"), []byte("# index\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -115,8 +96,7 @@ func TestListEntries_Filtering(t *testing.T) {
 
 func TestReadEntry_StandaloneFile(t *testing.T) {
 	home := t.TempDir()
-	scope := PersonaScopePath(home, "jenko")
-	if err := os.MkdirAll(BucketPath(scope, BucketSemantic), 0o755); err != nil {
+	if err := EnsureLayout(home); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 5, 5, 0, 0, 0, 0, time.UTC)
@@ -125,17 +105,12 @@ func TestReadEntry_StandaloneFile(t *testing.T) {
 		Status:      "accepted", Scope: "persona:jenko", ValidFrom: now,
 		Source: Source{Persona: "jenko", Task: "t", Trigger: "self-noted"},
 	}
-	path := filepath.Join(BucketPath(scope, BucketSemantic), "x.md")
-	f, err := os.Create(path)
+	entry, err := WriteCanonical(home, "persona:jenko", string(BucketSemantic), fm, "body\n")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("WriteCanonical: %v", err)
 	}
-	if err := WriteCanonical(f, fm, "body\n"); err != nil {
-		t.Fatal(err)
-	}
-	f.Close()
 
-	got, err := ReadEntry(path)
+	got, err := ReadEntry(entry.Path)
 	if err != nil {
 		t.Fatalf("ReadEntry: %v", err)
 	}

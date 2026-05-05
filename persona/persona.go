@@ -88,10 +88,11 @@ func NamesWithDescriptions() []string {
 func MemoryHint(name string) string {
 	hints := map[string]string{
 		"jenko":   "Code style corrections, test patterns the user prefers, build/lint quirks, implementation shortcuts that worked.",
-		"schmidt":  "Root cause patterns, misleading error messages, debugging techniques that worked, investigation dead ends to avoid.",
-		"eric":     "Where to find authoritative docs, research shortcuts, knowledge gaps in the codebase, architectural insights.",
-		"hardy":    "Review standards the user enforces, common issues to flag, quality thresholds, approval criteria.",
-		"dickson":  "Task decomposition patterns, delegation decisions that worked, scope tradeoffs, planning heuristics.",
+		"schmidt": "Root cause patterns, misleading error messages, debugging techniques that worked, investigation dead ends to avoid.",
+		"eric":    "Where to find authoritative docs, research shortcuts, knowledge gaps in the codebase, architectural insights.",
+		"hardy":   "Review standards the user enforces, common issues to flag, quality thresholds, approval criteria.",
+		"dickson": "Task decomposition patterns, delegation decisions that worked, scope tradeoffs, planning heuristics.",
+		"marlowe": "Routing decisions that were wrong and why, per-persona goal drift signals, deduplication heuristics that worked.",
 	}
 	return hints[name]
 }
@@ -106,6 +107,7 @@ func DefaultModel(name string) string {
 		"dickson": "opus",
 		"eric":    "sonnet",
 		"hardy":   "sonnet",
+		"marlowe": "sonnet",
 	}
 	return models[name]
 }
@@ -120,6 +122,7 @@ func DefaultAgent(name string) string {
 		"dickson": "claude",
 		"eric":    "claude",
 		"hardy":   "claude",
+		"marlowe": "claude",
 	}
 	return agents[name]
 }

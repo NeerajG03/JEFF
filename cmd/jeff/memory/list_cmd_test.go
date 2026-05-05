@@ -3,8 +3,6 @@ package memory
 import (
 	"bytes"
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,25 +10,9 @@ import (
 	mem "github.com/NeerajG03/JEFF/memory"
 )
 
-func mkCanonicalEntry(t *testing.T, scopePath string, bucket mem.Bucket, slug string, fm mem.CanonicalFrontmatter) {
+func mkCanonicalEntry(t *testing.T, home string, bucket mem.Bucket, slug string, fm mem.CanonicalFrontmatter) {
 	t.Helper()
-	var dir, fp string
-	if bucket == mem.BucketCore {
-		fp = filepath.Join(scopePath, "core.md")
-		dir = scopePath
-	} else {
-		dir = mem.BucketPath(scopePath, bucket)
-		fp = filepath.Join(dir, slug+".md")
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	f, err := os.Create(fp)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	if err := mem.WriteCanonical(f, fm, "test body\n"); err != nil {
+	if _, err := mem.WriteCanonical(home, fm.Scope, string(bucket), fm, "test body\n"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -43,25 +25,23 @@ func seedListHome(t *testing.T) string {
 	}
 	now := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 
-	jenScope := mem.PersonaScopePath(home, "jenko")
-	mkCanonicalEntry(t, jenScope, mem.BucketProcedural, "async-error-handling", mem.CanonicalFrontmatter{
+	mkCanonicalEntry(t, home, mem.BucketProcedural, "async-error-handling", mem.CanonicalFrontmatter{
 		Frontmatter: mem.Frontmatter{Name: "async-error-handling", Description: "Don't wrap async in try/catch", Type: mem.TypeFeedback},
 		Status:      "accepted", Scope: "persona:jenko", ValidFrom: now,
 		Source: mem.Source{Persona: "jenko", Task: "t1", Trigger: "user-correction"},
 	})
-	mkCanonicalEntry(t, jenScope, mem.BucketSemantic, "auth-middleware-location", mem.CanonicalFrontmatter{
+	mkCanonicalEntry(t, home, mem.BucketSemantic, "auth-middleware-location", mem.CanonicalFrontmatter{
 		Frontmatter: mem.Frontmatter{Name: "auth-middleware-location", Description: "Auth middleware in security/ not middleware/", Type: mem.TypeReference},
 		Status:      "accepted", Scope: "persona:jenko", ValidFrom: now,
 		Source: mem.Source{Persona: "jenko", Task: "t1", Trigger: "self-noted"},
 	})
-	mkCanonicalEntry(t, jenScope, mem.BucketSemantic, "old-fact", mem.CanonicalFrontmatter{
+	mkCanonicalEntry(t, home, mem.BucketSemantic, "old-fact", mem.CanonicalFrontmatter{
 		Frontmatter: mem.Frontmatter{Name: "old-fact", Description: "An old superseded fact", Type: mem.TypeProject},
 		Status:      "superseded", Scope: "persona:jenko", ValidFrom: now,
 		Source: mem.Source{Persona: "jenko", Task: "t0", Trigger: "self-noted"},
 	})
 
-	repoScope := mem.RepoScopePath(home, "jeff")
-	mkCanonicalEntry(t, repoScope, mem.BucketProcedural, "use-sdk", mem.CanonicalFrontmatter{
+	mkCanonicalEntry(t, home, mem.BucketProcedural, "use-sdk", mem.CanonicalFrontmatter{
 		Frontmatter: mem.Frontmatter{Name: "use-sdk", Description: "Use the gig SDK not CLI shellouts", Type: mem.TypeFeedback},
 		Status:      "accepted", Scope: "repo:jeff", ValidFrom: now,
 		Source: mem.Source{Persona: "jenko", Task: "t2", Trigger: "user-correction"},

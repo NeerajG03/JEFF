@@ -21,71 +21,37 @@ func seedStatusHome(t *testing.T) string {
 	now := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 
 	// Seed accepted entries.
-	jenScope := mem.PersonaScopePath(home, "jenko")
-	bucketDir := mem.BucketPath(jenScope, mem.BucketProcedural)
-	if err := os.MkdirAll(bucketDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	for _, slug := range []string{"rule-a", "rule-b"} {
-		fp := filepath.Join(bucketDir, slug+".md")
-		f, err := os.Create(fp)
-		if err != nil {
-			t.Fatal(err)
-		}
 		fm := mem.CanonicalFrontmatter{
 			Frontmatter: mem.Frontmatter{Name: slug, Description: "d", Type: mem.TypeFeedback},
 			Status:      "accepted", Scope: "persona:jenko", ValidFrom: now,
 			Source: mem.Source{Persona: "jenko", Task: "t", Trigger: "self-noted"},
 		}
-		if err := mem.WriteCanonical(f, fm, "body\n"); err != nil {
-			f.Close()
+		if _, err := mem.WriteCanonical(home, "persona:jenko", "procedural", fm, "body\n"); err != nil {
 			t.Fatal(err)
 		}
-		f.Close()
 	}
 
 	// Seed a superseded entry.
-	supBucketDir := mem.BucketPath(jenScope, mem.BucketSemantic)
-	if err := os.MkdirAll(supBucketDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	supPath := filepath.Join(supBucketDir, "old-fact.md")
-	f, err := os.Create(supPath)
-	if err != nil {
-		t.Fatal(err)
-	}
 	fm := mem.CanonicalFrontmatter{
 		Frontmatter: mem.Frontmatter{Name: "old-fact", Description: "d", Type: mem.TypeProject},
 		Status:      "superseded", Scope: "persona:jenko", ValidFrom: now,
 		Source: mem.Source{Persona: "jenko", Task: "t", Trigger: "self-noted"},
 	}
-	if err := mem.WriteCanonical(f, fm, "body\n"); err != nil {
-		f.Close()
+	if _, err := mem.WriteCanonical(home, "persona:jenko", "semantic", fm, "body\n"); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
 
 	// Seed a flagged entry.
-	flagBucketDir := mem.BucketPath(mem.RepoScopePath(home, "jeff"), mem.BucketSemantic)
-	if err := os.MkdirAll(flagBucketDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	flagPath := filepath.Join(flagBucketDir, "needs-review.md")
-	ff, err := os.Create(flagPath)
-	if err != nil {
-		t.Fatal(err)
-	}
 	ffm := mem.CanonicalFrontmatter{
 		Frontmatter: mem.Frontmatter{Name: "needs-review", Description: "d", Type: mem.TypeReference},
 		Status:      "accepted", Scope: "repo:jeff", ValidFrom: now,
-		Provenance:  "review-required",
-		Source:      mem.Source{Persona: "jenko", Task: "t", Trigger: "self-noted"},
+		Provenance: "review-required",
+		Source:     mem.Source{Persona: "jenko", Task: "t", Trigger: "self-noted"},
 	}
-	if err := mem.WriteCanonical(ff, ffm, "body\n"); err != nil {
-		ff.Close()
+	if _, err := mem.WriteCanonical(home, "repo:jeff", "semantic", ffm, "body\n"); err != nil {
 		t.Fatal(err)
 	}
-	ff.Close()
 
 	// Seed queue entries.
 	for i := 0; i < 3; i++ {
@@ -100,11 +66,10 @@ func seedStatusHome(t *testing.T) string {
 	}
 
 	// Seed a proposal.
-	_, err = mem.WriteProposal(home, "jenko", "gig-100",
+	if _, err := mem.WriteProposal(home, "jenko", "gig-100",
 		mem.Frontmatter{Name: "my-proposal", Description: "d", Type: mem.TypeFeedback},
 		"body",
-	)
-	if err != nil {
+	); err != nil {
 		t.Fatal(err)
 	}
 

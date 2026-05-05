@@ -2,8 +2,6 @@ package memory
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,26 +16,16 @@ func seedShowHome(t *testing.T) (home, entryPath string) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
-	scopePath := mem.PersonaScopePath(home, "jenko")
-	bucketDir := mem.BucketPath(scopePath, mem.BucketProcedural)
-	if err := os.MkdirAll(bucketDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	entryPath = filepath.Join(bucketDir, "my-rule.md")
-	f, err := os.Create(entryPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
 	fm := mem.CanonicalFrontmatter{
 		Frontmatter: mem.Frontmatter{Name: "my-rule", Description: "A useful rule", Type: mem.TypeFeedback},
 		Status:      "accepted", Scope: "persona:jenko", ValidFrom: now,
 		Source: mem.Source{Persona: "jenko", Task: "t1", Trigger: "user-correction"},
 	}
-	if err := mem.WriteCanonical(f, fm, "Rule body goes here.\n"); err != nil {
+	entry, err := mem.WriteCanonical(home, "persona:jenko", "procedural", fm, "Rule body goes here.\n")
+	if err != nil {
 		t.Fatal(err)
 	}
-	return home, entryPath
+	return home, entry.Path
 }
 
 func TestRunShow_ByName(t *testing.T) {
@@ -97,26 +85,14 @@ func TestRunShow_AmbiguousName(t *testing.T) {
 
 	// Create the same slug in two different scopes.
 	for _, persona := range []string{"jenko", "schmidt"} {
-		scopePath := mem.PersonaScopePath(home, persona)
-		bucketDir := mem.BucketPath(scopePath, mem.BucketSemantic)
-		if err := os.MkdirAll(bucketDir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		fp := filepath.Join(bucketDir, "shared-name.md")
-		f, err := os.Create(fp)
-		if err != nil {
-			t.Fatal(err)
-		}
 		fm := mem.CanonicalFrontmatter{
 			Frontmatter: mem.Frontmatter{Name: "shared-name", Description: "desc", Type: mem.TypeUser},
 			Status:      "accepted", Scope: "persona:" + persona, ValidFrom: now,
 			Source: mem.Source{Persona: persona, Task: "t", Trigger: "self-noted"},
 		}
-		if err := mem.WriteCanonical(f, fm, "body\n"); err != nil {
-			f.Close()
+		if _, err := mem.WriteCanonical(home, "persona:"+persona, "semantic", fm, "body\n"); err != nil {
 			t.Fatal(err)
 		}
-		f.Close()
 	}
 
 	var buf bytes.Buffer

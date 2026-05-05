@@ -2,8 +2,6 @@ package memory
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,7 +10,8 @@ import (
 )
 
 // seedDiffHome creates a supersedes chain:
-//   v1 (superseded, superseded_by=v2) → v2 (accepted, supersedes=[v1])
+//
+//	v1 (superseded, superseded_by=v2) → v2 (accepted, supersedes=[v1])
 func seedDiffHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
@@ -20,21 +19,10 @@ func seedDiffHome(t *testing.T) string {
 		t.Fatal(err)
 	}
 
-	scopePath := mem.PersonaScopePath(home, "jenko")
-	bucketDir := mem.BucketPath(scopePath, mem.BucketProcedural)
-	if err := os.MkdirAll(bucketDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
 	v1Time := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
 	v2Time := time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)
 
 	// v1: superseded
-	v1path := filepath.Join(bucketDir, "async-error-handling-v1.md")
-	f1, err := os.Create(v1path)
-	if err != nil {
-		t.Fatal(err)
-	}
 	validTo := v2Time
 	fm1 := mem.CanonicalFrontmatter{
 		Frontmatter:  mem.Frontmatter{Name: "async-error-handling-v1", Description: "Don't use try/catch in async code", Type: mem.TypeFeedback},
@@ -45,18 +33,11 @@ func seedDiffHome(t *testing.T) string {
 		SupersededBy: "async-error-handling",
 		Source:       mem.Source{Persona: "jenko", Task: "t1", Trigger: "user-correction"},
 	}
-	if err := mem.WriteCanonical(f1, fm1, "Original rule — scope too broad.\n"); err != nil {
-		f1.Close()
+	if _, err := mem.WriteCanonical(home, "persona:jenko", "procedural", fm1, "Original rule — scope too broad.\n"); err != nil {
 		t.Fatal(err)
 	}
-	f1.Close()
 
 	// v2: accepted
-	v2path := filepath.Join(bucketDir, "async-error-handling.md")
-	f2, err := os.Create(v2path)
-	if err != nil {
-		t.Fatal(err)
-	}
 	fm2 := mem.CanonicalFrontmatter{
 		Frontmatter: mem.Frontmatter{Name: "async-error-handling", Description: "Don't wrap async in try/catch — repo uses top-level boundaries", Type: mem.TypeFeedback},
 		Status:      "accepted",
@@ -65,11 +46,9 @@ func seedDiffHome(t *testing.T) string {
 		Supersedes:  []string{"async-error-handling-v1"},
 		Source:      mem.Source{Persona: "jenko", Task: "t2", Trigger: "user-correction"},
 	}
-	if err := mem.WriteCanonical(f2, fm2, "Refined rule with correct scope.\n"); err != nil {
-		f2.Close()
+	if _, err := mem.WriteCanonical(home, "persona:jenko", "procedural", fm2, "Refined rule with correct scope.\n"); err != nil {
 		t.Fatal(err)
 	}
-	f2.Close()
 
 	return home
 }

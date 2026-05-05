@@ -15,11 +15,15 @@ var DefaultClaudeMD string
 //go:embed claude-settings.json
 var DefaultClaudeSettings string
 
+//go:embed personas/marlowe/GOAL.md
+var MarloweGoalMD string
+
 //go:embed memory-context-claude.md
 var MemoryContextClaude string
 
 //go:embed memory-context-gemini.md
 var MemoryContextGemini string
+
 
 // CreateContextAliases creates symlinks from each alias filename to CLAUDE.md
 // in the given directory. CLAUDE.md is the single source of truth; other

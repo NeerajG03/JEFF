@@ -63,8 +63,7 @@ Bucket:       core | procedural | semantic | episodic`,
 				return err
 			}
 
-			scopeKind, scopeName, err := parseScope(flagScope)
-			if err != nil {
+			if _, _, err := parseScope(flagScope); err != nil {
 				return err
 			}
 
@@ -76,13 +75,6 @@ Bucket:       core | procedural | semantic | episodic`,
 			home, err := jeff.ResolveHome()
 			if err != nil {
 				return fmt.Errorf("resolve JEFF_HOME: %w", err)
-			}
-
-			scopePath := resolveScopePath(home, scopeKind, scopeName)
-
-			filePath, err := resolveEntryPath(scopePath, bucket, flagName)
-			if err != nil {
-				return err
 			}
 
 			fm := memory.CanonicalFrontmatter{
@@ -102,25 +94,17 @@ Bucket:       core | procedural | semantic | episodic`,
 				},
 			}
 
-			f, err := os.Create(filePath)
+			entry, err := memory.WriteCanonical(home, flagScope, flagBucket, fm, flagBody)
 			if err != nil {
-				return fmt.Errorf("create entry: %w", err)
+				return fmt.Errorf("write canonical: %w", err)
 			}
-			if writeErr := memory.WriteCanonical(f, fm, flagBody); writeErr != nil {
-				f.Close()
-				return writeErr
-			}
-			if err := f.Close(); err != nil {
-				return fmt.Errorf("close entry: %w", err)
-			}
-
-			if err := updateIndex(filepath.Dir(filePath), flagName, flagDescription, memType); err != nil {
+			if err := memory.UpdateIndex(home, flagScope, flagBucket); err != nil {
 				return fmt.Errorf("update index: %w", err)
 			}
 
-			rel, relErr := filepath.Rel(home, filePath)
+			rel, relErr := filepath.Rel(home, entry.Path)
 			if relErr != nil {
-				rel = filePath
+				rel = entry.Path
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "added: %s\n", rel)
 			return nil
@@ -170,48 +154,3 @@ func parseScope(scope string) (memory.ScopeKind, string, error) {
 	return kind, name, nil
 }
 
-func resolveScopePath(home string, kind memory.ScopeKind, name string) string {
-	switch kind {
-	case memory.ScopePersona:
-		return memory.PersonaScopePath(home, name)
-	case memory.ScopeRepo:
-		return memory.RepoScopePath(home, name)
-	case memory.ScopeProject:
-		return memory.ProjectScopePath(home, name)
-	default: // ScopeOrchestrator
-		return memory.OrchestratorScopePath(home)
-	}
-}
-
-// resolveEntryPath returns the absolute path for the canonical entry file and
-// ensures its parent directory exists.
-func resolveEntryPath(scopePath string, bucket memory.Bucket, slug string) (string, error) {
-	bucketPath := memory.BucketPath(scopePath, bucket)
-	if bucket == memory.BucketCore {
-		// core.md lives directly in the scope dir (BucketPath returns <scope>/core).
-		filePath := bucketPath + ".md"
-		if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
-			return "", fmt.Errorf("mkdir scope: %w", err)
-		}
-		return filePath, nil
-	}
-	if err := os.MkdirAll(bucketPath, 0o755); err != nil {
-		return "", fmt.Errorf("mkdir bucket: %w", err)
-	}
-	return filepath.Join(bucketPath, slug+".md"), nil
-}
-
-// updateIndex appends an entry line to INDEX.md in dir (creating it if absent).
-func updateIndex(dir, slug, description string, t memory.MemoryType) error {
-	path := filepath.Join(dir, "INDEX.md")
-
-	var existing string
-	if data, err := os.ReadFile(path); err == nil {
-		existing = strings.TrimRight(string(data), "\n")
-	} else {
-		existing = "# Memory Index"
-	}
-
-	entry := fmt.Sprintf("- **%s** (`%s`): %s", slug, t, description)
-	return os.WriteFile(path, []byte(existing+"\n"+entry+"\n"), 0o644)
-}

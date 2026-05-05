@@ -101,7 +101,7 @@ func TestCanonicalFrontmatter_RoundTrip(t *testing.T) {
 	body := "Body of the canonical entry.\n"
 
 	var buf bytes.Buffer
-	if err := WriteCanonical(&buf, in, body); err != nil {
+	if err := writeCanonical(&buf, in, body); err != nil {
 		t.Fatal(err)
 	}
 
@@ -145,7 +145,7 @@ func TestCanonicalFrontmatter_OptionalsOmitted(t *testing.T) {
 		Source:      Source{Persona: "jenko", Task: "t", Trigger: "self-noted"},
 	}
 	var buf bytes.Buffer
-	if err := WriteCanonical(&buf, in, ""); err != nil {
+	if err := writeCanonical(&buf, in, ""); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()

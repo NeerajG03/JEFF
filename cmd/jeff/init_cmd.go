@@ -7,6 +7,7 @@ import (
 
 	"github.com/NeerajG03/JEFF"
 	jeffembed "github.com/NeerajG03/JEFF/embed"
+	"github.com/NeerajG03/JEFF/memory"
 	"github.com/NeerajG03/JEFF/persona"
 	"github.com/NeerajG03/JEFF/skill"
 	"github.com/spf13/cobra"
@@ -114,6 +115,11 @@ func runInit(here bool) error {
 		return fmt.Errorf("write home pointer: %w", err)
 	}
 
+	// Initialize memory subsystem.
+	if err := memory.Initialize(home); err != nil {
+		return fmt.Errorf("init memory: %w", err)
+	}
+
 	fmt.Printf("Initialized JEFF at %s\n", home)
 	fmt.Println("  repos/      — register codebases with: jeff repo add <url>")
 	fmt.Println("  tasks/      — task workspaces created by: jeff pickup <gig-id>")
@@ -121,6 +127,7 @@ func runInit(here bool) error {
 	fmt.Println("  exports/    — artifacts and generated files")
 	fmt.Println("  CLAUDE.md   — agent instructions (editable)")
 	fmt.Println("  hooks/      — session hooks (configure in jeff.json)")
+	fmt.Println("  memory/     — canonical memory (run: jeff memory doc)")
 	return nil
 }
 
@@ -174,7 +181,21 @@ func runUpdate() error {
 		return fmt.Errorf("write home pointer: %w", err)
 	}
 
+	// Update memory subsystem (additive — never clobbers user edits).
+	memReport, err := memory.Update(home)
+	if err != nil {
+		return fmt.Errorf("update memory: %w", err)
+	}
+
 	fmt.Printf("JEFF updated at %s (dirs, hooks, personas, settings synced)\n", home)
+	fmt.Printf("  memory: %d new, %d skipped\n", len(memReport.Created), len(memReport.Skipped))
+	if len(memReport.Migrations) > 0 {
+		fmt.Println("  migration hints:")
+		for _, h := range memReport.Migrations {
+			fmt.Printf("    • %s\n", h)
+		}
+		fmt.Println("  Run `jeff memory migrate --dry-run` to preview, then --confirm to apply.")
+	}
 	return nil
 }
 

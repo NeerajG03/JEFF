@@ -34,4 +34,6 @@ func init() {
 	// Worker A: hooks + injection + suppression.
 	Cmd.AddCommand(sessionStartCmd)
 	Cmd.AddCommand(sessionEndCmd)
+	// Worker E: init / update / migrate.
+	Cmd.AddCommand(migrateCmd)
 }

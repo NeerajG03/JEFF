@@ -18,6 +18,9 @@ func builtinHooks() []*Hook {
 		workerHeartbeatHook(),
 		workerStopHook(),
 		sessionCaptureHook(),
+		// Memory hooks (Worker A).
+		sessionStartMemoryHook(),
+		sessionEndMemoryHook(),
 	}
 }
 

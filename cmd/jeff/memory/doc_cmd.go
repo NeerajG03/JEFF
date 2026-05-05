@@ -1,17 +1,18 @@
-// doc_cmd.go — stub: Worker D fills in.
-// See exports/memory-research/specs/D-introspect.md
+// doc_cmd.go — `jeff memory doc` prints the memory-system explainer.
 package memory
 
 import (
-	"errors"
+	"fmt"
 
+	mem "github.com/NeerajG03/JEFF/memory"
 	"github.com/spf13/cobra"
 )
 
 var docCmd = &cobra.Command{
 	Use:   "doc",
 	Short: "Print memory subsystem documentation",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return errors.New("not yet implemented: Worker D will fill this in")
+	Long:  `Print a comprehensive explainer of the JEFF memory system.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Fprint(cmd.OutOrStdout(), mem.Doc)
 	},
 }

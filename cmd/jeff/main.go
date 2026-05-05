@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/NeerajG03/JEFF"
+	memorycmd "github.com/NeerajG03/JEFF/cmd/jeff/memory"
 	"github.com/spf13/cobra"
 )
 
@@ -70,6 +71,7 @@ func main() {
 		crewCmd(),
 		orchestratorCmd(),
 		dashboardCmd(),
+		memorycmd.Cmd,
 	)
 
 	if err := rootCmd.Execute(); err != nil {

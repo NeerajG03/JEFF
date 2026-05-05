@@ -2,7 +2,7 @@
 package embed
 
 import (
-	_ "embed"
+	"embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +23,9 @@ var MemoryContextClaude string
 
 //go:embed memory-context-gemini.md
 var MemoryContextGemini string
+
+//go:embed slash-commands
+var SlashCommandsFS embed.FS
 
 
 // CreateContextAliases creates symlinks from each alias filename to CLAUDE.md

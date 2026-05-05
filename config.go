@@ -21,16 +21,22 @@ type RepoConfig struct {
 	PostSetup   string `json:"post_setup,omitempty" yaml:"post_setup,omitempty"`
 }
 
+// MemoryConfig holds memory-subsystem configuration persisted in jeff.json.
+type MemoryConfig struct {
+	Disabled bool `json:"disabled,omitempty"`
+}
+
 // Config represents the jeff.json configuration file.
 type Config struct {
-	Schema              string                 `json:"$schema,omitempty" yaml:"-"`
-	Agent               AgentTool              `json:"agent" yaml:"agent"`
-	IDE                 IDE                    `json:"ide,omitempty" yaml:"ide,omitempty"`
-	GigHome             string                 `json:"gig_home,omitempty" yaml:"gig_home"`
-	Repos               map[string]*RepoConfig `json:"repos" yaml:"repos"`
-	Hooks               map[string]bool        `json:"hooks,omitempty" yaml:"hooks,omitempty"`
-	CheckpointPatterns  []string               `json:"checkpoint_patterns,omitempty" yaml:"checkpoint_patterns,omitempty"`
-	Home                string                 `json:"-" yaml:"-"` // resolved JEFF_HOME (not persisted)
+	Schema             string                 `json:"$schema,omitempty" yaml:"-"`
+	Agent              AgentTool              `json:"agent" yaml:"agent"`
+	IDE                IDE                    `json:"ide,omitempty" yaml:"ide,omitempty"`
+	GigHome            string                 `json:"gig_home,omitempty" yaml:"gig_home"`
+	Repos              map[string]*RepoConfig `json:"repos" yaml:"repos"`
+	Hooks              map[string]bool        `json:"hooks,omitempty" yaml:"hooks,omitempty"`
+	CheckpointPatterns []string               `json:"checkpoint_patterns,omitempty" yaml:"checkpoint_patterns,omitempty"`
+	Memory             *MemoryConfig          `json:"memory,omitempty" yaml:"memory,omitempty"`
+	Home               string                 `json:"-" yaml:"-"` // resolved JEFF_HOME (not persisted)
 }
 
 // DefaultConfig returns a Config with sensible defaults.

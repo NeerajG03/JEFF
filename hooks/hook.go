@@ -33,6 +33,8 @@ type HookContext struct {
 	TaskID             string   // gig task ID (set for task-level hooks)
 	OrchestratorID     string   // orchestrator ID (set for orchestrator hooks)
 	CheckpointPatterns []string // regex patterns that trigger checkpoint nudge
+	Persona            string   // worker persona name (e.g. "jenko", "marlowe")
+	Repos              []string // repos in scope for the task
 }
 
 // TimeoutOrDefault returns the hook's timeout, defaulting to 10 seconds.

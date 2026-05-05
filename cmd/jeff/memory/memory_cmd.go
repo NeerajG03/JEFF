@@ -31,4 +31,7 @@ func init() {
 	Cmd.AddCommand(diffCmd)
 	Cmd.AddCommand(disableCmd)
 	Cmd.AddCommand(docCmd)
+	// Worker A: hooks + injection + suppression.
+	Cmd.AddCommand(sessionStartCmd)
+	Cmd.AddCommand(sessionEndCmd)
 }

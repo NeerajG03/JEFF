@@ -1097,6 +1097,16 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 		}
 	}
 
+	// Inject memory addendum + suppress native memory for the active agent.
+	// RunSessionStart is idempotent; the bash hook re-runs it on session resume.
+	agentKind := string(agentOverride)
+	if agentKind == "" {
+		agentKind = string(cfg.Agent)
+	}
+	if err := hooks.RunSessionStart(cfg.Home, td.Path, personaName, taskID, allRepos, agentKind); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: memory session-start: %v\n", err)
+	}
+
 	// Install learn command for ALL agents that support custom commands.
 	if personaName != "" || len(allRepos) > 0 {
 		for _, agent := range jeff.RegisteredAgents() {
@@ -1120,6 +1130,8 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 		TaskID:             taskID,
 		OrchestratorID:     orchestratorID,
 		CheckpointPatterns: cfg.CheckpointPatterns,
+		Persona:            personaName,
+		Repos:              allRepos,
 	}
 	// Install hooks for ALL registered agents so the workspace is ready
 	// regardless of which agent launches (same pattern as context aliases).

@@ -1,27 +1,75 @@
-# memory/ — Persona memory and repo learnings
+# memory/ — JEFF memory subsystem
 
-Manages the directory structure for persistent agent memory. Two types: persona memory (`JEFF_HOME/personas/<name>/memory/`) and repo learnings (`JEFF_HOME/learnings/<repo>/`).
+This package is in a **dual-API transitional state** during EPIC `gig-1d33` (memory subsystem v1).
 
-## File roles
+- **Legacy /learn API** (in `memory.go`, `memory_test.go`): persona memory + repo learnings + `/learn` slash command. Function names: `PersonaMemoryDir`, `RepoLearningsDir`, `EnsurePersonaDir`, `EnsureRepoDir`, `LoadPersonaMemory`, `LoadRepoLearnings`, `InstallLearnCommand`, `AutoCurate`. **Phased out by Worker E** (`gig-1d33.6`).
+- **v1 API** (everything else in this package): typed schema, propose/curate/store/queue primitives, cobra command tree under `cmd/jeff/memory/`. New work uses this API.
 
-| File | What it does |
-|------|-------------|
-| `memory.go` | Dir paths, EnsureDir, LoadIndex, InstallLearnCommand, AutoCurate |
+The two APIs share a Go package but no function names collide. They will coexist until E migrates callers and deletes the legacy file.
 
-## Memory structure
+## v1 API — file roles
 
-- **Persona memory**: `personas/<name>/memory/MEMORY.md` (index) + detail files
-- **Repo learnings**: `learnings/<repo>/INDEX.md` (index) + detail files
-- Seed detection: heading + comment-only files = treated as empty (avoids false positives)
+| File | What it does | Owner |
+|------|-------------|-------|
+| `types.go` | `MemoryType`, `ScopeKind`, `Bucket`, path resolvers, `EnsureLayout` | FND |
+| `frontmatter.go` | YAML frontmatter parse/write — worker-facing 3-field schema + canonical (bi-temporal) schema | FND |
+| `proposals.go` | `proposals/<persona>/<task>/*.md` CRUD | FND |
+| `queue.go` | `queue/sessions/*.json` CRUD + `archive/<iso-week>/queue/` rollover | FND |
+| `store.go` | Read-only canonical-memory access (`ListEntries`, `ReadEntry`, `EntryFilter`) | FND |
+| `inject.go` | Memory-pack composition + CLAUDE.md/GEMINI.md addendum | A (stub) |
+| `suppress.go` | Native-memory suppression (Claude/Gemini/opencode) | A (stub) |
+| `curate.go` | marlowe curation loop, supersede semantics, archive sweep | C (stub) |
+| `doc.go` | `jeff memory doc` content | D (stub) |
+| `init.go` | Initialize/Update/Migrate (retires legacy /learn API) | E (stub) |
 
-## /learn command
+`cmd/jeff/memory/*.go` mirrors this with one cobra subcommand per file. The root `Cmd` is wired into `cmd/jeff/main.go`.
 
-- `InstallLearnCommand()` bakes all paths into `.claude/commands/learn.md`
-- The command runs: read scratchpad → classify → write to persona memory / repo learnings
-- `AutoCurate()` runs claude non-interactively (`--dangerously-skip-permissions`)
+## v1 layout (created by `EnsureLayout`)
 
-## Index format
+```
+JEFF_HOME/
+├── memory/                       canonical — only marlowe writes
+│   ├── personas/<name>/{GOAL.md,core.md,procedural/,semantic/,episodic/}
+│   ├── repos/<repo>/{core.md,procedural/,semantic/,episodic/}
+│   ├── projects/<key>/{core.md,procedural/,semantic/,episodic/}
+│   └── orchestrator/             marlowe's own memory
+├── proposals/<persona>/<task>/*.md   workers write here
+├── queue/sessions/*.json             SessionEnd hook drops here
+├── transcripts/<task>/               copies of session transcripts
+└── archive/<iso-week>/               processed proposals + queue entries
+```
 
-Both `MEMORY.md` and `INDEX.md` use: `- [Title](file.md) — one-line summary`
+## Schema
 
-Detail files use frontmatter with `source` and `updated` fields.
+Worker-facing — 3 fields, mirrors Claude Code:
+
+```yaml
+---
+name: <slug>
+description: <one-liner>
+type: user | feedback | project | reference
+---
+<body>
+```
+
+Canonical (marlowe-enriched, bi-temporal) adds: `status`, `scope`, `goal_served`, `importance`, `valid_from`, `valid_to`, `supersedes`, `superseded_by`, `verifier`, `provenance`, `source`. Soft-invalidate via `valid_to` — entries are never deleted.
+
+## Permission model (enforced in B's `add` command)
+
+| Persona | `JEFF_MEMORY_CAN_ADD` | Allowed ops |
+|---|---|---|
+| jenko, schmidt, eric, hardy, doug, dickson | unset / 0 | `propose`, `list`, `show`, `status`, `doc` |
+| marlowe | `1` | all of the above + `add`, `curate` |
+
+## Conventions
+
+- No CGO. SQLite (when needed) uses `modernc.org/sqlite`.
+- Tests use `t.TempDir()` — never touch a real `JEFF_HOME`.
+- Frontmatter parser must round-trip cleanly (worker- and canonical-schema both).
+- New canonical writes are owned by Worker C only — `store.go` is read-only here.
+
+## See also
+
+- `exports/memory-research/specs/EPIC.md` — full design
+- `exports/memory-research/specs/FND.md` — this package's spec
+- `exports/memory-research/00-synthesis.md` — TL;DR

@@ -40,7 +40,7 @@ func Cleanup(store *Store, jeffHome string, dryRun bool) (*CleanupResult, error)
 	tmuxWindows, _ := ListAllJeffWindows()
 
 	// Build a set of DB sessions keyed by "session:window".
-	allSessions, err := store.ListSessions(false)
+	allSessions, err := store.ListSessions(false, "")
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}

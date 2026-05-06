@@ -265,7 +265,7 @@ func Stop(store *Store, taskID string) error {
 
 // StopAll stops all active sessions.
 func StopAll(store *Store) error {
-	sessions, err := store.ListSessions(true)
+	sessions, err := store.ListSessions(true, "")
 	if err != nil {
 		return err
 	}
@@ -283,7 +283,7 @@ func StopAll(store *Store) error {
 // or "done" if the window is gone and the task is closed in gig.
 // Marks orchestrators as "stopped" if their tmux session is gone.
 func Refresh(store *Store, isTaskClosed func(taskID string) bool) error {
-	sessions, err := store.ListSessions(true)
+	sessions, err := store.ListSessions(true, "")
 	if err != nil {
 		return err
 	}

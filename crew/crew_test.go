@@ -73,7 +73,7 @@ func TestSessionCRUD(t *testing.T) {
 	}
 
 	// List active only.
-	sessions, err := store.ListSessions(true)
+	sessions, err := store.ListSessions(true, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestSessionCRUD(t *testing.T) {
 	}
 
 	// Should not appear in active list.
-	sessions, err = store.ListSessions(true)
+	sessions, err = store.ListSessions(true, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestSessionCRUD(t *testing.T) {
 	}
 
 	// Should appear in all sessions.
-	sessions, err = store.ListSessions(false)
+	sessions, err = store.ListSessions(false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestSessionCRUD(t *testing.T) {
 	if err := store.RemoveSession("gig-ab12"); err != nil {
 		t.Fatal(err)
 	}
-	sessions, err = store.ListSessions(false)
+	sessions, err = store.ListSessions(false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,6 +387,84 @@ func TestAppendSessionID(t *testing.T) {
 	}
 	if got.LatestSessionID() != "sess-bbb" {
 		t.Errorf("LatestSessionID() = %q, want sess-bbb", got.LatestSessionID())
+	}
+}
+
+func TestListSessionsOrchestratorFilter(t *testing.T) {
+	store := tempStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	put := func(taskID, orchID, status string) {
+		t.Helper()
+		sess := &Session{
+			TaskID:         taskID,
+			TmuxSession:    TmuxSessionName,
+			WindowName:     taskID,
+			TaskDir:        "/tmp",
+			OrchestratorID: orchID,
+			Status:         status,
+			StartedAt:      now,
+			LastSeen:       now,
+		}
+		if err := store.PutSession(sess); err != nil {
+			t.Fatalf("put session %s: %v", taskID, err)
+		}
+	}
+
+	put("gig-a1", "jeff-1", "running")
+	put("gig-a2", "jeff-1", "running")
+	put("gig-b1", "jeff-2", "running")
+
+	taskIDs := func(sessions []*Session) []string {
+		ids := make([]string, len(sessions))
+		for i, s := range sessions {
+			ids[i] = s.TaskID
+		}
+		return ids
+	}
+
+	// Filter to jeff-1 — only gig-a1 and gig-a2.
+	sessions, err := store.ListSessions(false, "jeff-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 2 {
+		t.Errorf("jeff-1 filter: got %v, want 2 sessions", taskIDs(sessions))
+	}
+	for _, s := range sessions {
+		if s.OrchestratorID != "jeff-1" {
+			t.Errorf("jeff-1 filter: unexpected session %s with orchestrator_id=%q", s.TaskID, s.OrchestratorID)
+		}
+	}
+
+	// Filter to jeff-2 — only gig-b1.
+	sessions, err = store.ListSessions(false, "jeff-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0].TaskID != "gig-b1" {
+		t.Errorf("jeff-2 filter: got %v, want [gig-b1]", taskIDs(sessions))
+	}
+
+	// No filter — all three.
+	sessions, err = store.ListSessions(false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 3 {
+		t.Errorf("no filter: got %d, want 3", len(sessions))
+	}
+
+	// activeOnly + orchestrator filter: stop gig-a1, jeff-1 should show only gig-a2.
+	if err := store.UpdateStatus("gig-a1", "stopped"); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err = store.ListSessions(true, "jeff-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0].TaskID != "gig-a2" {
+		t.Errorf("activeOnly+jeff-1 after stop: got %v, want [gig-a2]", taskIDs(sessions))
 	}
 }
 

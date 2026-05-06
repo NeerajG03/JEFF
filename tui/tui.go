@@ -546,7 +546,7 @@ func (m Model) refreshCmd() tea.Cmd {
 		}
 		_ = crew.Refresh(m.crewStore, isTaskClosed)
 
-		sessions, _ := m.crewStore.ListSessions(false)
+		sessions, _ := m.crewStore.ListSessions(false, "")
 
 		var events []*gig.Event
 		if m.gigStore != nil {

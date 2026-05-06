@@ -88,3 +88,35 @@ func TestDetectOrchestratorID_EmptyEnvFallsThrough(t *testing.T) {
 		t.Errorf("detectOrchestratorID() = %q, want empty string", got)
 	}
 }
+
+func TestResolveCrewListOrchestratorFilter(t *testing.T) {
+	t.Setenv("JEFF_ORCHESTRATOR_SESSION", "jeff-42")
+	t.Setenv("TMUX", "")
+
+	// --all bypasses orchestrator filter regardless of env var.
+	if got := resolveCrewListOrchestratorFilter(true, ""); got != "" {
+		t.Errorf("showAll=true: got %q, want empty (all orchestrators)", got)
+	}
+
+	// --orchestrator flag wins over auto-detect.
+	if got := resolveCrewListOrchestratorFilter(false, "jeff-99"); got != "jeff-99" {
+		t.Errorf("--orchestrator flag: got %q, want jeff-99", got)
+	}
+
+	// No flag: env var is used.
+	if got := resolveCrewListOrchestratorFilter(false, ""); got != "jeff-42" {
+		t.Errorf("env var auto-detect: got %q, want jeff-42", got)
+	}
+
+	// No flag, no env → empty (outside any orchestrator).
+	t.Setenv("JEFF_ORCHESTRATOR_SESSION", "")
+	if got := resolveCrewListOrchestratorFilter(false, ""); got != "" {
+		t.Errorf("no orchestrator context: got %q, want empty", got)
+	}
+
+	// --all takes precedence even when --orchestrator is also set.
+	t.Setenv("JEFF_ORCHESTRATOR_SESSION", "jeff-42")
+	if got := resolveCrewListOrchestratorFilter(true, "jeff-55"); got != "" {
+		t.Errorf("--all with --orchestrator flag: got %q, want empty (--all wins)", got)
+	}
+}

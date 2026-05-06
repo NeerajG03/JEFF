@@ -306,6 +306,7 @@ func crewListCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			showAll, _ := cmd.Flags().GetBool("all")
+			orchestratorFlag, _ := cmd.Flags().GetString("orchestrator")
 
 			cs, err := crew.Open(cfg.Home)
 			if err != nil {
@@ -326,10 +327,22 @@ func crewListCmd() *cobra.Command {
 				return err == nil && t.Status.IsTerminal()
 			})
 
+			// --all: no orchestrator filter, show all statuses.
+			// --orchestrator <id>: filter to specific orchestrator.
+			// default: filter to auto-detected orchestrator (if any), active only.
+			orchestratorFilter := resolveCrewListOrchestratorFilter(showAll, orchestratorFlag)
 			activeOnly := !showAll
-			sessions, err := cs.ListSessions(activeOnly)
+			sessions, err := cs.ListSessions(activeOnly, orchestratorFilter)
 			if err != nil {
 				return err
+			}
+
+			// Print a filter header so callers know the scope.
+			switch {
+			case showAll:
+				fmt.Fprintln(os.Stdout, "All crew:")
+			case orchestratorFilter != "":
+				fmt.Fprintf(os.Stdout, "Crew for orchestrator %s:\n", orchestratorFilter)
 			}
 
 			if len(sessions) == 0 {
@@ -341,7 +354,7 @@ func crewListCmd() *cobra.Command {
 				return nil
 			}
 
-			// Header.
+			// Column header.
 			fmt.Fprintf(os.Stdout, "%-12s %-10s %-8s %-12s %-12s %s\n",
 				"TASK", "PERSONA", "MODEL", "STATUS", "STARTED", "LAST CHECKPOINT")
 
@@ -378,8 +391,23 @@ func crewListCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolP("all", "a", false, "Show all sessions, including done/failed/stopped")
+	cmd.Flags().BoolP("all", "a", false, "Show all sessions from all orchestrators, including done/failed/stopped")
+	cmd.Flags().String("orchestrator", "", "Show only sessions belonging to this orchestrator ID")
 	return cmd
+}
+
+// resolveCrewListOrchestratorFilter returns the orchestrator ID to filter by.
+// Returns "" (no filter) when showAll is true.
+// Returns orchestratorFlag when explicitly provided.
+// Falls back to auto-detecting the current orchestrator via env var or tmux.
+func resolveCrewListOrchestratorFilter(showAll bool, orchestratorFlag string) string {
+	if showAll {
+		return ""
+	}
+	if orchestratorFlag != "" {
+		return orchestratorFlag
+	}
+	return detectOrchestratorID()
 }
 
 func crewStatusCmd() *cobra.Command {
@@ -885,7 +913,7 @@ func crewEventsCmd() *cobra.Command {
 				cs, err := crew.Open(cfg.Home)
 				if err == nil {
 					defer cs.Close()
-					sessions, _ := cs.ListSessions(false)
+					sessions, _ := cs.ListSessions(false, "")
 					if len(sessions) > 0 {
 						filterIDs = make(map[string]bool)
 						for _, s := range sessions {

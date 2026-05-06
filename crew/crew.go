@@ -280,18 +280,29 @@ func (s *Store) GetSession(taskID string) (*Session, error) {
 	return scanSession(row)
 }
 
-// ListSessions returns sessions. If activeOnly is true, excludes terminal statuses.
-func (s *Store) ListSessions(activeOnly bool) ([]*Session, error) {
+// ListSessions returns sessions, with optional filters.
+// If activeOnly is true, excludes terminal statuses (done, failed, stopped).
+// If orchestratorID is non-empty, only sessions belonging to that orchestrator are returned.
+func (s *Store) ListSessions(activeOnly bool, orchestratorID string) ([]*Session, error) {
 	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, model, repos,
 	                 orchestrator_id, pid, status, started_at, stopped_at, last_seen,
 	                 COALESCE(session_ids, '[]')
 	          FROM sessions`
-	if activeOnly {
+
+	var args []any
+	switch {
+	case activeOnly && orchestratorID != "":
+		query += ` WHERE status NOT IN ('done', 'failed', 'stopped') AND orchestrator_id = ?`
+		args = append(args, orchestratorID)
+	case activeOnly:
 		query += ` WHERE status NOT IN ('done', 'failed', 'stopped')`
+	case orchestratorID != "":
+		query += ` WHERE orchestrator_id = ?`
+		args = append(args, orchestratorID)
 	}
 	query += ` ORDER BY started_at DESC`
 
-	rows, err := s.db.Query(query)
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}

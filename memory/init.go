@@ -8,12 +8,14 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	jeff "github.com/NeerajG03/JEFF"
 	jeffembed "github.com/NeerajG03/JEFF/embed"
 	"github.com/NeerajG03/JEFF/skill"
+	"gopkg.in/yaml.v3"
 )
 
 // Initialize sets up the memory subsystem in a fresh JEFF_HOME.
@@ -132,7 +134,7 @@ func Migrate(home string, dryRun bool) (MigrateReport, error) {
 			}
 			destDir := filepath.Join(PersonaScopePath(home, personaName), string(BucketSemantic))
 			archiveDir := filepath.Join(archiveBase, "personas", personaName, "memory")
-			migrateDir(srcDir, destDir, archiveDir, dryRun, &r)
+			migrateDir(srcDir, destDir, archiveDir, "persona:"+personaName, dryRun, &r)
 		}
 	}
 
@@ -147,7 +149,7 @@ func Migrate(home string, dryRun bool) (MigrateReport, error) {
 			srcDir := filepath.Join(learningsDir, repoName)
 			destDir := filepath.Join(RepoScopePath(home, repoName), string(BucketSemantic))
 			archiveDir := filepath.Join(archiveBase, "learnings", repoName)
-			migrateDir(srcDir, destDir, archiveDir, dryRun, &r)
+			migrateDir(srcDir, destDir, archiveDir, "repo:"+repoName, dryRun, &r)
 		}
 	}
 
@@ -285,12 +287,17 @@ func detectOldLayout(home string) []string {
 }
 
 // migrateDir walks srcDir and migrates .md files to destDir, archiving originals.
-func migrateDir(srcDir, destDir, archiveDir string, dryRun bool, r *MigrateReport) {
+// scope is the canonical scope label ("persona:<x>" or "repo:<y>") that the
+// destination represents — used by wrapAsCanonical to enrich entries.
+func migrateDir(srcDir, destDir, archiveDir, scope string, dryRun bool, r *MigrateReport) {
 	entries, err := os.ReadDir(srcDir)
 	if err != nil {
 		r.Errors = append(r.Errors, fmt.Errorf("read dir %s: %w", srcDir, err))
 		return
 	}
+
+	// Pre-read sibling INDEX.md / MEMORY.md to recover per-entry descriptions.
+	descByslug := readLegacyDescriptions(srcDir)
 
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -302,9 +309,9 @@ func migrateDir(srcDir, destDir, archiveDir string, dryRun bool, r *MigrateRepor
 			continue
 		}
 
-		// MEMORY.md and INDEX.md both map to INDEX.md in the new tree.
+		isIndex := name == "MEMORY.md" || name == "INDEX.md"
 		destName := name
-		if name == "MEMORY.md" || name == "INDEX.md" {
+		if isIndex {
 			destName = "INDEX.md"
 		}
 
@@ -324,7 +331,15 @@ func migrateDir(srcDir, destDir, archiveDir string, dryRun bool, r *MigrateRepor
 			continue
 		}
 
-		content := ensureFrontmatter(data, strings.TrimSuffix(destName, ".md"))
+		var content string
+		if isIndex {
+			// INDEX.md is filtered from ListEntries, so a minimal 3-field
+			// frontmatter is sufficient (and harmless on regen by marlowe).
+			content = ensureIndexFrontmatter(data)
+		} else {
+			slug := strings.TrimSuffix(destName, ".md")
+			content = wrapAsCanonical(data, slug, scope, descByslug[slug])
+		}
 
 		if err := os.MkdirAll(destDir, 0o755); err != nil {
 			r.Errors = append(r.Errors, fmt.Errorf("mkdir %s: %w", destDir, err))
@@ -345,32 +360,151 @@ func migrateDir(srcDir, destDir, archiveDir string, dryRun bool, r *MigrateRepor
 	}
 }
 
-// ensureFrontmatter returns the file content with valid v1 frontmatter.
-// If the content already has a frontmatter block it is preserved; otherwise
-// a default worker-facing block (type=reference) is prepended.
-func ensureFrontmatter(data []byte, slug string) string {
-	_, _, err := Parse(bytes.NewReader(data))
+// indexEntryRe matches a markdown index line and captures (slug, description).
+// Recognises both common shapes:
+//
+//	- [Title](slug.md) — description text
+//	- **slug** (`type`): description text
+var indexEntryRe = regexp.MustCompile(`(?m)^\s*-\s+(?:\[[^\]]+\]\(([^)]+?)\.md\)|\*\*([^*]+)\*\*[^:]*:)\s*[—–\-:]?\s*(.+)$`)
+
+// readLegacyDescriptions scans MEMORY.md and INDEX.md in srcDir to extract
+// per-slug descriptions. Returns an empty map if neither exists or parsing
+// recovers nothing.
+func readLegacyDescriptions(srcDir string) map[string]string {
+	out := map[string]string{}
+	for _, name := range []string{"MEMORY.md", "INDEX.md"} {
+		data, err := os.ReadFile(filepath.Join(srcDir, name))
+		if err != nil {
+			continue
+		}
+		for _, m := range indexEntryRe.FindAllStringSubmatch(string(data), -1) {
+			slug := m[1]
+			if slug == "" {
+				slug = strings.TrimSpace(m[2])
+			}
+			desc := strings.TrimSpace(m[3])
+			if slug != "" && desc != "" {
+				out[slug] = desc
+			}
+		}
+	}
+	return out
+}
+
+// wrapAsCanonical rewrites a legacy memory file as a canonical v1 entry.
+// Legacy frontmatter (source: <string>, updated: <date>) is mapped:
+//   - source        → source.task
+//   - updated       → valid_from
+//
+// If the legacy file has no frontmatter, the whole content is treated as body.
+// If the legacy file already has canonical frontmatter, this is idempotent —
+// the canonical fields are re-emitted. Description preference order:
+// existing canonical description → INDEX-derived description → fallback.
+func wrapAsCanonical(data []byte, slug, scope, indexDescription string) string {
+	yamlBlock, body, err := splitFrontmatter(bytes.NewReader(data))
+
+	var legacy map[string]any
 	if err == nil {
-		// Already has valid frontmatter — return as-is.
-		return string(data)
+		_ = yaml.Unmarshal(yamlBlock, &legacy)
+	} else {
+		// No frontmatter: whole file is the body.
+		body = string(data)
 	}
 
-	// No frontmatter: wrap the whole content as the body under type=reference.
-	// Use slug (filename without ext) as the name.
+	// Pull useful legacy fields, defensively typed.
+	getStr := func(k string) string {
+		switch v := legacy[k].(type) {
+		case string:
+			return v
+		case time.Time:
+			return v.Format(time.RFC3339)
+		case nil:
+			return ""
+		default:
+			return fmt.Sprintf("%v", v)
+		}
+	}
+	legacyName := getStr("name")
+	legacyDesc := getStr("description")
+	legacyType := getStr("type")
+	legacyTask := getStr("source")
+	legacyUpdated := getStr("updated")
+	// If updated decoded directly as time.Time, capture it for later use.
+	var legacyUpdatedTime time.Time
+	if t, ok := legacy["updated"].(time.Time); ok {
+		legacyUpdatedTime = t.UTC()
+	}
+
 	name := slug
-	if name == "" || name == "INDEX" || name == "MEMORY" {
-		name = "migrated-index"
+	if legacyName != "" {
+		name = legacyName
 	}
 
-	fm := Frontmatter{
-		Name:        name,
-		Description: "Migrated from legacy memory layout (type: reference; re-classify as needed)",
-		Type:        TypeReference,
+	description := legacyDesc
+	if description == "" {
+		description = indexDescription
+	}
+	if description == "" {
+		description = "Migrated entry: " + slug + " (re-classify type as needed)"
+	}
+
+	memType := TypeReference
+	if mt, err := ParseMemoryType(legacyType); err == nil {
+		memType = mt
+	}
+
+	validFrom := time.Now().UTC()
+	switch {
+	case !legacyUpdatedTime.IsZero():
+		validFrom = legacyUpdatedTime
+	case legacyUpdated != "":
+		if t, err := time.Parse("2006-01-02", legacyUpdated); err == nil {
+			validFrom = t.UTC()
+		} else if t, err := time.Parse(time.RFC3339, legacyUpdated); err == nil {
+			validFrom = t.UTC()
+		}
+	}
+
+	var sourcePersona string
+	if strings.HasPrefix(scope, "persona:") {
+		sourcePersona = strings.TrimPrefix(scope, "persona:")
+	}
+
+	fm := CanonicalFrontmatter{
+		Frontmatter: Frontmatter{Name: name, Description: description, Type: memType},
+		Status:      "accepted",
+		Scope:       scope,
+		ValidFrom:   validFrom,
+		Provenance:  "review-required",
+		Source: Source{
+			Persona: sourcePersona,
+			Task:    legacyTask,
+			Trigger: "migration",
+		},
 	}
 
 	var buf bytes.Buffer
+	if err := writeCanonical(&buf, fm, strings.TrimSpace(body)); err != nil {
+		// Fallback: return original content unchanged so we don't lose data.
+		return string(data)
+	}
+	return buf.String()
+}
+
+// ensureIndexFrontmatter wraps INDEX.md content with minimal worker-facing
+// frontmatter if it has none. INDEX.md is filtered out of ListEntries, so a
+// 3-field block is enough — marlowe regenerates INDEX.md as entries change.
+func ensureIndexFrontmatter(data []byte) string {
+	if _, _, err := Parse(bytes.NewReader(data)); err == nil {
+		return string(data)
+	}
+	fm := Frontmatter{
+		Name:        "migrated-index",
+		Description: "Migrated INDEX from legacy memory layout — regenerated by marlowe on next curate",
+		Type:        TypeReference,
+	}
+	var buf bytes.Buffer
 	if err := Write(&buf, fm, strings.TrimSpace(string(data))); err != nil {
-		// Fallback: return original content unchanged.
 		return string(data)
 	}
 	return buf.String()

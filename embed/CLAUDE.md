@@ -42,8 +42,9 @@ jeff orchestrator info                                 # show all tasks under or
 
 ## Memory
 
-- Append observations to `scratchpad.md` during your session
-- Run `/learn` at end to curate into persona memory + repo learnings
+JEFF manages memory automatically. Native CLI memory is suppressed in worker
+sessions; per-task CLAUDE.md carries a memory addendum that tells the agent how
+to capture via `jeff memory propose`. For the full picture: `jeff memory doc`.
 
 ## Skills
 

@@ -45,7 +45,7 @@ Before spinning up workers, assess complexity. Present your plan to the user and
 
 Override model with `--model` on `jeff crew start` for one-off needs.
 
-**Cost awareness:** Researchers and reviewers on sonnet cost ~1/5th of opus. Only use opus for implementation and complex debugging. When in doubt, start with sonnet — upgrade if the worker struggles.
+**Cost awareness:** Sonnet costs ~1/5th of opus. The persona defaults are upper bounds, not floors — drop to sonnet when the spec is detailed and the work is structural. Reach for opus only when the spec is ambiguous or the reasoning is hard (cross-file refactors, real bugs, decomposing unclear requirements). For well-spec'd implementation work, sonnet is enough — even for jenko. Upgrade if the worker struggles, not preemptively.
 
 ## Default Behaviors
 
@@ -55,6 +55,13 @@ Override model with `--model` on `jeff crew start` for one-off needs.
 - **Wait for approval** — don't spin up workers until the user confirms or adjusts
 - **Check `jeff crew list`** before starting workers to avoid duplicates
 
+### Launching a worker — every nudge must include
+- **The spec or context** the worker needs to read first (paths, not summaries)
+- **What the worker owns vs must NOT touch** (especially for parallel work)
+- **Explicit "ask if unclear"**: bake `jeff crew ask <gig-id> "<question>"` into the nudge with examples of what's worth asking about (ambiguity in the spec, conflicts with existing code, cross-package API changes). Better a 5-minute pause than a wrong skeleton downstream workers build on.
+- **Acceptance criteria** (build/vet/test green; specific behaviors verified)
+- **Ship instructions** (run `jeff ship` and report PR URL via `jeff checkpoint`)
+
 ### During execution
 - **Respond to signals** — workers signal on completion/stall via hooks. Don't manually poll.
 - **Reuse existing workers** for follow-up work (review feedback, fixes). Send the work to the existing worker via `--type normal` instead of spinning up a new one. Only start a new worker if the original hit context limits (95%+).
@@ -63,8 +70,12 @@ Override model with `--model` on `jeff crew start` for one-off needs.
 
 ### Before shipping / reviewing
 - **Verify every claim** against actual code before posting PR reviews. Read the files, confirm the issue exists at the line cited.
+- **Triage by blast radius, not PR size:**
+  - **Foundation / blocking PRs** (anything other workers will build on, shared interfaces, schema, package skeletons): read every substantive file end-to-end before merging. Build-green is a smoke test, not a review.
+  - **Leaf PRs** (own subtask only, no downstream dependencies): build + vet + test + spot-check is fine.
 - **Review the diff yourself** before telling the user it's ready to ship
 - **Confirm tests pass** — check worker's checkpoint or ask via `--type status`
+- **Check `mergeStateStatus`** before merging when there's been parallel work. UNSTABLE often means the merge will compile-break against current main even if GH calls it MERGEABLE.
 
 ### Worker lifecycle
 - **Don't auto-stop workers.** A worker that shipped a PR might be needed for review feedback.
@@ -75,6 +86,53 @@ Override model with `--model` on `jeff crew start` for one-off needs.
 ### After task completion
 - **Update gig status** — close subtasks, update parent task
 - **Check if memory-worthy observations** came up during the session (see Memory section)
+- **Cut a release** if the user is on main and the work justifies it (`gh release create vX.Y.Z` with notes referencing the EPIC). Match the existing tag style.
+
+## Epic orchestration
+
+For Epics that decompose into multiple subtasks, structure as **Foundation → Parallel Wave → Integration**.
+
+### Pattern
+
+```
+Wave 1 — Foundation (1 worker, sequential, BLOCKS others)
+  Owns: shared types, schema, package skeleton, cobra tree, stub files
+        for every parallel worker (so they fill stubs without conflict)
+
+Wave 2 — Parallel build (N workers, after Wave 1 merges)
+  Each owns disjoint files. Foundation's stub layout is the contract.
+  Run on the lightest model that fits the spec.
+
+Wave 3 — Integration (1+ workers, after Wave 2 merges)
+  Wires the parallel pieces into existing flows (init, hooks, CLIs).
+```
+
+### Spec docs as the contract
+
+For any Epic running ≥3 workers, write per-subtask spec files to disk *before* dispatching:
+
+- `EPIC.md` — vision, principles, architecture, dependency graph (every worker reads this first)
+- `<SUBTASK>.md` per worker — goal, files owned, files stubbed for others, files consumed (interfaces from Foundation), acceptance criteria, what-you-must-NOT-do, references
+
+Workers reference the spec by absolute path. Specs survive across orchestrator sessions and are the source of truth for "what was promised vs what shipped."
+
+### Parallel-worker hard rules
+
+These prevent costly post-merge fixups:
+
+- **No renames of foundation-exported symbols** without orchestrator approval. If a worker thinks the API needs changing, they `jeff crew ask` first. The first parallel PR to land "wins" the API shape; later PRs need merge resolution that the orchestrator (you) ends up doing manually.
+- **No edits to files outside the worker's owned list.** If a worker needs to touch a non-owned file, they ask.
+- **The foundation worker creates stub files** for every downstream worker. Stubs declare package + a `// stub — Worker X fills in. See specs/<X>.md` header. Parallel workers fill stubs in place; no new files in shared dirs without asking.
+
+### Merge order and conflict handling
+
+- Merge clean PRs first. Save UNSTABLE/CONFLICTING ones for last.
+- When a parallel PR conflicts with an already-merged sibling, prefer asking the original worker to rebase + fix. Resume the worker with `jeff crew resume` if its tmux session is still alive.
+- For tiny, mechanical fixups (renaming a call site, removing dead helper), the orchestrator can resolve directly in the worktree, push, and merge — but log it as a feedback memory ("X type of conflict happened; spec should have forbidden it").
+
+### Foundation review is line-by-line, always
+
+A foundation PR that 4 parallel workers will build on cannot be merged on a smoke-test review. Read the substantive files end-to-end. The cost of a slip propagates 4x.
 
 ## Memory
 

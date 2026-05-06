@@ -3,6 +3,7 @@ package memory_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/NeerajG03/JEFF/memory"
@@ -33,6 +34,94 @@ func setupLegacyLayout(t *testing.T, home string) {
 	}
 	if err := os.WriteFile(filepath.Join(legacyLearn, "tmux-quirk.md"), []byte("Dots in task IDs break tmux targets.\n"), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestMigrateLegacyFrontmatter exercises the regression where legacy entries
+// had `source: <string>` and `updated: <date>` — valid YAML, but conflicting
+// with the canonical schema (where `source` is a struct). After migration,
+// ListEntries (which reads canonical frontmatter) must succeed.
+func TestMigrateLegacyFrontmatter(t *testing.T) {
+	home := bootstrapHome(t)
+	if err := memory.EnsureLayout(home); err != nil {
+		t.Fatal(err)
+	}
+
+	// Legacy persona memory with the bug-inducing frontmatter shape.
+	legacyMem := filepath.Join(home, "personas", "hardy", "memory")
+	if err := os.MkdirAll(legacyMem, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyMem, "MEMORY.md"),
+		[]byte("# Hardy Memory\n\n- [pr-review-workflow](pr-review-workflow.md) — Use `gh pr review` directly\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Detail file with the legacy schema that broke the previous migration.
+	legacyBody := `---
+source: gig-2028
+updated: 2026-04-07
+---
+When reviewing PRs, use ` + "`gh pr review`" + ` directly.
+`
+	if err := os.WriteFile(filepath.Join(legacyMem, "pr-review-workflow.md"), []byte(legacyBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := memory.Migrate(home, false)
+	if err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if len(report.Errors) != 0 {
+		t.Fatalf("Migrate errors: %v", report.Errors)
+	}
+
+	// The migrated file must be readable as a canonical entry — this is the
+	// behavior that was broken before the fix.
+	entries, err := memory.ListEntries(home, memory.EntryFilter{Persona: "hardy"})
+	if err != nil {
+		t.Fatalf("ListEntries failed (regression — legacy frontmatter not rewritten): %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("expected ≥1 migrated entry under persona:hardy; got none")
+	}
+
+	// Find the migrated entry and assert canonical fields are populated.
+	var found *memory.Entry
+	for i := range entries {
+		if entries[i].Slug == "pr-review-workflow" {
+			found = &entries[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("pr-review-workflow not found in ListEntries result")
+	}
+	if found.FM.Scope != "persona:hardy" {
+		t.Errorf("scope: want persona:hardy, got %q", found.FM.Scope)
+	}
+	if found.FM.Status != "accepted" {
+		t.Errorf("status: want accepted, got %q", found.FM.Status)
+	}
+	if found.FM.Provenance != "review-required" {
+		t.Errorf("provenance: want review-required, got %q", found.FM.Provenance)
+	}
+	if found.FM.Source.Persona != "hardy" {
+		t.Errorf("source.persona: want hardy, got %q", found.FM.Source.Persona)
+	}
+	if found.FM.Source.Task != "gig-2028" {
+		t.Errorf("source.task: want gig-2028 (mapped from legacy `source` scalar), got %q", found.FM.Source.Task)
+	}
+	if found.FM.Source.Trigger != "migration" {
+		t.Errorf("source.trigger: want migration, got %q", found.FM.Source.Trigger)
+	}
+	// Description should come from the INDEX.md entry line.
+	if !strings.Contains(found.FM.Description, "gh pr review") {
+		t.Errorf("description should be lifted from INDEX.md; got %q", found.FM.Description)
+	}
+	// valid_from should be parsed from legacy `updated`, not "now".
+	wantYear := 2026
+	if found.FM.ValidFrom.Year() != wantYear || found.FM.ValidFrom.Month() != 4 {
+		t.Errorf("valid_from should map from legacy `updated: 2026-04-07`; got %v", found.FM.ValidFrom)
 	}
 }
 

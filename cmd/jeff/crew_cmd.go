@@ -11,6 +11,7 @@ import (
 
 	jeff "github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/crew"
+	jeffembed "github.com/NeerajG03/JEFF/embed"
 	"github.com/NeerajG03/JEFF/hooks"
 	"github.com/NeerajG03/JEFF/memory"
 	"github.com/NeerajG03/JEFF/persona"
@@ -1174,6 +1175,13 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 				fmt.Fprintf(os.Stderr, "Warning: task hooks (%s): %v\n", agent, err)
 			}
 		}
+	}
+
+	// Always alias .gemini/skills → .claude/skills before injecting skills,
+	// regardless of whether the gemini agent is registered. Skills should be
+	// in sync across agents, so gemini sessions see what claude sessions get.
+	if err := jeffembed.EnsureGeminiSkillsAlias(td.Path); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: alias .gemini/skills: %v\n", err)
 	}
 
 	// Inject matching skills into ALL registered agent config dirs that support skills.

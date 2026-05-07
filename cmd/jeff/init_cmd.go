@@ -93,6 +93,12 @@ func runInit(here bool) error {
 		}
 	}
 
+	// Always alias .gemini/skills → .claude/skills, regardless of whether
+	// the gemini agent is registered. Skills should be in sync across agents.
+	if err := jeffembed.EnsureGeminiSkillsAlias(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: alias .gemini/skills: %v\n", err)
+	}
+
 	writeDefaults(home)
 
 	// Seed default personas.
@@ -159,6 +165,12 @@ func runUpdate() error {
 				_ = jeffembed.CreateContextAliases(home, aliases)
 			}
 		}
+	}
+
+	// Always alias .gemini/skills → .claude/skills, regardless of whether
+	// the gemini agent is registered. Skills should be in sync across agents.
+	if err := jeffembed.EnsureGeminiSkillsAlias(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: alias .gemini/skills: %v\n", err)
 	}
 
 	// Seed default personas (adds any new built-in personas, doesn't overwrite existing).

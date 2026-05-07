@@ -28,6 +28,47 @@ var MemoryContextGemini string
 var SlashCommandsFS embed.FS
 
 
+// EnsureGeminiSkillsAlias creates dir/.gemini/skills as a symlink to the
+// sibling dir/.claude/skills directory. The link target is relative
+// ("../.claude/skills") so it stays valid when the workspace is moved.
+//
+// .claude/skills is the single source of truth for skill symlinks; .gemini/skills
+// aliases it so gemini sessions see the same skills as claude sessions.
+//
+// Unlike CreateContextAliases (which is gated on the gemini agent being
+// registered), this alias is created unconditionally: skills should be in
+// sync across agents regardless of which agent the user has configured.
+//
+// Idempotent: returns cleanly if the link already points to the correct
+// target. Replaces a stale symlink. Errors if .gemini/skills exists as a
+// non-symlink (file or directory) — the caller must remove it manually.
+func EnsureGeminiSkillsAlias(dir string) error {
+	claudeSkills := filepath.Join(dir, ".claude", "skills")
+	if err := os.MkdirAll(claudeSkills, 0o755); err != nil {
+		return fmt.Errorf("create .claude/skills: %w", err)
+	}
+	geminiDir := filepath.Join(dir, ".gemini")
+	if err := os.MkdirAll(geminiDir, 0o755); err != nil {
+		return fmt.Errorf("create .gemini: %w", err)
+	}
+
+	link := filepath.Join(geminiDir, "skills")
+	target := filepath.Join("..", ".claude", "skills")
+
+	if existing, err := os.Readlink(link); err == nil {
+		if existing == target {
+			return nil
+		}
+		if err := os.Remove(link); err != nil {
+			return fmt.Errorf("remove stale .gemini/skills symlink: %w", err)
+		}
+	} else if _, err := os.Lstat(link); err == nil {
+		return fmt.Errorf("%s exists and is not a symlink; remove it manually", link)
+	}
+
+	return os.Symlink(target, link)
+}
+
 // CreateContextAliases creates symlinks from each alias filename to CLAUDE.md
 // in the given directory. CLAUDE.md is the single source of truth; other
 // context files (e.g. GEMINI.md) are symlinks to it.

@@ -132,6 +132,7 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 		WindowName:     windowName,
 		TaskDir:        taskDir,
 		Persona:        opts.Persona,
+		Agent:          opts.Agent,
 		Model:          opts.Model,
 		Repos:          opts.Repos,
 		OrchestratorID: orchestratorID,
@@ -201,6 +202,7 @@ func Start(store *Store, taskID, taskDir string, opts StartOpts) (*Session, erro
 		WindowName:  windowName,
 		TaskDir:     taskDir,
 		Persona:     opts.Persona,
+		Agent:       opts.Agent,
 		Model:       opts.Model,
 		Repos:       opts.Repos,
 		Status:      "running",
@@ -345,6 +347,22 @@ func StopOrchestrator(store *Store, orchestratorID string) error {
 	return store.UpdateOrchestratorStatus(orchestratorID, "stopped")
 }
 
+// geminiSendDelay is the paste-to-Enter delay for Gemini CLI workers.
+// Gemini's Ink/React TUI processes keyboard input asynchronously; 100 ms (the
+// default in SendCommand) is not enough for the pasted text to be committed to
+// the input buffer before the Enter keystroke arrives, causing the Enter to be
+// dropped.  500 ms is reliably sufficient.  See gig-906c.
+const geminiSendDelay = 500 * time.Millisecond
+
+// sendCommandForSession sends a command to a tmux target, using an agent-aware
+// paste-to-Enter delay derived from the session's Agent field.
+func sendCommandForSession(target, command, agent string) error {
+	if agent == "gemini" {
+		return SendCommandWithDelay(target, command, geminiSendDelay)
+	}
+	return SendCommand(target, command)
+}
+
 // Send delivers a message to a worker based on its type.
 func Send(store *Store, taskID string, msgType MessageType, content string) (*Message, error) {
 	sess, err := store.GetSession(taskID)
@@ -369,7 +387,7 @@ func Send(store *Store, taskID string, msgType MessageType, content string) (*Me
 		if err := store.SendMessage(msg); err != nil {
 			return nil, fmt.Errorf("store nudge: %w", err)
 		}
-		if err := SendCommand(target, content); err != nil {
+		if err := sendCommandForSession(target, content, sess.Agent); err != nil {
 			return nil, fmt.Errorf("send nudge: %w", err)
 		}
 
@@ -378,7 +396,7 @@ func Send(store *Store, taskID string, msgType MessageType, content string) (*Me
 		if err := store.SendMessage(msg); err != nil {
 			return nil, fmt.Errorf("store status msg: %w", err)
 		}
-		if err := SendCommand(target, "/btw "+content); err != nil {
+		if err := sendCommandForSession(target, "/btw "+content, sess.Agent); err != nil {
 			return nil, fmt.Errorf("send /btw: %w", err)
 		}
 
@@ -391,7 +409,7 @@ func Send(store *Store, taskID string, msgType MessageType, content string) (*Me
 			return nil, fmt.Errorf("interrupt: %w", err)
 		}
 		time.Sleep(2 * time.Second)
-		if err := SendCommand(target, content); err != nil {
+		if err := sendCommandForSession(target, content, sess.Agent); err != nil {
 			return nil, fmt.Errorf("send divert message: %w", err)
 		}
 
@@ -400,7 +418,7 @@ func Send(store *Store, taskID string, msgType MessageType, content string) (*Me
 		if err := store.SendMessage(msg); err != nil {
 			return nil, fmt.Errorf("store normal msg: %w", err)
 		}
-		if err := SendCommand(target, content); err != nil {
+		if err := sendCommandForSession(target, content, sess.Agent); err != nil {
 			return nil, fmt.Errorf("send message: %w", err)
 		}
 

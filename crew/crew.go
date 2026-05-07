@@ -37,6 +37,7 @@ type Session struct {
 	TmuxPane       string     `json:"tmux_pane,omitempty"`
 	TaskDir        string     `json:"task_dir"`
 	Persona        string     `json:"persona,omitempty"`
+	Agent          string     `json:"agent,omitempty"`  // agent CLI command (e.g. "claude", "gemini")
 	Model          string     `json:"model,omitempty"`
 	Repos          []string   `json:"repos,omitempty"`
 	OrchestratorID string     `json:"orchestrator_id,omitempty"`
@@ -193,6 +194,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_task
 		"ALTER TABLE sessions ADD COLUMN tmux_pane TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE sessions ADD COLUMN model TEXT DEFAULT ''",
 		"ALTER TABLE sessions ADD COLUMN session_ids TEXT DEFAULT '[]'",
+		"ALTER TABLE sessions ADD COLUMN agent TEXT DEFAULT ''",
 	}
 	for _, stmt := range addCol {
 		_, _ = db.Exec(stmt) // ignore "duplicate column" errors
@@ -223,14 +225,15 @@ func (s *Store) PutSession(sess *Session) error {
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO sessions (task_id, tmux_session, window_name, tmux_pane, task_dir, persona, model, repos, orchestrator_id, pid, status, started_at, stopped_at, last_seen, session_ids)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO sessions (task_id, tmux_session, window_name, tmux_pane, task_dir, persona, agent, model, repos, orchestrator_id, pid, status, started_at, stopped_at, last_seen, session_ids)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(task_id) DO UPDATE SET
 			tmux_session    = excluded.tmux_session,
 			window_name     = excluded.window_name,
 			tmux_pane       = excluded.tmux_pane,
 			task_dir        = excluded.task_dir,
 			persona         = excluded.persona,
+			agent           = excluded.agent,
 			model           = excluded.model,
 			repos           = excluded.repos,
 			orchestrator_id = excluded.orchestrator_id,
@@ -239,7 +242,7 @@ func (s *Store) PutSession(sess *Session) error {
 			stopped_at      = excluded.stopped_at,
 			last_seen       = excluded.last_seen`,
 		sess.TaskID, sess.TmuxSession, sess.WindowName, sess.TmuxPane, sess.TaskDir,
-		sess.Persona, sess.Model, string(repos), sess.OrchestratorID, sess.PID, sess.Status,
+		sess.Persona, sess.Agent, sess.Model, string(repos), sess.OrchestratorID, sess.PID, sess.Status,
 		sess.StartedAt.UTC().Format(timeLayout), stoppedAt,
 		sess.LastSeen.UTC().Format(timeLayout), string(sessionIDs),
 	)
@@ -273,7 +276,7 @@ func (s *Store) AppendSessionID(taskID, sessionID string) error {
 // GetSession retrieves a session by task ID.
 func (s *Store) GetSession(taskID string) (*Session, error) {
 	row := s.db.QueryRow(`
-		SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, model, repos,
+		SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, COALESCE(agent, ''), model, repos,
 		       orchestrator_id, pid, status, started_at, stopped_at, last_seen,
 		       COALESCE(session_ids, '[]')
 		FROM sessions WHERE task_id = ?`, taskID)
@@ -284,7 +287,7 @@ func (s *Store) GetSession(taskID string) (*Session, error) {
 // If activeOnly is true, excludes terminal statuses (done, failed, stopped).
 // If orchestratorID is non-empty, only sessions belonging to that orchestrator are returned.
 func (s *Store) ListSessions(activeOnly bool, orchestratorID string) ([]*Session, error) {
-	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, model, repos,
+	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, COALESCE(agent, ''), model, repos,
 	                 orchestrator_id, pid, status, started_at, stopped_at, last_seen,
 	                 COALESCE(session_ids, '[]')
 	          FROM sessions`
@@ -429,7 +432,7 @@ func (s *Store) UpdateOrchestratorStatus(id, status string) error {
 
 // WorkersForOrchestrator returns sessions belonging to an orchestrator.
 func (s *Store) WorkersForOrchestrator(orchestratorID string) ([]*Session, error) {
-	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, model, repos,
+	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, COALESCE(agent, ''), model, repos,
 	                 orchestrator_id, pid, status, started_at, stopped_at, last_seen,
 	                 COALESCE(session_ids, '[]')
 	          FROM sessions WHERE orchestrator_id = ? ORDER BY started_at DESC`
@@ -552,7 +555,7 @@ func scanSession(row scannable) (*Session, error) {
 
 	err := row.Scan(
 		&sess.TaskID, &sess.TmuxSession, &sess.WindowName, &sess.TmuxPane, &sess.TaskDir,
-		&sess.Persona, &sess.Model, &repos, &sess.OrchestratorID, &sess.PID, &sess.Status,
+		&sess.Persona, &sess.Agent, &sess.Model, &repos, &sess.OrchestratorID, &sess.PID, &sess.Status,
 		&startedAt, &stoppedAt, &lastSeen, &sessionIDs,
 	)
 	if err != nil {

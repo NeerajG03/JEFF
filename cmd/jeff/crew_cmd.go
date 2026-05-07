@@ -303,7 +303,7 @@ func crewSessionIDCmd() *cobra.Command {
 func crewListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "Show crew sessions (running only by default)",
+		Short: "Show crew sessions (filtered to current orchestrator by default)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			showAll, _ := cmd.Flags().GetBool("all")

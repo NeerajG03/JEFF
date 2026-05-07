@@ -23,7 +23,7 @@ Manages Orchestrator and Session records in SQLite (`jeff.db`). Controls worker 
 - DB: `modernc.org/sqlite` (no CGO), file: `$JEFF_HOME/jeff.db`
 - Session status flow: `starting → running → done / failed / stopped`
 - Messages delivered differently by type — see MessageType constants in `crew.go`
-- SendCommand splits paste + Enter into two separate tmux calls (paste must complete before Enter)
+- SendCommand splits paste + Enter into two separate tmux calls (paste must complete before Enter) — includes a 500ms delay for Gemini agent compatibility
 - Cleanup = mark DB sessions stopped if tmux window gone (not vice versa)
 - Refresh() validates both worker and orchestrator tmux sessions
 - Tests use in-memory SQLite (`:memory:`)

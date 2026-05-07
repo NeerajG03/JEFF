@@ -228,3 +228,59 @@ func TestSendCommandInvariant(t *testing.T) {
 		})
 	}
 }
+
+// TestSendCommandWithDelayGeminiCase covers gig-906c: Gemini CLI's Ink/React TUI
+// processes keyboard input asynchronously, so the default 100 ms delay in
+// SendCommand is not enough — the Enter keypress arrives before Gemini has
+// committed the pasted text to its input buffer, causing the message to sit
+// unsent in the chat bar.
+//
+// The fix: sendCommandForSession uses SendCommandWithDelay(500ms) for Gemini
+// agents.  This test verifies that SendCommandWithDelay still satisfies the
+// two-separate-invocations invariant (gig-4040) regardless of the delay value,
+// so the Gemini path can never regress into the chained-invocation anti-pattern.
+func TestSendCommandWithDelayGeminiCase(t *testing.T) {
+	cases := []struct {
+		name    string
+		target  string
+		command string
+	}{
+		{"simple", "jeff:gig-906c", "hello gemini"},
+		{"with-spaces", "jeff:gig-906c", "read your task context and begin working"},
+		{"special-chars", "jeff:gig-906c", "cat /tmp/foo && echo 'done'"},
+		{"empty", "jeff:gig-906c", ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := withFakeTmux(t)
+
+			// Use geminiSendDelay to mirror what sendCommandForSession does.
+			if err := SendCommandWithDelay(tc.target, tc.command, geminiSendDelay); err != nil {
+				t.Fatalf("SendCommandWithDelay(%q): %v", tc.command, err)
+			}
+
+			got := sendKeysCalls(calls())
+
+			// Must be exactly two send-keys calls: paste then Enter.
+			if len(got) != 2 {
+				t.Fatalf("want 2 send-keys calls for Gemini path, got %d: %v", len(got), got)
+			}
+
+			// First call: paste with -l (literal) flag.
+			if !strings.Contains(got[0], " -l ") {
+				t.Errorf("first call missing -l flag (paste call): %q", got[0])
+			}
+
+			// Second call: Enter key, no -l flag.
+			if !strings.Contains(got[1], "Enter") {
+				t.Errorf("second call missing Enter: %q", got[1])
+			}
+			if strings.Contains(got[1], " -l ") {
+				t.Errorf("second call must not have -l flag (Enter only): %q", got[1])
+			}
+
+			assertNoSingleCallCombinesTextAndEnter(t, got)
+		})
+	}
+}

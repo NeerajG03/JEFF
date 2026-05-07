@@ -72,10 +72,19 @@ func SendEnter(target string) error {
 // the pasted text before receiving the Enter keypress. Without this
 // delay, tmux can swallow the Enter on large pastes.
 func SendCommand(target, command string) error {
+	return SendCommandWithDelay(target, command, 100*time.Millisecond)
+}
+
+// SendCommandWithDelay is like SendCommand but lets the caller control the
+// paste-to-Enter delay. Use this when the default 100 ms is insufficient —
+// for example, Gemini CLI's Ink/React TUI processes input asynchronously and
+// drops the Enter if it arrives before the pasted text is committed to the
+// input buffer.
+func SendCommandWithDelay(target, command string, delay time.Duration) error {
 	if err := tmuxRun("send-keys", "-t", target, "-l", command); err != nil {
 		return err
 	}
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(delay)
 	return tmuxRun("send-keys", "-t", target, "Enter")
 }
 

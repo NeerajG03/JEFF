@@ -58,6 +58,7 @@ jeff done gig-ab12
         ├── Creates git worktree (branch from origin/main)
         ├── Injects matching skills via symlinks
         ├── Writes CLAUDE.md (persona + task context)
+        ├── Unconditionally aliases .gemini/skills to .claude/skills
         └── Launches agent in workspace
                   │
                   ▼
@@ -94,7 +95,7 @@ jeff crew start gig-ef56 --persona hardy --repos backend --model opus
 ### Monitor and communicate
 
 ```bash
-jeff crew list                          # show running workers
+jeff crew list                          # show workers (filtered to current orchestrator)
 jeff crew status gig-ab12               # detailed worker status + pane output
 jeff crew events --since 5m             # recent activity across all workers
 jeff crew capture gig-ab12 --lines 30   # raw terminal output
@@ -148,7 +149,7 @@ jeff dashboard                          # interactive TUI (auto-refreshes every 
 | `jeff orchestrator stop <id>` | Stop orchestrator and all workers |
 | `jeff crew start <id> [--persona] [--repos] [--model] [--prompt]` | Launch worker in tmux |
 | `jeff crew resume <id>` | Resume stopped worker (restores Claude session) |
-| `jeff crew list [--all]` | List workers (running only by default) |
+| `jeff crew list [--all]` | List workers (filtered to current orchestrator by default) |
 | `jeff crew status <id>` | Worker detail + checkpoint + pane output |
 | `jeff crew send <id> "msg" [--type]` | Message a worker (nudge/status/normal/divert) |
 | `jeff crew ask "question"` | Worker asks orchestrator a question |
@@ -204,7 +205,7 @@ JEFF maintains persistent memory across sessions:
 - **Repo learnings** (`learnings/<repo>/`) — repo-specific quirks and patterns
 - **Scratchpad** (`scratchpad.md` in task dir) — raw observations during a session
 
-Run `/learn` at the end of a session to curate scratchpad observations into persistent memory.
+Use `jeff memory propose` to capture observations, and `jeff memory curate` to consolidate them into persistent memory.
 
 ## Configuration
 

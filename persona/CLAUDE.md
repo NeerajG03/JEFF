@@ -4,13 +4,13 @@ Embeds persona template markdown files in the binary (`go:embed`). On `jeff pick
 
 ## Personas
 
-| Name | Role | Default model |
-|------|------|--------------|
-| dickson | Orchestrator — plans, delegates. Does NOT write code. | sonnet |
-| eric | Researcher — explores, documents. Does NOT change code. | sonnet |
-| hardy | Reviewer — reviews diffs, flags issues. | sonnet |
-| jenko | Implementer — writes code, runs tests, ships. | opus |
-| schmidt | Debugger — traces root causes, investigates. | sonnet |
+| Name | Role | Default model | Agent |
+|------|---|------|--------------|
+| dickson | Orchestrator — plans, delegates. Does NOT write code. | sonnet | claude |
+| eric | Researcher — explores, documents. Does NOT change code. | sonnet | claude |
+| hardy | Reviewer — reviews diffs, flags issues. | sonnet | claude |
+| jenko | Implementer — writes code, runs tests, ships. | opus | claude |
+| schmidt | Debugger — traces root causes, investigates. | sonnet | claude |
 
 ## File roles
 

@@ -7,7 +7,7 @@
 ```bash
 jeff init                # first-time setup at ~/.jeff/
 jeff init --here         # initialize in current directory
-jeff init --update       # sync existing home (adds missing dirs, hooks, settings)
+jeff init --update       # sync existing home (refreshes skills alias, hooks, settings)
 ```
 
 ### Register Codebases
@@ -232,6 +232,8 @@ Empty dimensions are ignored. All-empty = manual inject only.
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
+| `JEFF_PERSONA` | Active persona name | (auto-exported in crew sessions) |
+| `JEFF_TASK_ID` | Active task ID | (auto-exported in crew sessions) |
 | `JEFF_HOME` | JEFF workspace location | `~/.config/jeff/home` pointer, then `~/.jeff/` |
 | `GIG_HOME` | gig task store location | gig default (`~/.gig/`) |
 
@@ -243,3 +245,52 @@ jeff open gig-ab12         # open task workspace in IDE
 ```
 
 Uses the IDE configured via `jeff config ide`.
+
+## Multi-Agent Crews
+
+Run multiple AI agents in parallel, each in its own tmux window with dedicated task workspace.
+
+### Start an orchestrator
+
+```bash
+jeff orchestrator start --name work     # creates tmux session jeff-work
+```
+
+### Launch workers
+
+```bash
+# Start workers on tasks (each gets its own workspace + worktrees)
+jeff crew start gig-ab12 --persona jenko --repos backend
+jeff crew start gig-cd34 --persona eric --repos backend,frontend
+jeff crew start gig-ef56 --persona hardy --repos backend --model opus
+```
+
+### Monitor and communicate
+
+```bash
+jeff crew list                          # show workers (filtered to current orchestrator)
+jeff crew status gig-ab12               # detailed worker status + pane output
+jeff crew events --since 5m             # recent activity across all workers
+jeff crew capture gig-ab12 --lines 30   # raw terminal output
+
+# Message workers (4 types, lightest to heaviest)
+jeff crew send gig-ab12 "add error handling" --type nudge     # low context impact
+jeff crew send gig-ab12 "what are you working on?" --type status  # sidechain, no pollution
+jeff crew send gig-ab12 "API spec changed" --type normal      # full conversation turn
+jeff crew send gig-ab12 "stop, focus on payments" --type divert  # interrupts agent
+
+# Workers can ask the orchestrator questions
+jeff crew ask "should I use JWT or session tokens?"
+jeff crew ack <msg-id> "use JWT"
+```
+
+### Manage lifecycle
+
+```bash
+jeff crew resume gig-ab12               # resume stopped worker (restores Claude session)
+jeff crew stop gig-ab12                 # graceful stop
+jeff crew stop --all                    # stop all workers
+jeff crew cleanup                       # reconcile tmux vs DB state
+jeff orchestrator info                  # show all tasks under orchestrator
+jeff orchestrator stop jeff-work        # stop orchestrator + all workers
+```

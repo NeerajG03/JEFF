@@ -44,6 +44,8 @@ The agent tool launched by `jeff pickup` and `jeff work`.
 ```bash
 jeff config agent claude     # Claude Code (default)
 jeff config agent opencode   # opencode
+
+You can also configure the default agent tool per persona in `personas.json` within your JEFF_HOME.
 ```
 
 ## IDE
@@ -204,6 +206,8 @@ The `checkpoint-nudge` hook fires after Bash tool use and checks the command aga
 ```
 
 Patterns use extended regex (ERE) syntax. If `checkpoint_patterns` is empty or omitted, the hook is a no-op.
+
+JEFF unconditionally aliases `.gemini/skills` to `.claude/skills` during `jeff init --update` and `jeff pickup` to ensure skill parity across agent tools.
 
 ### How Hooks Work
 

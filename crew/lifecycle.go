@@ -365,6 +365,25 @@ func StopOrchestrator(store *Store, orchestratorID string) error {
 // dropped.  500 ms is reliably sufficient.  See gig-906c.
 const geminiSendDelay = 500 * time.Millisecond
 
+// geminiInterruptSettleDelay is the post-C-c settle time for Gemini CLI workers.
+// Gemini's Ink/React TUI takes longer than 2 s to fully transition out of the
+// interrupted state.  During that window, the input field accepts text but routes
+// it to the "Queued" buffer rather than live input — so the divert message never
+// starts a fresh turn.  4 s is reliably sufficient for the TUI to reach an idle
+// input state before the divert message is pasted.  See gig-c6dd.
+const geminiInterruptSettleDelay = 4 * time.Second
+
+// defaultInterruptSettleDelay is the post-C-c settle time for non-Gemini agents.
+const defaultInterruptSettleDelay = 2 * time.Second
+
+// interruptSettleDelay returns the post-C-c settle duration for the given agent.
+func interruptSettleDelay(agent string) time.Duration {
+	if agent == "gemini" {
+		return geminiInterruptSettleDelay
+	}
+	return defaultInterruptSettleDelay
+}
+
 // sendCommandForSession sends a command to a tmux target, using an agent-aware
 // paste-to-Enter delay derived from the session's Agent field.
 func sendCommandForSession(target, command, agent string) error {
@@ -419,7 +438,7 @@ func Send(store *Store, taskID string, msgType MessageType, content string) (*Me
 		if err := SendInterrupt(target); err != nil {
 			return nil, fmt.Errorf("interrupt: %w", err)
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(interruptSettleDelay(sess.Agent))
 		if err := sendCommandForSession(target, content, sess.Agent); err != nil {
 			return nil, fmt.Errorf("send divert message: %w", err)
 		}

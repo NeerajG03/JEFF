@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // withFakeTmux installs a stub tmux binary that records every invocation as a
@@ -224,6 +225,88 @@ func TestSendCommandInvariant(t *testing.T) {
 			if len(got) != 2 {
 				t.Fatalf("want 2 send-keys calls, got %d: %v", len(got), got)
 			}
+			assertNoSingleCallCombinesTextAndEnter(t, got)
+		})
+	}
+}
+
+// TestDivertInterruptSettleDelay verifies that interruptSettleDelay returns
+// agent-specific durations for the divert post-C-c settle window (gig-c6dd).
+// Gemini's Ink/React TUI needs 4 s to fully exit the interrupted state; during
+// the 2 s window used for other agents, pasted text is routed to the "Queued"
+// buffer instead of the live input.
+func TestDivertInterruptSettleDelay(t *testing.T) {
+	cases := []struct {
+		agent string
+		want  time.Duration
+	}{
+		{"gemini", geminiInterruptSettleDelay},
+		{"claude", defaultInterruptSettleDelay},
+		{"", defaultInterruptSettleDelay},
+		{"other-agent", defaultInterruptSettleDelay},
+	}
+	for _, tc := range cases {
+		t.Run(tc.agent, func(t *testing.T) {
+			got := interruptSettleDelay(tc.agent)
+			if got != tc.want {
+				t.Errorf("interruptSettleDelay(%q) = %v, want %v", tc.agent, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDivertSendKeysSequence verifies the send-keys call sequence for the
+// divert path: C-c interrupt, then paste + Enter (two separate invocations).
+// This is a regression guard for gig-4040/gig-33ab applied to the divert path.
+func TestDivertSendKeysSequence(t *testing.T) {
+	cases := []struct {
+		name    string
+		agent   string
+		content string
+	}{
+		{"claude-simple", "claude", "new direction for the task"},
+		{"claude-multiword", "claude", "stop reading files and focus on the API instead"},
+		{"gemini-simple", "gemini", "new direction for the task"},
+		{"gemini-multiword", "gemini", "stop reading files and focus on the API instead"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := withFakeTmux(t)
+
+			// Simulate the divert sequence: interrupt then deliver.
+			if err := SendInterrupt("jeff:gig-c6dd"); err != nil {
+				t.Fatalf("SendInterrupt: %v", err)
+			}
+			if err := sendCommandForSession("jeff:gig-c6dd", tc.content, tc.agent); err != nil {
+				t.Fatalf("sendCommandForSession: %v", err)
+			}
+
+			got := sendKeysCalls(calls())
+
+			// Expect exactly 3 send-keys calls: C-c, paste, Enter.
+			if len(got) != 3 {
+				t.Fatalf("want 3 send-keys calls (C-c, paste, Enter), got %d: %v", len(got), got)
+			}
+
+			// First call: C-c interrupt.
+			if !strings.Contains(got[0], "C-c") {
+				t.Errorf("first call must be C-c interrupt, got: %q", got[0])
+			}
+
+			// Second call: paste with -l flag.
+			if !strings.Contains(got[1], " -l ") {
+				t.Errorf("second call missing -l flag (paste): %q", got[1])
+			}
+
+			// Third call: Enter key, no -l flag.
+			if !strings.Contains(got[2], "Enter") {
+				t.Errorf("third call missing Enter: %q", got[2])
+			}
+			if strings.Contains(got[2], " -l ") {
+				t.Errorf("third call must not have -l flag: %q", got[2])
+			}
+
 			assertNoSingleCallCombinesTextAndEnter(t, got)
 		})
 	}

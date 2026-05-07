@@ -249,6 +249,47 @@ func TestProposeCmd_NameCollision_Force(t *testing.T) {
 	}
 }
 
+// TestProposeCmd_PersonaRouting verifies that proposals land under the correct
+// persona directory when JEFF_PERSONA is set — the bug that caused hardy's
+// proposals to land under proposals/jeff/ instead of proposals/hardy/.
+func TestProposeCmd_PersonaRouting(t *testing.T) {
+	personas := []string{"hardy", "marlowe", "jenko", "jeff"}
+	for _, persona := range personas {
+		t.Run(persona, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("JEFF_HOME", home)
+			t.Setenv("JEFF_PERSONA", persona)
+			t.Setenv("JEFF_TASK_ID", "gig-5dcc")
+
+			err := runProposeCmd(t, []string{
+				"--name", "test-routing",
+				"--type", "feedback",
+				"--description", "routing test",
+				"--body", "body",
+			})
+			if err != nil {
+				t.Fatalf("persona %q: unexpected error: %v", persona, err)
+			}
+
+			want := filepath.Join(home, "proposals", persona, "gig-5dcc", "test-routing.md")
+			if _, err := os.Stat(want); err != nil {
+				t.Fatalf("persona %q: expected proposal at %s: %v", persona, want, err)
+			}
+
+			// Assert no proposal landed under any OTHER persona dir.
+			for _, other := range personas {
+				if other == persona {
+					continue
+				}
+				wrong := filepath.Join(home, "proposals", other, "gig-5dcc", "test-routing.md")
+				if _, err := os.Stat(wrong); err == nil {
+					t.Errorf("persona %q: proposal incorrectly landed under %q dir: %s", persona, other, wrong)
+				}
+			}
+		})
+	}
+}
+
 func TestProposeCmd_AllTypes(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("JEFF_HOME", home)

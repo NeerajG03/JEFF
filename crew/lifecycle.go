@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -123,6 +124,11 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 		return nil, err
 	}
 
+	// Export worker-specific env vars into the shell so subprocesses
+	// (e.g. "jeff memory propose") route to the correct persona dir.
+	exportWorkerEnv(target, "JEFF_PERSONA", opts.Persona)
+	exportWorkerEnv(target, "JEFF_TASK_ID", taskID)
+
 	// Record session BEFORE launching agent so the SessionStart hook
 	// (which captures session_id) can find the row in the DB.
 	now := time.Now().UTC()
@@ -192,6 +198,11 @@ func Start(store *Store, taskID, taskDir string, opts StartOpts) (*Session, erro
 	if err != nil {
 		return nil, err
 	}
+
+	// Export worker-specific env vars into the shell so subprocesses
+	// (e.g. "jeff memory propose") route to the correct persona dir.
+	exportWorkerEnv(target, "JEFF_PERSONA", opts.Persona)
+	exportWorkerEnv(target, "JEFF_TASK_ID", taskID)
 
 	// Record session BEFORE launching agent so the SessionStart hook
 	// (which captures session_id) can find the row in the DB.
@@ -542,6 +553,17 @@ func Ask(store *Store, taskID, content string) (*Message, error) {
 	}
 
 	return msg, nil
+}
+
+// exportWorkerEnv sends "export KEY=value" to the worker's shell so that
+// subprocesses (e.g. "jeff memory propose") inherit the correct persona and
+// task context without requiring explicit flags.
+func exportWorkerEnv(target, key, value string) {
+	if value == "" {
+		return
+	}
+	safe := "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+	_ = SendCommand(target, "export "+key+"="+safe)
 }
 
 func generateMsgID() string {

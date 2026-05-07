@@ -149,6 +149,34 @@ func TestRunUpdate_SyncsExisting(t *testing.T) {
 	}
 }
 
+func TestRunUpdate_CreatesGeminiSkillsAlias(t *testing.T) {
+	home := setupJeffHome(t)
+	t.Setenv("JEFF_HOME", home)
+
+	if err := runUpdate(); err != nil {
+		t.Fatalf("runUpdate failed: %v", err)
+	}
+
+	link := filepath.Join(home, ".gemini", "skills")
+	target, err := os.Readlink(link)
+	if err != nil {
+		t.Fatalf(".gemini/skills symlink not created: %v", err)
+	}
+	wantTarget := filepath.Join("..", ".claude", "skills")
+	if target != wantTarget {
+		t.Errorf("target = %q, want %q", target, wantTarget)
+	}
+
+	// Re-running update should be a no-op for the alias.
+	if err := runUpdate(); err != nil {
+		t.Fatalf("second runUpdate failed: %v", err)
+	}
+	target2, err := os.Readlink(link)
+	if err != nil || target2 != wantTarget {
+		t.Errorf("alias broke on second update: target=%q err=%v", target2, err)
+	}
+}
+
 func TestRunUpdate_PreservesConfig(t *testing.T) {
 	home := setupJeffHome(t)
 

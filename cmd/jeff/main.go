@@ -73,6 +73,7 @@ func main() {
 		dashboardCmd(),
 		memorycmd.Cmd,
 		notifyCmd(),
+		doctorCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

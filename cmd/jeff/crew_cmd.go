@@ -71,6 +71,7 @@ func crewStartCmd() *cobra.Command {
 		Short: "Claim a task and launch a worker agent in tmux",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
 			taskID := args[0]
 
 			// Auto-detect orchestrator from tmux session name if not set.
@@ -96,18 +97,23 @@ func crewStartCmd() *cobra.Command {
 				model = persona.RegisteredModel(cfg.Home, personaName)
 			}
 
-			// Run the pickup sequence (claim, workspace, worktrees, hooks, skills).
-			taskDir, err := pickupTask(taskID, personaName, repos, reposReadonly, orchestratorID, agentTool)
-			if err != nil {
-				return err
-			}
-
-			// Open crew store and start tmux session.
+			// Open crew store early for the pre-flight check.
 			cs, err := crew.Open(cfg.Home)
 			if err != nil {
 				return fmt.Errorf("open crew store: %w", err)
 			}
 			defer cs.Close()
+
+			// Pre-flight: refuse to start if DB↔tmux state has drifted.
+			if err := crew.PreflightStart(cs, taskID); err != nil {
+				return err
+			}
+
+			// Run the pickup sequence (claim, workspace, worktrees, hooks, skills).
+			taskDir, err := pickupTask(taskID, personaName, repos, reposReadonly, orchestratorID, agentTool)
+			if err != nil {
+				return err
+			}
 
 			var sess *crew.Session
 			// Build full launch command via provider (includes inline prompt).
@@ -204,6 +210,7 @@ func crewResumeCmd() *cobra.Command {
 		Short: "Resume a worker agent in tmux (workspace must exist)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
 			taskID := args[0]
 
 			td, err := workspace.Open(cfg.Home, taskID)
@@ -216,6 +223,11 @@ func crewResumeCmd() *cobra.Command {
 				return fmt.Errorf("open crew store: %w", err)
 			}
 			defer cs.Close()
+
+			// Pre-flight: refuse to resume if DB↔tmux state has drifted.
+			if err := crew.PreflightResume(cs, taskID); err != nil {
+				return err
+			}
 
 			// Detect persona and repos from existing workspace.
 			personaName := detectPersona(td.Path)
@@ -590,6 +602,7 @@ func crewStopCmd() *cobra.Command {
 		Short: "Stop a worker session",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
 			cs, err := crew.Open(cfg.Home)
 			if err != nil {
 				return err
@@ -608,10 +621,23 @@ func crewStopCmd() *cobra.Command {
 				return fmt.Errorf("provide a task ID or use --all")
 			}
 
-			if err := crew.Stop(cs, args[0]); err != nil {
+			taskID := args[0]
+
+			// Probe window state before stopping so we can give informative output.
+			paneAlive := false
+			if sess, err := cs.GetSession(taskID); err == nil {
+				paneAlive = crew.HasWindowInSession(sess.TmuxSession, sess.WindowName)
+			}
+
+			if err := crew.Stop(cs, taskID); err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "Stopped %s\n", args[0])
+
+			if paneAlive {
+				fmt.Fprintf(os.Stderr, "Stopped %s\n", taskID)
+			} else {
+				fmt.Fprintf(os.Stderr, "pane was already gone — DB reconciled for %s\n", taskID)
+			}
 			return nil
 		},
 	}

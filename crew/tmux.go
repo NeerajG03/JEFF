@@ -88,6 +88,28 @@ func SendCommandWithDelay(target, command string, delay time.Duration) error {
 	return tmuxRun("send-keys", "-t", target, "Enter")
 }
 
+// SendCommandViaBuffer sends text to a tmux pane using the load-buffer +
+// paste-buffer path instead of send-keys -l. paste-buffer -p wraps the
+// content in bracketed-paste markers (\e[200~...\e[201~) when the
+// application has bracketed-paste mode enabled. Ink v5+ (Gemini CLI) enables
+// this mode, so the message arrives as an atomic block — Ink's usePaste hook
+// handles it without the character-stream race that affects send-keys -l.
+// After pasting, sleeps geminiSendDelay to let Ink flush, then sends Enter.
+// See gig-ca9f.
+func SendCommandViaBuffer(target, command string) error {
+	cmd := exec.Command("tmux", "load-buffer", "-b", "jeff-send", "-")
+	cmd.Stdin = strings.NewReader(command)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("tmux load-buffer: %w (output: %s)", err, strings.TrimSpace(string(out)))
+	}
+	if err := tmuxRun("paste-buffer", "-b", "jeff-send", "-t", target, "-p", "-d"); err != nil {
+		return err
+	}
+	time.Sleep(geminiSendDelay)
+	return tmuxRun("send-keys", "-t", target, "Enter")
+}
+
 // SendInterrupt sends C-c to a tmux pane.
 func SendInterrupt(target string) error {
 	return tmuxRun("send-keys", "-t", target, "C-c")

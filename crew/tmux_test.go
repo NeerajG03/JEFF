@@ -230,6 +230,161 @@ func TestSendCommandInvariant(t *testing.T) {
 	}
 }
 
+// pasteBufferCalls filters recorded tmux invocations to only paste-buffer calls.
+func pasteBufferCalls(all []string) []string {
+	var out []string
+	for _, c := range all {
+		if strings.HasPrefix(c, "paste-buffer ") {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// TestSendCommandViaBuffer verifies that SendCommandViaBuffer emits the correct
+// three-step tmux sequence: load-buffer (stdin), paste-buffer (-p -d), send-keys
+// Enter. This is the gig-ca9f fix for Gemini CLI's Ink TUI losing the Enter
+// keystroke when text is delivered via send-keys -l.
+func TestSendCommandViaBuffer(t *testing.T) {
+	cases := []struct {
+		name    string
+		target  string
+		command string
+	}{
+		{"simple", "jeff:gig-ca9f", "hello gemini pro"},
+		{"multi-word", "jeff:gig-ca9f", "read your task context and begin working"},
+		{"special-chars", "jeff:gig-ca9f", "cat /tmp/foo && echo 'done'"},
+		{"empty", "jeff:gig-ca9f", ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := withFakeTmux(t)
+
+			if err := SendCommandViaBuffer(tc.target, tc.command); err != nil {
+				t.Fatalf("SendCommandViaBuffer(%q): %v", tc.command, err)
+			}
+
+			all := calls()
+
+			// Step 1: load-buffer with named buffer and stdin marker.
+			var loadBufCall string
+			for _, c := range all {
+				if strings.HasPrefix(c, "load-buffer ") {
+					loadBufCall = c
+					break
+				}
+			}
+			if loadBufCall == "" {
+				t.Fatalf("expected load-buffer call; all calls: %v", all)
+			}
+			if !strings.Contains(loadBufCall, "-b jeff-send") {
+				t.Errorf("load-buffer missing -b jeff-send: %q", loadBufCall)
+			}
+			if !strings.HasSuffix(strings.TrimSpace(loadBufCall), "-") {
+				t.Errorf("load-buffer missing stdin marker (-): %q", loadBufCall)
+			}
+
+			// Step 2: paste-buffer with bracketed-paste (-p) and delete (-d).
+			pb := pasteBufferCalls(all)
+			if len(pb) != 1 {
+				t.Fatalf("want 1 paste-buffer call, got %d: %v", len(pb), pb)
+			}
+			if !strings.Contains(pb[0], "-b jeff-send") {
+				t.Errorf("paste-buffer missing -b jeff-send: %q", pb[0])
+			}
+			if !strings.Contains(pb[0], "-t "+tc.target) {
+				t.Errorf("paste-buffer missing -t %s: %q", tc.target, pb[0])
+			}
+			if !strings.Contains(pb[0], " -p") {
+				t.Errorf("paste-buffer missing -p (bracketed-paste): %q", pb[0])
+			}
+			if !strings.Contains(pb[0], " -d") {
+				t.Errorf("paste-buffer missing -d (delete-after): %q", pb[0])
+			}
+
+			// Step 3: send-keys Enter (no -l flag, no text paste via send-keys).
+			sk := sendKeysCalls(all)
+			if len(sk) != 1 {
+				t.Fatalf("want exactly 1 send-keys call (Enter only), got %d: %v", len(sk), sk)
+			}
+			if !strings.Contains(sk[0], "Enter") {
+				t.Errorf("send-keys call missing Enter: %q", sk[0])
+			}
+			if strings.Contains(sk[0], " -l ") {
+				t.Errorf("Enter send-keys must not use -l flag: %q", sk[0])
+			}
+		})
+	}
+}
+
+// TestSendCommandForSessionGeminiRoutesToBuffer verifies the routing invariant
+// for gig-ca9f: agent="gemini" must use the paste-buffer path; all other agents
+// must use the send-keys -l path. Claude must never touch paste-buffer.
+func TestSendCommandForSessionGeminiRoutesToBuffer(t *testing.T) {
+	t.Run("gemini-uses-paste-buffer", func(t *testing.T) {
+		calls := withFakeTmux(t)
+
+		if err := sendCommandForSession("jeff:test", "hello", "gemini"); err != nil {
+			t.Fatalf("sendCommandForSession gemini: %v", err)
+		}
+
+		all := calls()
+
+		// Must have paste-buffer (buffer path).
+		if len(pasteBufferCalls(all)) == 0 {
+			t.Errorf("gemini path: expected paste-buffer call; all calls: %v", all)
+		}
+
+		// Must NOT have send-keys -l (text must not go through character streaming).
+		for _, c := range sendKeysCalls(all) {
+			if strings.Contains(c, " -l ") {
+				t.Errorf("gemini path: must not use send-keys -l, got: %q", c)
+			}
+		}
+	})
+
+	t.Run("claude-uses-send-keys", func(t *testing.T) {
+		calls := withFakeTmux(t)
+
+		if err := sendCommandForSession("jeff:test", "hello", "claude"); err != nil {
+			t.Fatalf("sendCommandForSession claude: %v", err)
+		}
+
+		all := calls()
+
+		// Must NOT have paste-buffer (claude path is unchanged).
+		if len(pasteBufferCalls(all)) > 0 {
+			t.Errorf("claude path: must not use paste-buffer; all calls: %v", all)
+		}
+
+		// Must have send-keys -l (literal paste).
+		hasLiteral := false
+		for _, c := range sendKeysCalls(all) {
+			if strings.Contains(c, " -l ") {
+				hasLiteral = true
+				break
+			}
+		}
+		if !hasLiteral {
+			t.Errorf("claude path: expected send-keys -l call; all calls: %v", all)
+		}
+	})
+
+	t.Run("empty-agent-uses-send-keys", func(t *testing.T) {
+		calls := withFakeTmux(t)
+
+		if err := sendCommandForSession("jeff:test", "hello", ""); err != nil {
+			t.Fatalf("sendCommandForSession empty agent: %v", err)
+		}
+
+		all := calls()
+		if len(pasteBufferCalls(all)) > 0 {
+			t.Errorf("empty-agent path: must not use paste-buffer; all calls: %v", all)
+		}
+	})
+}
+
 // TestDivertInterruptSettleDelay verifies that interruptSettleDelay returns
 // agent-specific durations for the divert post-C-c settle window (gig-c6dd).
 // Gemini's Ink/React TUI needs 4 s to fully exit the interrupted state; during
@@ -256,58 +411,102 @@ func TestDivertInterruptSettleDelay(t *testing.T) {
 }
 
 // TestDivertSendKeysSequence verifies the send-keys call sequence for the
-// divert path: C-c interrupt, then paste + Enter (two separate invocations).
-// This is a regression guard for gig-4040/gig-33ab applied to the divert path.
+// divert path: C-c interrupt, then message delivery.
+//
+// Claude path: 3 send-keys calls — C-c, paste (-l), Enter.
+// Gemini path (gig-ca9f): 2 send-keys calls — C-c, Enter — plus 1 paste-buffer
+// call (message delivered atomically via load-buffer + paste-buffer -p).
 func TestDivertSendKeysSequence(t *testing.T) {
-	cases := []struct {
+	// Claude cases — 3 send-keys: C-c, paste -l, Enter. MUST remain unchanged.
+	claudeCases := []struct {
 		name    string
-		agent   string
 		content string
 	}{
-		{"claude-simple", "claude", "new direction for the task"},
-		{"claude-multiword", "claude", "stop reading files and focus on the API instead"},
-		{"gemini-simple", "gemini", "new direction for the task"},
-		{"gemini-multiword", "gemini", "stop reading files and focus on the API instead"},
+		{"claude-simple", "new direction for the task"},
+		{"claude-multiword", "stop reading files and focus on the API instead"},
 	}
-
-	for _, tc := range cases {
+	for _, tc := range claudeCases {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := withFakeTmux(t)
 
-			// Simulate the divert sequence: interrupt then deliver.
 			if err := SendInterrupt("jeff:gig-c6dd"); err != nil {
 				t.Fatalf("SendInterrupt: %v", err)
 			}
-			if err := sendCommandForSession("jeff:gig-c6dd", tc.content, tc.agent); err != nil {
+			if err := sendCommandForSession("jeff:gig-c6dd", tc.content, "claude"); err != nil {
 				t.Fatalf("sendCommandForSession: %v", err)
 			}
 
 			got := sendKeysCalls(calls())
 
-			// Expect exactly 3 send-keys calls: C-c, paste, Enter.
 			if len(got) != 3 {
 				t.Fatalf("want 3 send-keys calls (C-c, paste, Enter), got %d: %v", len(got), got)
 			}
-
-			// First call: C-c interrupt.
 			if !strings.Contains(got[0], "C-c") {
 				t.Errorf("first call must be C-c interrupt, got: %q", got[0])
 			}
-
-			// Second call: paste with -l flag.
 			if !strings.Contains(got[1], " -l ") {
 				t.Errorf("second call missing -l flag (paste): %q", got[1])
 			}
-
-			// Third call: Enter key, no -l flag.
 			if !strings.Contains(got[2], "Enter") {
 				t.Errorf("third call missing Enter: %q", got[2])
 			}
 			if strings.Contains(got[2], " -l ") {
 				t.Errorf("third call must not have -l flag: %q", got[2])
 			}
-
 			assertNoSingleCallCombinesTextAndEnter(t, got)
+		})
+	}
+
+	// Gemini cases (gig-ca9f) — 2 send-keys (C-c, Enter) + 1 paste-buffer.
+	// Text is no longer streamed via send-keys -l; it goes through the
+	// atomic load-buffer + paste-buffer -p path instead.
+	geminiCases := []struct {
+		name    string
+		content string
+	}{
+		{"gemini-simple", "new direction for the task"},
+		{"gemini-multiword", "stop reading files and focus on the API instead"},
+	}
+	for _, tc := range geminiCases {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := withFakeTmux(t)
+
+			if err := SendInterrupt("jeff:gig-c6dd"); err != nil {
+				t.Fatalf("SendInterrupt: %v", err)
+			}
+			if err := sendCommandForSession("jeff:gig-c6dd", tc.content, "gemini"); err != nil {
+				t.Fatalf("sendCommandForSession: %v", err)
+			}
+
+			all := calls()
+			sk := sendKeysCalls(all)
+			pb := pasteBufferCalls(all)
+
+			// Exactly 2 send-keys: C-c then Enter.
+			if len(sk) != 2 {
+				t.Fatalf("want 2 send-keys calls (C-c, Enter), got %d: %v", len(sk), sk)
+			}
+			if !strings.Contains(sk[0], "C-c") {
+				t.Errorf("first send-keys must be C-c, got: %q", sk[0])
+			}
+			if !strings.Contains(sk[1], "Enter") {
+				t.Errorf("second send-keys must be Enter, got: %q", sk[1])
+			}
+
+			// Exactly 1 paste-buffer (the message delivery).
+			if len(pb) != 1 {
+				t.Fatalf("want 1 paste-buffer call, got %d: %v", len(pb), pb)
+			}
+			if !strings.Contains(pb[0], " -p") {
+				t.Errorf("paste-buffer missing -p flag: %q", pb[0])
+			}
+
+			// No send-keys -l (text must not go through character streaming).
+			for _, c := range sk {
+				if strings.Contains(c, " -l ") {
+					t.Errorf("gemini divert: must not use send-keys -l, got: %q", c)
+				}
+			}
 		})
 	}
 }

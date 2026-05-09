@@ -449,11 +449,13 @@ func interruptSettleDelay(agent string) time.Duration {
 	return defaultInterruptSettleDelay
 }
 
-// sendCommandForSession sends a command to a tmux target, using an agent-aware
-// paste-to-Enter delay derived from the session's Agent field.
+// sendCommandForSession sends a command to a tmux target, routing through the
+// appropriate primitive for the agent. Gemini uses SendCommandViaBuffer (atomic
+// bracketed-paste + Enter) so Ink's usePaste hook receives the message as a
+// single block. All other agents use the standard SendCommand path unchanged.
 func sendCommandForSession(target, command, agent string) error {
 	if agent == "gemini" {
-		return SendCommandWithDelay(target, command, geminiSendDelay)
+		return SendCommandViaBuffer(target, command)
 	}
 	return SendCommand(target, command)
 }

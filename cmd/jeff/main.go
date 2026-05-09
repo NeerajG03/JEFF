@@ -72,6 +72,7 @@ func main() {
 		orchestratorCmd(),
 		dashboardCmd(),
 		memorycmd.Cmd,
+		notifyCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

@@ -14,7 +14,7 @@ Injects context into Claude Code and OpenCode sessions via hooks. Two delivery m
 |------|-------------|
 | `hook.go` | Hook type, Source, HookContext, EnabledForSource |
 | `registry.go` | Registry — holds all hooks, BySource/All |
-| `builtin.go` | All 13 built-in hook definitions + script generators |
+| `builtin.go` | All 16 built-in hook definitions + script generators |
 | `claude.go` | Write bash scripts + wire settings.json |
 | `opencode.go` | Generate combined OpenCode JS plugin |
 | `manager.go` | Sync — install/uninstall hooks idempotently |
@@ -24,6 +24,8 @@ Injects context into Claude Code and OpenCode sessions via hooks. Two delivery m
 Home-level (6): gig-instructions, gig-ready-tasks, jeff-repos, jeff-instructions, crew-context, orchestrator-inbox
 
 Task-level (7): task-context, task-commands, checkpoint-nudge, inbox-check, worker-heartbeat, worker-stop, session-capture
+
+Memory (3): memory-session-start, memory-session-end, memory-propose-nudge
 
 ## Script types
 

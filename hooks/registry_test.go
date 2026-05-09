@@ -81,7 +81,7 @@ func TestNames(t *testing.T) {
 func TestDefaultRegistryHasBuiltins(t *testing.T) {
 	r := DefaultRegistry()
 
-	expected := []string{"checkpoint-nudge", "crew-context", "gig-instructions", "gig-ready-tasks", "inbox-check", "jeff-instructions", "jeff-repos", "memory-session-end", "memory-session-start", "orchestrator-inbox", "session-capture", "task-commands", "task-context", "worker-heartbeat", "worker-stop"}
+	expected := []string{"checkpoint-nudge", "crew-context", "gig-instructions", "gig-ready-tasks", "inbox-check", "jeff-instructions", "jeff-repos", "memory-propose-nudge", "memory-session-end", "memory-session-start", "orchestrator-inbox", "session-capture", "task-commands", "task-context", "worker-heartbeat", "worker-stop"}
 	names := r.Names()
 	if len(names) != len(expected) {
 		t.Fatalf("got %d hooks %v, want %d %v", len(names), names, len(expected), expected)

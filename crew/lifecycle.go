@@ -14,6 +14,71 @@ import (
 // working immediately instead of sitting idle.
 const DefaultPrompt = "Read your task context using `gig show` for your task ID and begin working."
 
+// isActiveStatus reports whether a session status means the worker may still be running.
+func isActiveStatus(status string) bool {
+	return status == "running" || status == "starting"
+}
+
+// windowExistsFunc checks whether a named window exists in a tmux session.
+// It is a variable type so tests can substitute a mock without a real tmux binary.
+type windowExistsFunc func(session, window string) bool
+
+// preflightStartCheck is the testable core of PreflightStart.
+func preflightStartCheck(store *Store, taskID string, hasWindow windowExistsFunc) error {
+	existing, err := store.GetSession(taskID)
+	if err != nil {
+		return nil // No existing session — safe to start fresh.
+	}
+	if !isActiveStatus(existing.Status) {
+		return nil // Stopped/done/failed — safe to restart.
+	}
+	if hasWindow(existing.TmuxSession, existing.WindowName) {
+		return fmt.Errorf(
+			"worker already running for %s in tmux %s:%s — use `jeff crew send %s \"...\"` to talk to it, or `tmux attach -t %s:%s` to view it",
+			taskID, existing.TmuxSession, existing.WindowName,
+			taskID, existing.TmuxSession, existing.WindowName,
+		)
+	}
+	return fmt.Errorf(
+		"stale DB row for %s: DB says running but tmux window %q is gone — run `jeff crew cleanup` to reconcile, then retry",
+		taskID, existing.WindowName,
+	)
+}
+
+// preflightResumeCheck is the testable core of PreflightResume.
+func preflightResumeCheck(store *Store, taskID string, hasWindow windowExistsFunc) error {
+	existing, err := store.GetSession(taskID)
+	if err != nil {
+		return fmt.Errorf("no worker record for %s — use `jeff crew start %s` to launch fresh", taskID, taskID)
+	}
+	if !isActiveStatus(existing.Status) {
+		return nil // Stopped/done/failed — safe to relaunch.
+	}
+	if hasWindow(existing.TmuxSession, existing.WindowName) {
+		return fmt.Errorf(
+			"worker already running for %s in tmux %s:%s — use `jeff crew send %s \"...\"` to talk to it, or `tmux attach -t %s:%s` to view it",
+			taskID, existing.TmuxSession, existing.WindowName,
+			taskID, existing.TmuxSession, existing.WindowName,
+		)
+	}
+	return fmt.Errorf(
+		"stale DB row for %s: DB says running but tmux window %q is gone — run `jeff crew cleanup` to reconcile, then retry",
+		taskID, existing.WindowName,
+	)
+}
+
+// PreflightStart checks whether starting a new worker for taskID is safe.
+// Returns a human-readable error with a next-step hint when DB↔tmux state has drifted.
+func PreflightStart(store *Store, taskID string) error {
+	return preflightStartCheck(store, taskID, HasWindowInSession)
+}
+
+// PreflightResume checks whether resuming a worker for taskID is safe.
+// Returns a human-readable error with a next-step hint when DB↔tmux state has drifted.
+func PreflightResume(store *Store, taskID string) error {
+	return preflightResumeCheck(store, taskID, HasWindowInSession)
+}
+
 // buildAgentCmd constructs the agent CLI command using the LaunchCmd if provided,
 // or falls back to the legacy "claude --dangerously-skip-permissions" pattern.
 func buildAgentCmd(launchCmd, agent, model, resumeSessionID string) string {
@@ -258,7 +323,7 @@ func Start(store *Store, taskID, taskDir string, opts StartOpts) (*Session, erro
 func Stop(store *Store, taskID string) error {
 	sess, err := store.GetSession(taskID)
 	if err != nil {
-		return fmt.Errorf("get session: %w", err)
+		return fmt.Errorf("no worker for %s — nothing to stop", taskID)
 	}
 
 	target := sess.TmuxSession + ":" + sess.WindowName

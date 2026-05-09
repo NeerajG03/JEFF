@@ -21,6 +21,7 @@ func builtinHooks() []*Hook {
 		// Memory hooks (Worker A).
 		sessionStartMemoryHook(),
 		sessionEndMemoryHook(),
+		memoryProposeNudgeHook(),
 	}
 }
 

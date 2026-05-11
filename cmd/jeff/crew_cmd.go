@@ -170,7 +170,7 @@ func crewStartCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&repos, "repos", nil, "Repos to set up worktrees for")
 	cmd.Flags().StringSliceVar(&reposReadonly, "repos-readonly", nil, "Repos to symlink read-only (no worktree, no post-setup)")
 	cmd.Flags().StringVar(&orchestratorID, "orchestrator", "", "Orchestrator ID to attach worker to")
-	cmd.Flags().StringVar(&modelOverride, "model", "", "Claude model override (e.g. sonnet, opus, haiku)")
+	cmd.Flags().StringVar(&modelOverride, "model", "", "Model override. Claude: sonnet, opus, haiku, or claude-* full IDs; Gemini: auto, pro, flash, flash-lite, or gemini-* full IDs")
 	cmd.Flags().StringVar(&promptOverride, "prompt", "", "Custom initial prompt (overrides default)")
 	cmd.ValidArgsFunction = readyTaskCompletion
 	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)

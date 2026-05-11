@@ -193,7 +193,7 @@ func personaTagCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&description, "description", "", "Short role description")
 	cmd.Flags().StringVar(&memoryHint, "memory-hint", "", "What this persona should capture in the scratchpad")
-	cmd.Flags().StringVar(&model, "model", "", "Default Claude model (e.g. sonnet, opus, haiku)")
+	cmd.Flags().StringVar(&model, "model", "", "Default model. Claude: sonnet, opus, haiku, or claude-* full IDs; Gemini: auto, pro, flash, flash-lite, or gemini-* full IDs")
 	return cmd
 }
 

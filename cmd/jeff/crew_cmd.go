@@ -232,16 +232,29 @@ func crewResumeCmd() *cobra.Command {
 			// Detect persona and repos from existing workspace.
 			personaName := detectPersona(td.Path)
 			repos := detectRepos(td.Path)
-			model := persona.RegisteredModel(cfg.Home, personaName)
-
 			// Look up existing session for resume context.
 			var resumeSessionID, orchestratorID string
+			agentTool := cfg.Agent
+			model := persona.RegisteredModel(cfg.Home, personaName)
+
 			if existing, err := cs.GetSession(taskID); err == nil {
 				resumeSessionID = existing.LatestSessionID()
 				if resumeSessionID != "" {
 					fmt.Fprintf(os.Stderr, "Resuming Claude session %s\n", resumeSessionID)
 				}
+
 				orchestratorID = existing.OrchestratorID
+
+				// Prioritize stored session state over defaults.
+				// Literal empty-string checks for legacy fallback.
+				if existing.Agent != "" {
+					agentTool = jeff.AgentTool(existing.Agent)
+				}
+
+				if existing.Model != "" {
+					model = existing.Model
+				}
+
 			}
 
 			// Prefer current orchestrator, fall back to the one from original session.
@@ -250,7 +263,7 @@ func crewResumeCmd() *cobra.Command {
 			}
 
 			// Build launch command via provider.
-			provider := jeff.GetProvider(cfg.Agent)
+			provider := jeff.GetProvider(agentTool)
 			var launchCmd string
 			if provider != nil {
 				launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{
@@ -266,7 +279,7 @@ func crewResumeCmd() *cobra.Command {
 				Persona:         personaName,
 				Repos:           repos,
 				Resume:          true,
-				Agent:           string(cfg.Agent),
+				Agent:           string(agentTool),
 				Model:           model,
 				ResumeSessionID: resumeSessionID,
 				LaunchCmd:       launchCmd,

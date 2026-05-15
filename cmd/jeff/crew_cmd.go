@@ -97,6 +97,16 @@ func crewStartCmd() *cobra.Command {
 				model = persona.RegisteredModel(cfg.Home, personaName)
 			}
 
+			// Auto-route backend from model name when --model is explicitly supplied.
+			// Known model families unambiguously pick the backend, overriding persona default.
+			if modelOverride != "" {
+				if inferred := jeff.InferBackend(modelOverride); inferred != "" {
+					agentTool = inferred
+				} else if !jeff.IsValidModel(agentTool, modelOverride) {
+					return fmt.Errorf("%s", jeff.UnknownModelError(modelOverride))
+				}
+			}
+
 			// Open crew store early for the pre-flight check.
 			cs, err := crew.Open(cfg.Home)
 			if err != nil {
@@ -170,7 +180,7 @@ func crewStartCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&repos, "repos", nil, "Repos to set up worktrees for")
 	cmd.Flags().StringSliceVar(&reposReadonly, "repos-readonly", nil, "Repos to symlink read-only (no worktree, no post-setup)")
 	cmd.Flags().StringVar(&orchestratorID, "orchestrator", "", "Orchestrator ID to attach worker to")
-	cmd.Flags().StringVar(&modelOverride, "model", "", "Model override. Claude: sonnet, opus, haiku, or claude-* full IDs; Gemini: auto, pro, flash, flash-lite, or gemini-* full IDs")
+	cmd.Flags().StringVar(&modelOverride, "model", "", "Model name; auto-routes backend (sonnet/opus/haiku/claude-* → claude, pro/flash/flash-lite/auto/gemini-* → gemini)")
 	cmd.Flags().StringVar(&promptOverride, "prompt", "", "Custom initial prompt (overrides default)")
 	cmd.ValidArgsFunction = readyTaskCompletion
 	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)

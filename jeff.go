@@ -1,6 +1,9 @@
 package jeff
 
-import "slices"
+import (
+	"slices"
+	"strings"
+)
 
 // AgentTool represents a supported agent CLI tool.
 type AgentTool string
@@ -10,6 +13,52 @@ const (
 	AgentOpenCode   AgentTool = "opencode"
 	AgentGemini     AgentTool = "gemini"
 )
+
+// InferBackend returns the AgentTool for a model name based on known model families.
+// Returns "" if model is empty or does not belong to any known family.
+// claude family: sonnet, opus, haiku, claude-*
+// gemini family: pro, flash, flash-lite, auto, gemini-*
+func InferBackend(model string) AgentTool {
+	if model == "" {
+		return ""
+	}
+	if isClaudeModel(model) {
+		return AgentClaudeCode
+	}
+	if isGeminiModel(model) {
+		return AgentGemini
+	}
+	return ""
+}
+
+// IsValidModel reports whether model is a known model for the given agent.
+func IsValidModel(agent AgentTool, model string) bool {
+	switch agent {
+	case AgentClaudeCode:
+		return isClaudeModel(model)
+	case AgentGemini:
+		return isGeminiModel(model)
+	}
+	return false
+}
+
+// ValidModelsForBackend returns the human-readable model names for an agent (for error messages).
+func ValidModelsForBackend(agent AgentTool) []string {
+	switch agent {
+	case AgentClaudeCode:
+		return []string{"sonnet", "opus", "haiku", "claude-<full-id>"}
+	case AgentGemini:
+		return []string{"pro", "flash", "flash-lite", "auto", "gemini-<full-id>"}
+	}
+	return nil
+}
+
+// UnknownModelError returns an error message for an unrecognized model name.
+func UnknownModelError(model string) string {
+	return "unknown model " + `"` + model + `"` +
+		"\nValid Claude models: " + strings.Join(ValidModelsForBackend(AgentClaudeCode), ", ") +
+		"\nValid Gemini models: " + strings.Join(ValidModelsForBackend(AgentGemini), ", ")
+}
 
 // IsValid returns true if t is a recognized agent tool (has a registered provider).
 func (t AgentTool) IsValid() bool {

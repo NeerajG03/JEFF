@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -194,5 +195,102 @@ func TestAgentToolCommandViaProvider(t *testing.T) {
 	}
 	if AgentOpenCode.Command() != "opencode" {
 		t.Error("opencode Command() mismatch")
+	}
+}
+
+func TestInferBackend(t *testing.T) {
+	tests := []struct {
+		model string
+		want  AgentTool
+	}{
+		// Claude aliases
+		{"sonnet", AgentClaudeCode},
+		{"opus", AgentClaudeCode},
+		{"haiku", AgentClaudeCode},
+		// Claude full IDs
+		{"claude-3-5-sonnet-20241022", AgentClaudeCode},
+		{"claude-opus-4-7", AgentClaudeCode},
+		// Gemini aliases
+		{"pro", AgentGemini},
+		{"flash", AgentGemini},
+		{"flash-lite", AgentGemini},
+		{"auto", AgentGemini},
+		// Gemini full IDs
+		{"gemini-2.0-flash", AgentGemini},
+		{"gemini-3-pro-preview", AgentGemini},
+		// Unknown
+		{"bogus", ""},
+		{"gpt-4", ""},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		got := InferBackend(tt.model)
+		if got != tt.want {
+			t.Errorf("InferBackend(%q) = %q, want %q", tt.model, got, tt.want)
+		}
+	}
+}
+
+func TestIsValidModel(t *testing.T) {
+	tests := []struct {
+		agent AgentTool
+		model string
+		want  bool
+	}{
+		{AgentClaudeCode, "sonnet", true},
+		{AgentClaudeCode, "opus", true},
+		{AgentClaudeCode, "haiku", true},
+		{AgentClaudeCode, "claude-3-5-sonnet-20241022", true},
+		{AgentClaudeCode, "flash", false},
+		{AgentClaudeCode, "bogus", false},
+		{AgentGemini, "pro", true},
+		{AgentGemini, "flash", true},
+		{AgentGemini, "flash-lite", true},
+		{AgentGemini, "auto", true},
+		{AgentGemini, "gemini-2.0-flash", true},
+		{AgentGemini, "opus", false},
+		{AgentGemini, "bogus", false},
+		{AgentOpenCode, "anything", false},
+	}
+	for _, tt := range tests {
+		got := IsValidModel(tt.agent, tt.model)
+		if got != tt.want {
+			t.Errorf("IsValidModel(%q, %q) = %v, want %v", tt.agent, tt.model, got, tt.want)
+		}
+	}
+}
+
+func TestInferBackendCrossRouting(t *testing.T) {
+	// A known claude model on a gemini-default persona should route to claude.
+	personaDefault := AgentGemini
+	model := "opus"
+	if inferred := InferBackend(model); inferred != "" {
+		personaDefault = inferred
+	}
+	if personaDefault != AgentClaudeCode {
+		t.Errorf("cross-routing: gemini-default persona + model=opus should yield claude, got %q", personaDefault)
+	}
+
+	// A known gemini model on a claude-default persona should route to gemini.
+	personaDefault = AgentClaudeCode
+	model = "flash"
+	if inferred := InferBackend(model); inferred != "" {
+		personaDefault = inferred
+	}
+	if personaDefault != AgentGemini {
+		t.Errorf("cross-routing: claude-default persona + model=flash should yield gemini, got %q", personaDefault)
+	}
+}
+
+func TestUnknownModelError(t *testing.T) {
+	msg := UnknownModelError("bogus")
+	if !strings.Contains(msg, "bogus") {
+		t.Error("error message should contain the unknown model name")
+	}
+	if !strings.Contains(msg, "sonnet") {
+		t.Error("error message should list valid claude models")
+	}
+	if !strings.Contains(msg, "flash") {
+		t.Error("error message should list valid gemini models")
 	}
 }

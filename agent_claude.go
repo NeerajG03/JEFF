@@ -5,6 +5,16 @@ import (
 	"path/filepath"
 )
 
+// isClaudeModel returns true if the model name belongs to the Claude family.
+// Accepts aliases (sonnet, opus, haiku) and full IDs (claude-*).
+func isClaudeModel(m string) bool {
+	switch m {
+	case "sonnet", "opus", "haiku":
+		return true
+	}
+	return len(m) >= 7 && m[:7] == "claude-"
+}
+
 // claudeProvider implements AgentProvider for Claude Code.
 type claudeProvider struct{}
 

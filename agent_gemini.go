@@ -25,10 +25,20 @@ func isGeminiModel(m string) bool {
 	return len(m) >= 7 && m[:7] == "gemini-"
 }
 
+// resolveGeminiModel maps JEFF aliases to concrete model IDs where JEFF pins
+// a specific version. Aliases without a pin pass through to the Gemini CLI,
+// which applies its own defaults.
+func resolveGeminiModel(m string) string {
+	if m == "flash" {
+		return "gemini-3.5-flash"
+	}
+	return m
+}
+
 func (g *geminiProvider) BuildLaunchArgs(opts LaunchOpts) []string {
 	args := []string{"--approval-mode=yolo"}
 	if opts.Model != "" && isGeminiModel(opts.Model) {
-		args = append(args, "-m", opts.Model)
+		args = append(args, "-m", resolveGeminiModel(opts.Model))
 	}
 	if opts.ResumeSessionID != "" {
 		args = append(args, "--resume", "latest")

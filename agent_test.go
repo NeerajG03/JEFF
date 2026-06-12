@@ -82,6 +82,23 @@ func TestGeminiProviderArgs(t *testing.T) {
 		t.Errorf("model args = %v", args)
 	}
 
+	// "flash" alias pins to gemini-3.5-flash.
+	args = p.BuildLaunchArgs(LaunchOpts{Model: "flash"})
+	if !slices.Contains(args, "-m") || !slices.Contains(args, "gemini-3.5-flash") {
+		t.Errorf("flash alias should resolve to gemini-3.5-flash, args = %v", args)
+	}
+	if slices.Contains(args, "flash") {
+		t.Errorf("flash alias should not be passed as bare 'flash', args = %v", args)
+	}
+
+	// Other aliases pass through unchanged.
+	for _, alias := range []string{"pro", "flash-lite", "auto"} {
+		args = p.BuildLaunchArgs(LaunchOpts{Model: alias})
+		if !slices.Contains(args, "-m") || !slices.Contains(args, alias) {
+			t.Errorf("alias %q should pass through, args = %v", alias, args)
+		}
+	}
+
 	// Resume uses "latest".
 	args = p.BuildLaunchArgs(LaunchOpts{ResumeSessionID: "anything"})
 	if !slices.Contains(args, "--resume") || !slices.Contains(args, "latest") {

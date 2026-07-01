@@ -146,6 +146,9 @@ func StartOrchestrator(store *Store, jeffHome string, agent string, name string)
 	// orchestrator they belong to without querying tmux (Fix 2).
 	_ = tmuxRun("set-environment", "-t", id, "JEFF_ORCHESTRATOR_SESSION", id)
 
+	// Ensure the self-updating claude install wins over any system install.
+	prependLocalBin(target)
+
 	// Launch agent in the orchestrator window.
 	agentCmd := buildAgentCmd("", agent, "", "")
 	if err := SendCommand(target, agentCmd); err != nil {
@@ -215,6 +218,9 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 		KillWindow(target)
 		return nil, fmt.Errorf("record session: %w", err)
 	}
+
+	// Ensure the self-updating claude install wins over any system install.
+	prependLocalBin(target)
 
 	agentCmd := buildAgentCmd(opts.LaunchCmd, opts.Agent, opts.Model, opts.ResumeSessionID)
 	if err := SendCommand(target, agentCmd); err != nil {
@@ -289,6 +295,9 @@ func Start(store *Store, taskID, taskDir string, opts StartOpts) (*Session, erro
 		KillWindow(target)
 		return nil, fmt.Errorf("record session: %w", err)
 	}
+
+	// Ensure the self-updating claude install wins over any system install.
+	prependLocalBin(target)
 
 	// Launch agent.
 	agentCmd := buildAgentCmd(opts.LaunchCmd, opts.Agent, opts.Model, opts.ResumeSessionID)
@@ -650,6 +659,15 @@ func exportWorkerEnv(target, key, value string) {
 	}
 	safe := "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 	_ = SendCommand(target, "export "+key+"="+safe)
+}
+
+// prependLocalBin ensures $HOME/.local/bin is at the front of PATH in the
+// target pane. Self-updating tool installs (e.g. Claude Code) live there and
+// must take precedence over system package manager installs (e.g. brew).
+// tmux new-session may start a non-login shell or inherit a stale PATH — this
+// call makes the correct binary win regardless of session origin.
+func prependLocalBin(target string) {
+	_ = SendCommand(target, `export PATH="$HOME/.local/bin:$PATH"`)
 }
 
 func generateMsgID() string {

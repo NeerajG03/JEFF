@@ -260,9 +260,9 @@ jeff orchestrator start --name work     # creates tmux session jeff-work
 
 ```bash
 # Start workers on tasks (each gets its own workspace + worktrees)
-jeff crew start gig-ab12 --persona jenko --repos backend
-jeff crew start gig-cd34 --persona eric --repos backend,frontend
-jeff crew start gig-ef56 --persona hardy --repos backend --model opus
+jeff crew start gig-ab12 "Fix the issue" --persona jenko --repos backend
+jeff crew start gig-cd34 "Fix the issue" --persona eric --repos backend,frontend
+jeff crew start gig-ef56 "Fix the issue" --persona hardy --repos backend --model opus
 ```
 
 ### Monitor and communicate

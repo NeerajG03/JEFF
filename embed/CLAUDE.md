@@ -30,7 +30,7 @@ jeff done                                              # close task + auto-curat
 
 ```bash
 jeff orchestrator start [--name <n>]                   # start orchestrator session
-jeff crew start <gig-id> --persona <p> --repos <r>     # launch worker
+jeff crew start <gig-id> "Fix the issue" --persona <p> --repos <r>     # launch worker
 jeff crew send <gig-id> "msg" --type nudge|status|divert|normal
 jeff crew list                                         # show workers (filtered to current orchestrator)
 jeff crew status <gig-id>                              # worker detail + pane output

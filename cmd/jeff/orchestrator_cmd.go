@@ -47,7 +47,7 @@ func orchestratorStartCmd() *cobra.Command {
 
 			fmt.Fprintf(os.Stderr, "Orchestrator %s started (tmux session: %s)\n", orch.ID, orch.TmuxSession)
 			fmt.Fprintf(os.Stderr, "Attach with: jeff orchestrator attach %s\n", orch.ID)
-			fmt.Fprintf(os.Stderr, "Start workers with: jeff crew start <task-id> --orchestrator %s\n", orch.ID)
+			fmt.Fprintf(os.Stderr, "Start workers with: jeff crew start <task-id> \"Work on this task\" --orchestrator %s\n", orch.ID)
 
 			data, _ := json.Marshal(orch)
 			fmt.Println(string(data))

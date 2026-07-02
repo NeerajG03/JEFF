@@ -87,9 +87,9 @@ jeff orchestrator start --name work     # creates tmux session jeff-work
 
 ```bash
 # Start workers on tasks (each gets its own workspace + worktrees)
-jeff crew start gig-ab12 --persona jenko --repos backend
-jeff crew start gig-cd34 --persona eric --repos backend,frontend
-jeff crew start gig-ef56 --persona hardy --repos backend --model opus
+jeff crew start gig-ab12 "Fix the issue" --persona jenko --repos backend
+jeff crew start gig-cd34 "Fix the issue" --persona eric --repos backend,frontend
+jeff crew start gig-ef56 "Fix the issue" --persona hardy --repos backend --model opus
 ```
 
 ### Monitor and communicate
@@ -147,7 +147,7 @@ jeff dashboard                          # interactive TUI (auto-refreshes every 
 | `jeff orchestrator info [id]` | Show all tasks under an orchestrator |
 | `jeff orchestrator attach <id>` | Attach to orchestrator session |
 | `jeff orchestrator stop <id>` | Stop orchestrator and all workers |
-| `jeff crew start <id> [--persona] [--repos] [--model] [--prompt]` | Launch worker in tmux |
+| `jeff crew start <id> "<prompt>" [--persona] [--repos] [--model]` | Launch worker in tmux |
 | `jeff crew resume <id>` | Resume stopped worker (restores Claude session) |
 | `jeff crew list [--all]` | List workers (filtered to current orchestrator by default) |
 | `jeff crew status <id>` | Worker detail + checkpoint + pane output |
@@ -181,7 +181,7 @@ Shape agent behavior with embedded personas. Each has a default model for cost o
 
 ```bash
 jeff pickup gig-ab12 --persona jenko --repos backend
-jeff crew start gig-ab12 --persona schmidt --repos backend --model opus
+jeff crew start gig-ab12 "Fix the issue" --persona schmidt --repos backend --model opus
 ```
 
 ## Skills

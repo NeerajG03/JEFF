@@ -67,12 +67,24 @@ func crewStartCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "start <gig-id>",
+		Use:   "start <gig-id> [prompt]",
 		Short: "Claim a task and launch a worker agent in tmux",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
 			taskID := args[0]
+
+			// Handle prompt (positional vs deprecated flag)
+			var inputPrompt string
+			if len(args) >= 2 {
+				inputPrompt = args[1]
+			} else if promptOverride != "" {
+				fmt.Fprintln(os.Stderr, "WARNING: the --prompt flag is deprecated. Please use the positional argument: jeff crew start <gig-id> \"<prompt>\"")
+				inputPrompt = promptOverride
+			} else {
+				return fmt.Errorf("missing required prompt. Usage: jeff crew start <gig-id> \"<prompt>\" [flags]")
+			}
+			promptOverride = inputPrompt // set it for the rest of the flow
 
 			// Auto-detect orchestrator from tmux session name if not set.
 			// Must happen before pickupTask so hooks get the orchestrator ID.
@@ -182,6 +194,7 @@ func crewStartCmd() *cobra.Command {
 	cmd.Flags().StringVar(&orchestratorID, "orchestrator", "", "Orchestrator ID to attach worker to")
 	cmd.Flags().StringVar(&modelOverride, "model", "", "Model name; auto-routes backend (sonnet/opus/haiku/claude-* → claude, pro/flash/flash-lite/auto/gemini-* → gemini)")
 	cmd.Flags().StringVar(&promptOverride, "prompt", "", "Custom initial prompt (overrides default)")
+	cmd.Flags().MarkDeprecated("prompt", "use the positional argument instead: jeff crew start <gig-id> \"<prompt>\" [flags]")
 	cmd.ValidArgsFunction = readyTaskCompletion
 	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
 	cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)
@@ -254,16 +267,7 @@ func crewResumeCmd() *cobra.Command {
 				}
 
 				orchestratorID = existing.OrchestratorID
-
-				// Prioritize stored session state over defaults.
-				// Literal empty-string checks for legacy fallback.
-				if existing.Agent != "" {
-					agentTool = jeff.AgentTool(existing.Agent)
-				}
-
-				if existing.Model != "" {
-					model = existing.Model
-				}
+				agentTool, model = resolveResumeAgentModel(existing, agentTool, model)
 
 			}
 
@@ -1370,4 +1374,20 @@ func needsShellQuoting(s string) bool {
 // adding an escaped single quote, and resuming the quote.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
+}
+
+func resolveResumeAgentModel(existing *crew.Session, defaultAgent jeff.AgentTool, defaultModel string) (jeff.AgentTool, string) {
+	agent := defaultAgent
+	model := defaultModel
+
+	if existing != nil {
+		if existing.Agent != "" {
+			agent = jeff.AgentTool(existing.Agent)
+		}
+		if existing.Model != "" {
+			model = existing.Model
+		}
+	}
+
+	return agent, model
 }

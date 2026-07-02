@@ -23,6 +23,7 @@ func TestBuildResumeOpts(t *testing.T) {
 		name          string
 		existingAgent string
 		existingModel string
+		nilSession    bool
 		wantAgent     string
 		wantModel     string
 	}{
@@ -54,6 +55,12 @@ func TestBuildResumeOpts(t *testing.T) {
 			wantAgent:     "claude",
 			wantModel:     "haiku",
 		},
+		{
+			name:          "Nil session fallback",
+			nilSession:    true,
+			wantAgent:     "claude",
+			wantModel:     "opus",
+		},
 	}
 
 	for _, tt := range tests {
@@ -62,18 +69,15 @@ func TestBuildResumeOpts(t *testing.T) {
 			agentTool := cfg.Agent
 			model := personaModel // simulated persona.RegisteredModel(cfg.Home, personaName)
 
-			existing := &crew.Session{
-				Agent: tt.existingAgent,
-				Model: tt.existingModel,
+			var existing *crew.Session
+			if !tt.nilSession {
+				existing = &crew.Session{
+					Agent: tt.existingAgent,
+					Model: tt.existingModel,
+				}
 			}
+				agentTool, model = resolveResumeAgentModel(existing, agentTool, model)
 
-			// Simulated if existing, err := cs.GetSession(taskID); err == nil { ... }
-			if existing.Agent != "" {
-				agentTool = jeff.AgentTool(existing.Agent)
-			}
-			if existing.Model != "" {
-				model = existing.Model
-			}
 
 			if string(agentTool) != tt.wantAgent {
 				t.Errorf("agentTool = %q, want %q", agentTool, tt.wantAgent)

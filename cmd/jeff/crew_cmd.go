@@ -254,16 +254,7 @@ func crewResumeCmd() *cobra.Command {
 				}
 
 				orchestratorID = existing.OrchestratorID
-
-				// Prioritize stored session state over defaults.
-				// Literal empty-string checks for legacy fallback.
-				if existing.Agent != "" {
-					agentTool = jeff.AgentTool(existing.Agent)
-				}
-
-				if existing.Model != "" {
-					model = existing.Model
-				}
+				agentTool, model = resolveResumeAgentModel(existing, agentTool, model)
 
 			}
 
@@ -1370,4 +1361,20 @@ func needsShellQuoting(s string) bool {
 // adding an escaped single quote, and resuming the quote.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
+}
+
+func resolveResumeAgentModel(existing *crew.Session, defaultAgent jeff.AgentTool, defaultModel string) (jeff.AgentTool, string) {
+	agent := defaultAgent
+	model := defaultModel
+
+	if existing != nil {
+		if existing.Agent != "" {
+			agent = jeff.AgentTool(existing.Agent)
+		}
+		if existing.Model != "" {
+			model = existing.Model
+		}
+	}
+
+	return agent, model
 }

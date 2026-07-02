@@ -24,6 +24,11 @@ func TestCrewStartArgs(t *testing.T) {
 			args:      []string{"gig-123", "--prompt", "fix the auth bug"},
 			wantError: false,
 		},
+				{
+			name:      "both positional AND flag provided (positional wins)",
+			args:      []string{"gig-123", "positional value", "--prompt", "flag value"},
+			wantError: false,
+		},
 		{
 			name:      "both missing",
 			args:      []string{"gig-123"},

@@ -37,16 +37,16 @@ jeff orchestrator attach jeff-1
 
 ```bash
 # Start a worker (full pickup: claim, workspace, worktrees, hooks, skills)
-jeff crew start <gig-id> --persona jenko --repos backend
+jeff crew start <gig-id> "Fix the issue" --persona jenko --repos backend
 
 # Start with multiple repos
-jeff crew start <gig-id> --persona jenko --repos backend,frontend
+jeff crew start <gig-id> "Fix the issue" --persona jenko --repos backend,frontend
 
 # Start with model override
-jeff crew start <gig-id> --persona eric --model opus
+jeff crew start <gig-id> "Fix the issue" --persona eric --model opus
 
 # Start with custom initial prompt
-jeff crew start <gig-id> --persona jenko --repos backend --prompt "Focus on the API layer only"
+jeff crew start <gig-id> "Focus on the API layer only" --persona jenko --repos backend
 
 # Resume a previously stopped worker (resumes into same Claude session)
 jeff crew resume <gig-id>
@@ -151,7 +151,7 @@ Run this after workers stop unexpectedly or when DB and tmux are out of sync.
 ### Solo task delegation
 ```bash
 gig list --status open
-jeff crew start gig-ab12 --persona jenko --repos backend
+jeff crew start gig-ab12 "Fix the issue" --persona jenko --repos backend
 # monitor via signals, nudge if needed
 # worker ships → orchestrator gets completion signal
 ```
@@ -160,8 +160,8 @@ jeff crew start gig-ab12 --persona jenko --repos backend
 ```bash
 gig create "Implement auth refresh" --parent gig-epic1
 gig create "Add auth tests" --parent gig-epic1
-jeff crew start gig-epic1.1 --persona jenko --repos backend
-jeff crew start gig-epic1.2 --persona jenko --repos backend
+jeff crew start gig-epic1.1 "Fix the issue" --persona jenko --repos backend
+jeff crew start gig-epic1.2 "Fix the issue" --persona jenko --repos backend
 jeff crew list
 ```
 
@@ -169,13 +169,13 @@ jeff crew list
 ```bash
 jeff crew send gig-ab12 "ship when tests pass" --type nudge
 # after PR created:
-jeff crew start gig-review --persona hardy --repos backend
+jeff crew start gig-review "Fix the issue" --persona hardy --repos backend
 jeff crew send gig-review "review PR #42 on backend" --type normal
 ```
 
 ### Investigate and fix
 ```bash
-jeff crew start gig-xyz --persona schmidt --repos backend
+jeff crew start gig-xyz "Fix the issue" --persona schmidt --repos backend
 jeff crew status gig-xyz
 jeff crew capture gig-xyz
 jeff crew send gig-xyz "check the logs at /var/log/app.log" --type nudge

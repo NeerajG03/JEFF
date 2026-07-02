@@ -67,12 +67,24 @@ func crewStartCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "start <gig-id>",
+		Use:   "start <gig-id> [prompt]",
 		Short: "Claim a task and launch a worker agent in tmux",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
 			taskID := args[0]
+
+			// Handle prompt (positional vs deprecated flag)
+			var inputPrompt string
+			if len(args) >= 2 {
+				inputPrompt = args[1]
+			} else if promptOverride != "" {
+				fmt.Fprintln(os.Stderr, "WARNING: the --prompt flag is deprecated. Please use the positional argument: jeff crew start <gig-id> \"<prompt>\"")
+				inputPrompt = promptOverride
+			} else {
+				return fmt.Errorf("missing required prompt. Usage: jeff crew start <gig-id> \"<prompt>\" [flags]")
+			}
+			promptOverride = inputPrompt // set it for the rest of the flow
 
 			// Auto-detect orchestrator from tmux session name if not set.
 			// Must happen before pickupTask so hooks get the orchestrator ID.
@@ -182,6 +194,9 @@ func crewStartCmd() *cobra.Command {
 	cmd.Flags().StringVar(&orchestratorID, "orchestrator", "", "Orchestrator ID to attach worker to")
 	cmd.Flags().StringVar(&modelOverride, "model", "", "Model name; auto-routes backend (sonnet/opus/haiku/claude-* → claude, pro/flash/flash-lite/auto/gemini-* → gemini)")
 	cmd.Flags().StringVar(&promptOverride, "prompt", "", "Custom initial prompt (overrides default)")
+	cmd.Flags().MarkDeprecated("prompt", "use the positional argument instead")
+	cmd.Flags().MarkDeprecated("prompt", "use the positional argument instead")
+	cmd.Flags().MarkDeprecated("prompt", "use the positional argument instead: jeff crew start <gig-id> \"<prompt>\" [flags]")
 	cmd.ValidArgsFunction = readyTaskCompletion
 	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
 	cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)
@@ -218,7 +233,7 @@ func crewResumeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "resume <gig-id>",
 		Short: "Resume a worker agent in tmux (workspace must exist)",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
 			taskID := args[0]
@@ -664,7 +679,7 @@ func crewAttachCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "attach <gig-id>",
 		Short: "Attach to a worker's tmux window",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cs, err := crew.Open(cfg.Home)
 			if err != nil {
@@ -689,7 +704,7 @@ func crewCaptureCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "capture <gig-id>",
 		Short: "Capture terminal output from a worker's tmux pane",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cs, err := crew.Open(cfg.Home)
 			if err != nil {

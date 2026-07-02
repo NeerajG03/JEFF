@@ -236,7 +236,7 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 			prompt = DefaultPrompt
 		}
 		time.Sleep(3 * time.Second)
-		if err := SendCommand(target, prompt); err != nil {
+		if err := sendCommandForSession(target, prompt, opts.Agent); err != nil {
 			KillWindow(target)
 			return nil, fmt.Errorf("send initial prompt: %w", err)
 		}
@@ -314,7 +314,7 @@ func Start(store *Store, taskID, taskDir string, opts StartOpts) (*Session, erro
 			prompt = DefaultPrompt
 		}
 		time.Sleep(3 * time.Second)
-		if err := SendCommand(target, prompt); err != nil {
+		if err := sendCommandForSession(target, prompt, opts.Agent); err != nil {
 			KillWindow(target)
 			return nil, fmt.Errorf("send initial prompt: %w", err)
 		}
@@ -463,7 +463,7 @@ func interruptSettleDelay(agent string) time.Duration {
 // bracketed-paste + Enter) so Ink's usePaste hook receives the message as a
 // single block. All other agents use the standard SendCommand path unchanged.
 func sendCommandForSession(target, command, agent string) error {
-	if agent == "gemini" {
+	if agent == "gemini" || agent == "claude" {
 		return SendCommandViaBuffer(target, command)
 	}
 	return SendCommand(target, command)

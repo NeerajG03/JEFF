@@ -108,6 +108,51 @@ func ReadEntry(path string) (Entry, error) {
 	}, nil
 }
 
+// ListScope returns canonical entries for a single, exact scope label
+// (e.g. "persona:jenko", "repo:frontend", or "orchestrator"). Unlike
+// ListEntries, it never broadens to sibling scopes — callers building a
+// per-scope index (persona + N repos + orchestrator) call this once per
+// scope instead of relying on EntryFilter's all-or-nothing semantics.
+// status filters by FM.Status ("accepted", "superseded"); "" means no filter.
+func ListScope(jeffHome, scopeLabel, status string) ([]Entry, error) {
+	sPath, err := resolveScopePath(jeffHome, scopeLabel)
+	if err != nil {
+		return nil, fmt.Errorf("ListScope: %w", err)
+	}
+	if _, err := os.Stat(sPath); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	var out []Entry
+	for _, bucket := range Buckets {
+		files, err := bucketFiles(sPath, bucket)
+		if err != nil {
+			return nil, err
+		}
+		for _, fp := range files {
+			e, err := ReadEntry(fp)
+			if err != nil {
+				return nil, err
+			}
+			e.Scope = scopeLabel
+			e.Bucket = bucket
+			if status != "" && e.FM.Status != status {
+				continue
+			}
+			out = append(out, e)
+		}
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Bucket != out[j].Bucket {
+			return out[i].Bucket < out[j].Bucket
+		}
+		return out[i].Slug < out[j].Slug
+	})
+
+	return out, nil
+}
+
 // ---- Write helpers (C) ----
 
 // WriteCanonical creates (or overwrites) a canonical memory entry on disk.

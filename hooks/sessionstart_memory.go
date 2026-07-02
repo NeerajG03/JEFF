@@ -20,14 +20,14 @@ import (
 // Called directly from the pickup flow and invocable via `jeff memory session-start`.
 //
 //  1. memory.EnsureLayout(jeffHome)
-//  2. memory.ApplyToTask(taskDir, persona, taskID, repos, agentKind)
+//  2. memory.ApplyToTask(jeffHome, taskDir, persona, taskID, repos, agentKind)
 //  3. memory.ApplySettings(taskDir, agentKind)
 //  4. writes a brief log entry to JEFF_HOME/queue/sessions/<task>-start.log
 func RunSessionStart(jeffHome, taskDir, persona, taskID string, repos []string, agentKind string) error {
 	if err := memory.EnsureLayout(jeffHome); err != nil {
 		return fmt.Errorf("session-start: ensure layout: %w", err)
 	}
-	if err := memory.ApplyToTask(taskDir, persona, taskID, repos, agentKind); err != nil {
+	if err := memory.ApplyToTask(jeffHome, taskDir, persona, taskID, repos, agentKind); err != nil {
 		return fmt.Errorf("session-start: inject addendum: %w", err)
 	}
 	if err := memory.ApplySettings(taskDir, agentKind); err != nil {

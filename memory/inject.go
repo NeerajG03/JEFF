@@ -21,11 +21,16 @@ const (
 // For agentKind=="claude" (or any unrecognised kind), the target is CLAUDE.md.
 // For agentKind=="gemini", the target is GEMINI.md (often a symlink to CLAUDE.md).
 //
+// jeffHome is used to look up canonical memory entries in scope (persona,
+// each repo, orchestrator) so the addendum can carry a name/description
+// index, not just the static "how to propose" boilerplate.
+//
 // Idempotent: if the addendum sentinels are already present the block is
 // replaced in place; running twice produces the same file.
-func ApplyToTask(taskDir, persona, taskID string, repos []string, agentKind string) error {
+func ApplyToTask(jeffHome, taskDir, persona, taskID string, repos []string, agentKind string) error {
 	tmpl := addendumTemplate(agentKind)
-	addendum := renderAddendum(tmpl, persona, taskID, repos)
+	index := buildMemoryIndex(jeffHome, persona, repos)
+	addendum := renderAddendum(tmpl, persona, taskID, repos, index)
 	target := contextFilePath(taskDir, agentKind)
 	return applyAddendum(target, addendum)
 }
@@ -47,8 +52,9 @@ func contextFilePath(taskDir, agentKind string) string {
 	return filepath.Join(taskDir, name)
 }
 
-// renderAddendum substitutes the three template variables in the addendum text.
-func renderAddendum(tmpl, persona, taskID string, repos []string) string {
+// renderAddendum substitutes the template variables in the addendum text,
+// including the pre-rendered memory index block.
+func renderAddendum(tmpl, persona, taskID string, repos []string, memoryIndex string) string {
 	reposStr := strings.Join(repos, ", ")
 	if reposStr == "" {
 		reposStr = "(none)"
@@ -57,7 +63,57 @@ func renderAddendum(tmpl, persona, taskID string, repos []string) string {
 	s = strings.ReplaceAll(s, "{{persona}}", persona)
 	s = strings.ReplaceAll(s, "{{task_id}}", taskID)
 	s = strings.ReplaceAll(s, "{{repos}}", reposStr)
+	s = strings.ReplaceAll(s, "{{memory_index}}", memoryIndex)
 	return s
+}
+
+// buildMemoryIndex renders the name/description index grouped by scope:
+// persona, then each repo in scope, then orchestrator (global rules). A
+// scope section is omitted entirely when it has zero canonical entries. If
+// no scope has any entries, the returned string is empty (no "Read full
+// body" pointer to an empty index).
+func buildMemoryIndex(jeffHome, persona string, repos []string) string {
+	var sb strings.Builder
+	any := false
+
+	if persona != "" {
+		if entries, err := ListScope(jeffHome, "persona:"+persona, "accepted"); err == nil && len(entries) > 0 {
+			fmt.Fprintf(&sb, "## Persona memory (%s)\n", persona)
+			writeIndexBullets(&sb, entries)
+			sb.WriteString("\n")
+			any = true
+		}
+	}
+
+	for _, repo := range repos {
+		if entries, err := ListScope(jeffHome, "repo:"+repo, "accepted"); err == nil && len(entries) > 0 {
+			fmt.Fprintf(&sb, "## Repo memory (%s)\n", repo)
+			writeIndexBullets(&sb, entries)
+			sb.WriteString("\n")
+			any = true
+		}
+	}
+
+	if entries, err := ListScope(jeffHome, "orchestrator", "accepted"); err == nil && len(entries) > 0 {
+		sb.WriteString("## Orchestrator memory (global rules)\n")
+		writeIndexBullets(&sb, entries)
+		sb.WriteString("\n")
+		any = true
+	}
+
+	if !any {
+		return ""
+	}
+
+	sb.WriteString("Read full body with `jeff memory show <name>` when the topic is relevant.\n\n")
+	return sb.String()
+}
+
+// writeIndexBullets appends one "`slug` — description" bullet per entry.
+func writeIndexBullets(sb *strings.Builder, entries []Entry) {
+	for _, e := range entries {
+		fmt.Fprintf(sb, "- `%s` — %s\n", e.FM.Name, e.FM.Description)
+	}
 }
 
 // applyAddendum writes addendum into targetPath, replacing any existing

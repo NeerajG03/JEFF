@@ -1,5 +1,6 @@
 <!-- jeff-memory-addendum -->
-## Memory system
+
+{{memory_index}}## Memory system
 
 You have a JEFF-managed memory system. Native CLI memory is disabled in this
 session — JEFF owns the memory surface.

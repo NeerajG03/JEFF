@@ -344,7 +344,7 @@ func TestSendCommandForSessionGeminiRoutesToBuffer(t *testing.T) {
 		}
 	})
 
-	t.Run("claude-uses-send-keys", func(t *testing.T) {
+	t.Run("claude-uses-buffer-too", func(t *testing.T) {
 		calls := withFakeTmux(t)
 
 		if err := sendCommandForSession("jeff:test", "hello", "claude"); err != nil {
@@ -353,21 +353,23 @@ func TestSendCommandForSessionGeminiRoutesToBuffer(t *testing.T) {
 
 		all := calls()
 
-		// Must NOT have paste-buffer (claude path is unchanged).
-		if len(pasteBufferCalls(all)) > 0 {
-			t.Errorf("claude path: must not use paste-buffer; all calls: %v", all)
-		}
-
-		// Must have send-keys -l (literal paste).
-		hasLiteral := false
-		for _, c := range sendKeysCalls(all) {
-			if strings.Contains(c, " -l ") {
-				hasLiteral = true
+		// Must have paste-buffer -p
+		hasPaste := false
+		for _, c := range pasteBufferCalls(all) {
+			if strings.Contains(c, "-p") {
+				hasPaste = true
 				break
 			}
 		}
-		if !hasLiteral {
-			t.Errorf("claude path: expected send-keys -l call; all calls: %v", all)
+		if !hasPaste {
+			t.Errorf("claude path: expected bracketed paste via paste-buffer; all calls: %v", all)
+		}
+
+		// Must NOT have send-keys -l (text must not go through character streaming).
+		for _, c := range sendKeysCalls(all) {
+			if strings.Contains(c, " -l ") {
+				t.Errorf("claude path: must not use send-keys -l, got: %q", c)
+			}
 		}
 	})
 
@@ -418,6 +420,7 @@ func TestDivertInterruptSettleDelay(t *testing.T) {
 // call (message delivered atomically via load-buffer + paste-buffer -p).
 func TestDivertSendKeysSequence(t *testing.T) {
 	// Claude cases — 3 send-keys: C-c, paste -l, Enter. MUST remain unchanged.
+	// Claude cases now use buffer path too (gig-b2c4)
 	claudeCases := []struct {
 		name    string
 		content string
@@ -437,26 +440,29 @@ func TestDivertSendKeysSequence(t *testing.T) {
 			}
 
 			got := sendKeysCalls(calls())
-
-			if len(got) != 3 {
-				t.Fatalf("want 3 send-keys calls (C-c, paste, Enter), got %d: %v", len(got), got)
+			if len(got) != 2 {
+				t.Fatalf("want 2 send-keys calls (C-c, Enter), got %d: %v", len(got), got)
 			}
 			if !strings.Contains(got[0], "C-c") {
 				t.Errorf("first call must be C-c interrupt, got: %q", got[0])
 			}
-			if !strings.Contains(got[1], " -l ") {
-				t.Errorf("second call missing -l flag (paste): %q", got[1])
-			}
-			if !strings.Contains(got[2], "Enter") {
-				t.Errorf("third call missing Enter: %q", got[2])
-			}
-			if strings.Contains(got[2], " -l ") {
-				t.Errorf("third call must not have -l flag: %q", got[2])
+			if !strings.Contains(got[1], "Enter") {
+				t.Errorf("second call missing Enter: %q", got[1])
 			}
 			assertNoSingleCallCombinesTextAndEnter(t, got)
+
+			// verify paste-buffer was called
+			hasPaste := false
+			for _, c := range pasteBufferCalls(calls()) {
+				if strings.Contains(c, "-p") {
+					hasPaste = true
+				}
+			}
+			if !hasPaste {
+				t.Errorf("missing paste-buffer call: %v", calls())
+			}
 		})
 	}
-
 	// Gemini cases (gig-ca9f) — 2 send-keys (C-c, Enter) + 1 paste-buffer.
 	// Text is no longer streamed via send-keys -l; it goes through the
 	// atomic load-buffer + paste-buffer -p path instead.

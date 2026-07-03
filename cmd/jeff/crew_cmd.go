@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -142,6 +143,15 @@ func crewStartCmd() *cobra.Command {
 			prompt := promptOverride
 			if prompt == "" {
 				prompt = crew.DefaultPrompt
+			}
+
+			// Path A: if prompt is too long or contains metacharacters, write to file and substitute.
+			if len(prompt) > 500 || strings.ContainsAny(prompt, "\n\"'\\$") || strings.Contains(prompt, "\x60") {
+				promptFile := filepath.Join(taskDir, "INITIAL-PROMPT.md")
+				if err := os.WriteFile(promptFile, []byte(prompt), 0644); err != nil {
+					return fmt.Errorf("write INITIAL-PROMPT.md: %w", err)
+				}
+				prompt = "Read INITIAL-PROMPT.md at task root and execute it end to end."
 			}
 			provider := jeff.GetProvider(agentTool)
 			var launchCmd string

@@ -23,8 +23,10 @@ import (
 )
 
 // orchestratorSessionRe matches valid orchestrator tmux session names.
-// Covers numeric auto-assigned IDs (jeff-1) and named sessions (jeff-work).
-var orchestratorSessionRe = regexp.MustCompile(`^jeff-[a-z0-9][a-z0-9-]*$`)
+// Covers numeric auto-assigned IDs (jeff-1), named sessions (jeff-work),
+// and mixed-case names (jeff-DM20) — tmux preserves case in session names,
+// so detection must round-trip whatever the user actually created.
+var orchestratorSessionRe = regexp.MustCompile(`^jeff-[a-zA-Z0-9][a-zA-Z0-9-]*$`)
 
 func crewCmd() *cobra.Command {
 	cmd := &cobra.Command{

@@ -16,15 +16,16 @@ func TestOrchestratorSessionRegex(t *testing.T) {
 		"jeff-a",
 		"jeff-abc",
 		"jeff-abc-def",
+		"jeff-Work",  // uppercase preserved by tmux
+		"jeff-WORK",  // all uppercase preserved
+		"jeff-DM20",  // real-world mixed-case name
 	}
 	noMatch := []string{
 		"jeff",
 		"jeff-",
-		"jeff-Work",       // uppercase not allowed
-		"jeff-WORK",       // uppercase not allowed
 		"jeff_work",       // underscore not allowed
 		"jeff-work_thing", // underscore not allowed
-		"jeff--work",      // double dash: second char must be [a-z0-9]
+		"jeff--work",      // double dash: second char must be alphanumeric
 		"notjeff-1",
 		"",
 		"jeff-1 ",         // trailing space

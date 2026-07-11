@@ -23,10 +23,13 @@ import (
 )
 
 // orchestratorSessionRe matches valid orchestrator tmux session names.
-// Covers numeric auto-assigned IDs (jeff-1), named sessions (jeff-work),
-// and mixed-case names (jeff-DM20) — tmux preserves case in session names,
-// so detection must round-trip whatever the user actually created.
-var orchestratorSessionRe = regexp.MustCompile(`^jeff-[a-zA-Z0-9][a-zA-Z0-9-]*$`)
+// Covers the bare "jeff" session, numeric auto-assigned IDs (jeff-1), named
+// sessions (jeff-work), and mixed-case names (jeff-DM20) — tmux preserves case
+// in session names, so detection must round-trip whatever the user created.
+// Accepting bare "jeff" (gig-9c92 Option B) means a plain jeff session no longer
+// degrades to "" and silently falls through to the shared-default worker path;
+// it resolves to "jeff", which is then validated against the orchestrator table.
+var orchestratorSessionRe = regexp.MustCompile(`^jeff(-[a-zA-Z0-9][a-zA-Z0-9-]*)?$`)
 
 func crewCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -182,10 +185,30 @@ func crewStartCmd() *cobra.Command {
 				Prompt:    promptOverride,
 				LaunchCmd: launchCmd,
 			}
-			if orchestratorID != "" {
+			switch {
+			case orchestratorID != "":
+				// Validate the detected/declared orchestrator has a record before
+				// binding the worker to it. A bare "jeff" (or any jeff-* session
+				// with no orchestrator row) resolves here and must fail loud
+				// instead of silently producing an orphan worker (gig-9c92 Option B).
+				if _, gerr := cs.GetOrchestrator(orchestratorID); gerr != nil {
+					return fmt.Errorf(
+						"no orchestrator record for detected session %q — run `jeff orchestrator start` (or `jeff init`) or set JEFF_ORCHESTRATOR_SESSION to a valid orchestrator",
+						orchestratorID,
+					)
+				}
 				// Launch as a tab in the orchestrator's tmux session.
 				sess, err = crew.StartWorkerForOrchestrator(cs, orchestratorID, taskID, taskDir, opts)
-			} else {
+			case crew.InsideJeffManagedSession():
+				// Inside a jeff-managed tmux session but no orchestrator detected:
+				// fail loud rather than falling through to the shared-default
+				// worker path, which strands the worker with an empty
+				// orchestrator_id (the gig-be5c root cause). Kill that path.
+				return fmt.Errorf(
+					"no orchestrator detected while inside a jeff-managed tmux session; run `jeff init` or set JEFF_ORCHESTRATOR_SESSION",
+				)
+			default:
+				// Standalone use outside any jeff-managed tmux session.
 				sess, err = crew.Start(cs, taskID, taskDir, opts)
 			}
 			if err != nil {

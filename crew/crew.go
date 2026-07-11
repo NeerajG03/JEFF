@@ -398,6 +398,29 @@ func (s *Store) GetOrchestrator(id string) (*Orchestrator, error) {
 	return &o, nil
 }
 
+// OrchestratorByPane returns the ID of the running orchestrator bound to the
+// given tmux pane, or "" if none is bound. This is the durable per-pane identity
+// binding (gig-9c92 Option A): because $TMUX_PANE is stable across shell restarts
+// and Claude Code relaunches within the same pane, looking up the orchestrator by
+// pane survives the process churn that broke session-name-based detection.
+func (s *Store) OrchestratorByPane(paneID string) (string, error) {
+	if paneID == "" {
+		return "", nil
+	}
+	var id string
+	err := s.db.QueryRow(
+		`SELECT id FROM orchestrators
+		 WHERE tmux_pane = ? AND status = 'running'
+		 ORDER BY started_at DESC LIMIT 1`, paneID).Scan(&id)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
 // ListOrchestrators returns orchestrators. If activeOnly, filters to status='running'.
 func (s *Store) ListOrchestrators(activeOnly bool) ([]*Orchestrator, error) {
 	query := `SELECT id, tmux_session, tmux_window, tmux_pane, started_at, status FROM orchestrators`

@@ -238,28 +238,80 @@ func crewStartCmd() *cobra.Command {
 	return cmd
 }
 
-// detectOrchestratorID returns the orchestrator session ID for the current
-// process, or "" if it cannot be determined. It checks, in order:
-//  1. JEFF_ORCHESTRATOR_SESSION env var (set by StartOrchestrator via tmux set-environment)
-//  2. tmux query via TMUX_PANE targeting (fallback for older sessions)
-func detectOrchestratorID() string {
-	// Prefer explicit env var — most reliable; no TTY required.
-	if val := os.Getenv("JEFF_ORCHESTRATOR_SESSION"); val != "" {
+// orchestratorDetectDeps injects the ambient dependencies detectOrchestratorID
+// relies on so its resolution order can be unit-tested without a live tmux or DB.
+type orchestratorDetectDeps struct {
+	getenv      func(string) string        // environment lookup
+	paneLookup  func(paneID string) string // persisted pane_id → orchestrator_id binding
+	sessionName func(paneID string) string // current tmux session name for a pane ("" on error)
+}
+
+// detectOrchestratorIDWith is the testable core of detectOrchestratorID.
+// Resolution order, most durable first:
+//  1. JEFF_ORCHESTRATOR_SESSION env var — exported into the orchestrator's pane
+//     shell by StartOrchestrator, so descendants (this process) inherit it directly.
+//  2. pane_id → orchestrator_id binding persisted in the orchestrators table.
+//     Keyed on $TMUX_PANE, it survives shell restarts and Claude Code relaunches
+//     within the same pane (gig-9c92 Option A) — the env var does not.
+//  3. tmux session-name regex fallback for legacy sessions with no persisted binding.
+func detectOrchestratorIDWith(d orchestratorDetectDeps) string {
+	// 1. Explicit env var — most reliable; no TTY required.
+	if val := d.getenv("JEFF_ORCHESTRATOR_SESSION"); val != "" {
 		return val
 	}
-	// Fallback: query tmux, targeting our own pane via TMUX_PANE.
-	if os.Getenv("TMUX") == "" {
+	// Everything below needs to be inside tmux.
+	if d.getenv("TMUX") == "" {
 		return ""
 	}
-	out, err := exec.Command("tmux", "display-message", "-t", os.Getenv("TMUX_PANE"), "-p", "#{session_name}").Output()
-	if err != nil {
-		return ""
+	pane := d.getenv("TMUX_PANE")
+	// 2. Durable persisted binding keyed on the tmux pane.
+	if pane != "" {
+		if id := d.paneLookup(pane); id != "" {
+			return id
+		}
 	}
-	name := strings.TrimSpace(string(out))
+	// 3. Legacy fallback: derive from the tmux session name.
+	name := d.sessionName(pane)
 	if orchestratorSessionRe.MatchString(name) {
 		return name
 	}
 	return ""
+}
+
+// detectOrchestratorID returns the orchestrator session ID for the current
+// process, or "" if it cannot be determined. See detectOrchestratorIDWith for
+// the resolution order.
+func detectOrchestratorID() string {
+	return detectOrchestratorIDWith(orchestratorDetectDeps{
+		getenv:      os.Getenv,
+		paneLookup:  lookupOrchestratorByPane,
+		sessionName: tmuxSessionName,
+	})
+}
+
+// lookupOrchestratorByPane returns the running orchestrator bound to paneID via
+// the persisted pane_id mapping, or "" if none / on any error. Opens the crew
+// store read-only-style (short-lived) so detection stays side-effect free.
+func lookupOrchestratorByPane(paneID string) string {
+	if paneID == "" || cfg == nil {
+		return ""
+	}
+	cs, err := crew.Open(cfg.Home)
+	if err != nil {
+		return ""
+	}
+	defer cs.Close()
+	id, _ := cs.OrchestratorByPane(paneID)
+	return id
+}
+
+// tmuxSessionName returns the tmux session name owning the given pane, or "" on error.
+func tmuxSessionName(paneID string) string {
+	out, err := exec.Command("tmux", "display-message", "-t", paneID, "-p", "#{session_name}").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func crewResumeCmd() *cobra.Command {

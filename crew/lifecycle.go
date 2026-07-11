@@ -140,14 +140,22 @@ func StartOrchestrator(store *Store, jeffHome string, agent string, name string)
 		return nil, err
 	}
 
-	// Set JEFF_HOME on the tmux session so all panes inherit it.
+	// Set JEFF_HOME on the tmux session so panes spawned later inherit it.
 	_ = tmuxRun("set-environment", "-t", id, "JEFF_HOME", jeffHome)
-	// Set JEFF_ORCHESTRATOR_SESSION so workers can reliably detect which
-	// orchestrator they belong to without querying tmux (Fix 2).
-	_ = tmuxRun("set-environment", "-t", id, "JEFF_ORCHESTRATOR_SESSION", id)
 
 	// Ensure the self-updating claude install wins over any system install.
 	prependLocalBin(target)
+
+	// Bind the orchestrator identity into the pane's live shell BEFORE launching
+	// the agent, so the orchestrator's Claude Code process — and every `jeff crew`
+	// subprocess it spawns — inherits JEFF_ORCHESTRATOR_SESSION directly.
+	//
+	// tmux set-environment only affects panes created AFTER the call, so it never
+	// reached this already-running shell (gig-be5c RCA: detection had always
+	// depended on the fragile session-name regex). Exporting into the shell fixes
+	// that; the persisted pane_id → orchestrator_id binding recorded below is the
+	// durable fallback for shell/Claude-Code restarts within this same pane.
+	exportWorkerEnv(target, "JEFF_ORCHESTRATOR_SESSION", id)
 
 	// Launch agent in the orchestrator window.
 	agentCmd := buildAgentCmd("", agent, "", "")

@@ -200,6 +200,17 @@ CREATE INDEX IF NOT EXISTS idx_messages_task
 		_, _ = db.Exec(stmt) // ignore "duplicate column" errors
 	}
 
+	// One-time cleanup (gig-be5c §5 / gig-9c92 Option D): older rows stored an
+	// unsanitized window_name (e.g. "gig-f4e8.2") while the real tmux window is
+	// "gig-f4e8-2" (tmux turns dots into hyphens). Sanitize in place so Stop/Send
+	// targeting resolves. Idempotent — once dots are gone the WHERE clause matches
+	// nothing — and a no-op on empty databases.
+	if _, err := db.Exec(
+		`UPDATE sessions SET window_name = REPLACE(window_name, '.', '-') WHERE window_name LIKE '%.%'`,
+	); err != nil {
+		return fmt.Errorf("sanitize dotted window_name rows: %w", err)
+	}
+
 	return nil
 }
 

@@ -263,8 +263,11 @@ func Start(store *Store, taskID, taskDir string, opts StartOpts) (*Session, erro
 		return nil, fmt.Errorf("ensure tmux session: %w", err)
 	}
 
-	// Use task ID as window name (short, unique).
-	windowName := taskID
+	// Use task ID as window name (short, unique). Sanitize dots → hyphens so the
+	// stored window_name matches the real tmux window (tmux rejects dots in
+	// target specs — see gig-be5c RCA §5). StartWorkerForOrchestrator already
+	// does this; keep the two paths symmetric.
+	windowName := SanitizeWindowName(taskID)
 	target, err := CreateWindow(windowName, taskDir)
 	if err != nil {
 		return nil, err
@@ -335,7 +338,7 @@ func Stop(store *Store, taskID string) error {
 		return fmt.Errorf("no worker for %s — nothing to stop", taskID)
 	}
 
-	target := sess.TmuxSession + ":" + sess.WindowName
+	target := SessionTarget(sess.TmuxSession, sess.WindowName)
 
 	// Send interrupt to stop the agent.
 	if HasWindowInSession(sess.TmuxSession, sess.WindowName) {
@@ -476,7 +479,7 @@ func Send(store *Store, taskID string, msgType MessageType, content string) (*Me
 		return nil, fmt.Errorf("get session: %w", err)
 	}
 
-	target := sess.TmuxSession + ":" + sess.WindowName
+	target := SessionTarget(sess.TmuxSession, sess.WindowName)
 
 	msg := &Message{
 		ID:        generateMsgID(),
@@ -557,7 +560,7 @@ func SignalOrchestrator(store *Store, taskID, message string) error {
 
 	target := orch.TmuxPane
 	if target == "" {
-		target = orch.TmuxSession + ":" + orch.TmuxWindow
+		target = SessionTarget(orch.TmuxSession, orch.TmuxWindow)
 	}
 
 	formatted := fmt.Sprintf("[Worker %s]: %s", taskID, message)
@@ -638,7 +641,7 @@ func Ask(store *Store, taskID, content string) (*Message, error) {
 	// Deliver to orchestrator pane. Use pane ID if available, else session:window.
 	target := orch.TmuxPane
 	if target == "" {
-		target = orch.TmuxSession + ":" + orch.TmuxWindow
+		target = SessionTarget(orch.TmuxSession, orch.TmuxWindow)
 	}
 
 	// Format: "[worker <task-id>]: <content>"

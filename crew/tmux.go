@@ -156,6 +156,23 @@ func InsideTmux() bool {
 	return os.Getenv("TMUX") != ""
 }
 
+// InsideJeffManagedSession reports whether the current process is running inside
+// a jeff-managed tmux session — the shared default "jeff" session or an
+// orchestrator "jeff-<suffix>" session. Callers use this to fail loud when
+// orchestrator detection comes back empty inside such a session, rather than
+// silently spawning a standalone worker (gig-9c92 Option B).
+func InsideJeffManagedSession() bool {
+	if os.Getenv("TMUX") == "" {
+		return false
+	}
+	out, err := tmuxOutput("display-message", "-t", os.Getenv("TMUX_PANE"), "-p", "#{session_name}")
+	if err != nil {
+		return false
+	}
+	name := strings.TrimSpace(out)
+	return name == TmuxSessionName || strings.HasPrefix(name, TmuxSessionName+"-")
+}
+
 // KillWindow kills a specific tmux window.
 func KillWindow(target string) error {
 	return tmuxRun("kill-window", "-t", target)

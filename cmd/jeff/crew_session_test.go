@@ -19,9 +19,9 @@ func TestOrchestratorSessionRegex(t *testing.T) {
 		"jeff-Work",  // uppercase preserved by tmux
 		"jeff-WORK",  // all uppercase preserved
 		"jeff-DM20",  // real-world mixed-case name
+		"jeff",       // bare jeff session — accepted since gig-9c92 Option B
 	}
 	noMatch := []string{
-		"jeff",
 		"jeff-",
 		"jeff_work",       // underscore not allowed
 		"jeff-work_thing", // underscore not allowed

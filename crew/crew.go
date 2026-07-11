@@ -200,6 +200,17 @@ CREATE INDEX IF NOT EXISTS idx_messages_task
 		_, _ = db.Exec(stmt) // ignore "duplicate column" errors
 	}
 
+	// One-time cleanup (gig-be5c §5 / gig-9c92 Option D): older rows stored an
+	// unsanitized window_name (e.g. "gig-f4e8.2") while the real tmux window is
+	// "gig-f4e8-2" (tmux turns dots into hyphens). Sanitize in place so Stop/Send
+	// targeting resolves. Idempotent — once dots are gone the WHERE clause matches
+	// nothing — and a no-op on empty databases.
+	if _, err := db.Exec(
+		`UPDATE sessions SET window_name = REPLACE(window_name, '.', '-') WHERE window_name LIKE '%.%'`,
+	); err != nil {
+		return fmt.Errorf("sanitize dotted window_name rows: %w", err)
+	}
+
 	return nil
 }
 
@@ -385,6 +396,29 @@ func (s *Store) GetOrchestrator(id string) (*Orchestrator, error) {
 	}
 	o.StartedAt = parseTime(startedAt)
 	return &o, nil
+}
+
+// OrchestratorByPane returns the ID of the running orchestrator bound to the
+// given tmux pane, or "" if none is bound. This is the durable per-pane identity
+// binding (gig-9c92 Option A): because $TMUX_PANE is stable across shell restarts
+// and Claude Code relaunches within the same pane, looking up the orchestrator by
+// pane survives the process churn that broke session-name-based detection.
+func (s *Store) OrchestratorByPane(paneID string) (string, error) {
+	if paneID == "" {
+		return "", nil
+	}
+	var id string
+	err := s.db.QueryRow(
+		`SELECT id FROM orchestrators
+		 WHERE tmux_pane = ? AND status = 'running'
+		 ORDER BY started_at DESC LIMIT 1`, paneID).Scan(&id)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return id, nil
 }
 
 // ListOrchestrators returns orchestrators. If activeOnly, filters to status='running'.

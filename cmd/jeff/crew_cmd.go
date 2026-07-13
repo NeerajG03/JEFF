@@ -4,9 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"os/exec"
-	"regexp"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/NeerajG03/JEFF/crew"
 	jeffembed "github.com/NeerajG03/JEFF/embed"
 	"github.com/NeerajG03/JEFF/hooks"
+	"github.com/NeerajG03/JEFF/identity"
 	"github.com/NeerajG03/JEFF/memory"
 	"github.com/NeerajG03/JEFF/persona"
 	"github.com/NeerajG03/JEFF/skill"
@@ -21,15 +21,6 @@ import (
 	"github.com/NeerajG03/gig"
 	"github.com/spf13/cobra"
 )
-
-// orchestratorSessionRe matches valid orchestrator tmux session names.
-// Covers the bare "jeff" session, numeric auto-assigned IDs (jeff-1), named
-// sessions (jeff-work), and mixed-case names (jeff-DM20) — tmux preserves case
-// in session names, so detection must round-trip whatever the user created.
-// Accepting bare "jeff" (gig-9c92 Option B) means a plain jeff session no longer
-// degrades to "" and silently falls through to the shared-default worker path;
-// it resolves to "jeff", which is then validated against the orchestrator table.
-var orchestratorSessionRe = regexp.MustCompile(`^jeff(-[a-zA-Z0-9][a-zA-Z0-9-]*)?$`)
 
 func crewCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -92,12 +83,19 @@ func crewStartCmd() *cobra.Command {
 			}
 			promptOverride = inputPrompt // set it for the rest of the flow
 
-			// Auto-detect orchestrator from tmux session name if not set.
-			// Must happen before pickupTask so hooks get the orchestrator ID.
+			// Resolve the orchestrator identity from the durable identity file
+			// (or env override) if not explicitly passed. Must happen before
+			// pickupTask so hooks get the orchestrator ID. A malformed identity
+			// file is a hard error here — we must never silently fall through to
+			// a shared default with an empty orchestrator_id.
 			if orchestratorID == "" {
-				orchestratorID = detectOrchestratorID()
+				id, source, err := detectOrchestratorID()
+				if err != nil {
+					return err
+				}
+				orchestratorID = id
 				if orchestratorID != "" {
-					fmt.Fprintf(os.Stderr, "Auto-detected orchestrator: %s\n", orchestratorID)
+					fmt.Fprintf(os.Stderr, "Orchestrator identity: %s (via %s)\n", orchestratorID, source)
 				}
 			}
 
@@ -131,6 +129,24 @@ func crewStartCmd() *cobra.Command {
 				return fmt.Errorf("open crew store: %w", err)
 			}
 			defer cs.Close()
+
+			// Fail loud on a missing identity BEFORE claiming the task or
+			// creating a workspace. This kills the gig-be5c silent-fallthrough
+			// class: a worker must never be started with an empty orchestrator_id.
+			if orchestratorID == "" {
+				return fmt.Errorf(
+					"no orchestrator identity found. Run `jeff orchestrator init` in the project directory, or set JEFF_ORCHESTRATOR_ID. See `jeff orchestrator init --help`.",
+				)
+			}
+			// The identity must have a registered orchestrator record so worker
+			// scoping and signalling resolve. `jeff orchestrator init` registers
+			// it; a stale/unknown id fails loud rather than orphaning the worker.
+			if _, gerr := cs.GetOrchestrator(orchestratorID); gerr != nil {
+				return fmt.Errorf(
+					"orchestrator identity %q has no registered record — run `jeff orchestrator init` here to register it, or set JEFF_ORCHESTRATOR_ID to a registered orchestrator",
+					orchestratorID,
+				)
+			}
 
 			// Pre-flight: refuse to start if DB↔tmux state has drifted.
 			if err := crew.PreflightStart(cs, taskID); err != nil {
@@ -185,32 +201,11 @@ func crewStartCmd() *cobra.Command {
 				Prompt:    promptOverride,
 				LaunchCmd: launchCmd,
 			}
-			switch {
-			case orchestratorID != "":
-				// Validate the detected/declared orchestrator has a record before
-				// binding the worker to it. A bare "jeff" (or any jeff-* session
-				// with no orchestrator row) resolves here and must fail loud
-				// instead of silently producing an orphan worker (gig-9c92 Option B).
-				if _, gerr := cs.GetOrchestrator(orchestratorID); gerr != nil {
-					return fmt.Errorf(
-						"no orchestrator record for detected session %q — run `jeff orchestrator start` (or `jeff init`) or set JEFF_ORCHESTRATOR_SESSION to a valid orchestrator",
-						orchestratorID,
-					)
-				}
-				// Launch as a tab in the orchestrator's tmux session.
-				sess, err = crew.StartWorkerForOrchestrator(cs, orchestratorID, taskID, taskDir, opts)
-			case crew.InsideJeffManagedSession():
-				// Inside a jeff-managed tmux session but no orchestrator detected:
-				// fail loud rather than falling through to the shared-default
-				// worker path, which strands the worker with an empty
-				// orchestrator_id (the gig-be5c root cause). Kill that path.
-				return fmt.Errorf(
-					"no orchestrator detected while inside a jeff-managed tmux session; run `jeff init` or set JEFF_ORCHESTRATOR_SESSION",
-				)
-			default:
-				// Standalone use outside any jeff-managed tmux session.
-				sess, err = crew.Start(cs, taskID, taskDir, opts)
-			}
+			// Single worker-start path: the identity was validated above, so the
+			// worker always binds to a non-empty orchestrator_id. The worker's
+			// tmux window is hosted in the orchestrator's session when it has one,
+			// or the shared "jeff" session otherwise.
+			sess, err = crew.StartWorkerForOrchestrator(cs, orchestratorID, taskID, taskDir, opts)
 			if err != nil {
 				return err
 			}
@@ -238,75 +233,25 @@ func crewStartCmd() *cobra.Command {
 	return cmd
 }
 
-// orchestratorDetectDeps injects the ambient dependencies detectOrchestratorID
-// relies on so its resolution order can be unit-tested without a live tmux or DB.
-type orchestratorDetectDeps struct {
-	getenv      func(string) string        // environment lookup
-	paneLookup  func(paneID string) string // persisted pane_id → orchestrator_id binding
-	sessionName func(paneID string) string // current tmux session name for a pane ("" on error)
+// detectOrchestratorID resolves the durable orchestrator identity for the
+// current process via the identity file chain (env override → cwd file → parent
+// walk → global default). It is a thin wrapper over identity.Detect.
+//
+// Returns an empty id with a nil error when no identity is configured, so
+// callers decide whether that is fatal (crew start) or tolerable (crew list
+// --all). A non-nil error means a genuine I/O failure or a malformed identity
+// file — those must propagate and fail loud, never degrade to a shared default.
+func detectOrchestratorID() (string, identity.Source, error) {
+	return identity.Detect()
 }
 
-// detectOrchestratorIDWith is the testable core of detectOrchestratorID.
-// Resolution order, most durable first:
-//  1. JEFF_ORCHESTRATOR_SESSION env var — exported into the orchestrator's pane
-//     shell by StartOrchestrator, so descendants (this process) inherit it directly.
-//  2. pane_id → orchestrator_id binding persisted in the orchestrators table.
-//     Keyed on $TMUX_PANE, it survives shell restarts and Claude Code relaunches
-//     within the same pane (gig-9c92 Option A) — the env var does not.
-//  3. tmux session-name regex fallback for legacy sessions with no persisted binding.
-func detectOrchestratorIDWith(d orchestratorDetectDeps) string {
-	// 1. Explicit env var — most reliable; no TTY required.
-	if val := d.getenv("JEFF_ORCHESTRATOR_SESSION"); val != "" {
-		return val
-	}
-	// Everything below needs to be inside tmux.
-	if d.getenv("TMUX") == "" {
+// currentTmuxSessionName returns the tmux session name owning the given pane, or
+// "" on error / outside tmux. Used by `jeff orchestrator init` to name the
+// identity and detect an adoptable session.
+func currentTmuxSessionName(paneID string) string {
+	if paneID == "" {
 		return ""
 	}
-	pane := d.getenv("TMUX_PANE")
-	// 2. Durable persisted binding keyed on the tmux pane.
-	if pane != "" {
-		if id := d.paneLookup(pane); id != "" {
-			return id
-		}
-	}
-	// 3. Legacy fallback: derive from the tmux session name.
-	name := d.sessionName(pane)
-	if orchestratorSessionRe.MatchString(name) {
-		return name
-	}
-	return ""
-}
-
-// detectOrchestratorID returns the orchestrator session ID for the current
-// process, or "" if it cannot be determined. See detectOrchestratorIDWith for
-// the resolution order.
-func detectOrchestratorID() string {
-	return detectOrchestratorIDWith(orchestratorDetectDeps{
-		getenv:      os.Getenv,
-		paneLookup:  lookupOrchestratorByPane,
-		sessionName: tmuxSessionName,
-	})
-}
-
-// lookupOrchestratorByPane returns the running orchestrator bound to paneID via
-// the persisted pane_id mapping, or "" if none / on any error. Opens the crew
-// store read-only-style (short-lived) so detection stays side-effect free.
-func lookupOrchestratorByPane(paneID string) string {
-	if paneID == "" || cfg == nil {
-		return ""
-	}
-	cs, err := crew.Open(cfg.Home)
-	if err != nil {
-		return ""
-	}
-	defer cs.Close()
-	id, _ := cs.OrchestratorByPane(paneID)
-	return id
-}
-
-// tmuxSessionName returns the tmux session name owning the given pane, or "" on error.
-func tmuxSessionName(paneID string) string {
 	out, err := exec.Command("tmux", "display-message", "-t", paneID, "-p", "#{session_name}").Output()
 	if err != nil {
 		return ""
@@ -358,8 +303,13 @@ func crewResumeCmd() *cobra.Command {
 
 			}
 
-			// Prefer current orchestrator, fall back to the one from original session.
-			if detected := detectOrchestratorID(); detected != "" {
+			// Prefer the current identity, fall back to the one stored on the
+			// original session. A malformed identity file fails loud.
+			detected, _, derr := detectOrchestratorID()
+			if derr != nil {
+				return derr
+			}
+			if detected != "" {
 				orchestratorID = detected
 			}
 
@@ -386,13 +336,16 @@ func crewResumeCmd() *cobra.Command {
 				LaunchCmd:       launchCmd,
 			}
 
-			var sess *crew.Session
-			if orchestratorID != "" {
-				fmt.Fprintf(os.Stderr, "Auto-detected orchestrator: %s\n", orchestratorID)
-				sess, err = crew.StartWorkerForOrchestrator(cs, orchestratorID, taskID, td.Path, opts)
-			} else {
-				sess, err = crew.Start(cs, taskID, td.Path, opts)
+			// Resume requires an orchestrator identity just like start: no
+			// silent-fallthrough path remains that would rebind the worker with
+			// an empty orchestrator_id.
+			if orchestratorID == "" {
+				return fmt.Errorf(
+					"no orchestrator identity found for resume. Run `jeff orchestrator init` in the project directory, or set JEFF_ORCHESTRATOR_ID.",
+				)
 			}
+			fmt.Fprintf(os.Stderr, "Orchestrator identity: %s\n", orchestratorID)
+			sess, err := crew.StartWorkerForOrchestrator(cs, orchestratorID, taskID, td.Path, opts)
 			if err != nil {
 				return err
 			}
@@ -456,8 +409,11 @@ func crewListCmd() *cobra.Command {
 
 			// --all: no orchestrator filter, show all statuses.
 			// --orchestrator <id>: filter to specific orchestrator.
-			// default: filter to auto-detected orchestrator (if any), active only.
-			orchestratorFilter := resolveCrewListOrchestratorFilter(showAll, orchestratorFlag)
+			// default: filter to the current identity (if any), active only.
+			orchestratorFilter, ferr := resolveCrewListOrchestratorFilter(showAll, orchestratorFlag)
+			if ferr != nil {
+				return ferr
+			}
 			activeOnly := !showAll
 			sessions, err := cs.ListSessions(activeOnly, orchestratorFilter)
 			if err != nil {
@@ -524,17 +480,22 @@ func crewListCmd() *cobra.Command {
 }
 
 // resolveCrewListOrchestratorFilter returns the orchestrator ID to filter by.
-// Returns "" (no filter) when showAll is true.
-// Returns orchestratorFlag when explicitly provided.
-// Falls back to auto-detecting the current orchestrator via env var or tmux.
-func resolveCrewListOrchestratorFilter(showAll bool, orchestratorFlag string) string {
+// Returns "" (no filter) when showAll is true or when no identity is configured.
+// Returns orchestratorFlag when explicitly provided. Otherwise falls back to the
+// current durable identity. A malformed identity file surfaces as an error so
+// `crew list` fails loud (use --all to bypass identity resolution entirely).
+func resolveCrewListOrchestratorFilter(showAll bool, orchestratorFlag string) (string, error) {
 	if showAll {
-		return ""
+		return "", nil
 	}
 	if orchestratorFlag != "" {
-		return orchestratorFlag
+		return orchestratorFlag, nil
 	}
-	return detectOrchestratorID()
+	id, _, err := detectOrchestratorID()
+	if err != nil {
+		return "", err
+	}
+	return id, nil
 }
 
 func crewStatusCmd() *cobra.Command {

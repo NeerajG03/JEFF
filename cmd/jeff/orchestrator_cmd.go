@@ -1,11 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/NeerajG03/JEFF/crew"
+	"github.com/NeerajG03/JEFF/identity"
 	"github.com/spf13/cobra"
 )
 
@@ -17,6 +22,7 @@ func orchestratorCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(
+		orchestratorInitCmd(),
 		orchestratorStartCmd(),
 		orchestratorListCmd(),
 		orchestratorInfoCmd(),
@@ -25,6 +31,175 @@ func orchestratorCmd() *cobra.Command {
 	)
 
 	return cmd
+}
+
+func orchestratorInitCmd() *cobra.Command {
+	var name string
+	var global bool
+	var force bool
+
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "Create a durable orchestrator identity for this project (or machine)",
+		Long: `Write a durable orchestrator identity file so this orchestrator has a stable
+id that survives shell restarts and works outside tmux (Cursor, VS Code, a plain
+terminal, CI). Workers started afterwards bind to this identity.
+
+  jeff orchestrator init            write .jeff/orchestrator.json in the current directory
+  jeff orchestrator init --name X   set a human-readable name (default: tmux session name or basename of cwd)
+  jeff orchestrator init --global   write the machine-wide default (~/.jeff/default-orchestrator.json)
+  jeff orchestrator init --force    overwrite an existing identity file
+
+If run inside a tmux pane that hosts an existing jeff orchestrator, you are
+offered the chance to adopt its id so already-bound workers keep their
+orchestrator.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
+
+			// Resolve where the identity file lives. The global default lives
+			// under the OS home (~/.jeff/default-orchestrator.json) — the same
+			// location identity.Detect consults — NOT under JEFF_HOME, which may
+			// differ from $HOME.
+			var dir, path string
+			if global {
+				osHome, err := os.UserHomeDir()
+				if err != nil {
+					return fmt.Errorf("resolve home: %w", err)
+				}
+				dir = osHome
+				path = identity.GlobalFilePath(osHome)
+			} else {
+				wd, err := os.Getwd()
+				if err != nil {
+					return fmt.Errorf("get cwd: %w", err)
+				}
+				dir = wd
+				path = identity.ProjectFilePath(wd)
+			}
+
+			// Refuse on an existing file unless --force (write is atomic below,
+			// so an interrupted overwrite never corrupts the existing file).
+			if !force {
+				if _, err := os.Stat(path); err == nil {
+					return fmt.Errorf("identity already exists at %s\nRun `jeff orchestrator init --force` to overwrite", path)
+				}
+			}
+
+			// Tmux binding is an optional enhancement. Record the pane only for a
+			// per-project identity created inside tmux; the global default stays
+			// host-agnostic (no pane).
+			tmuxPane, tmuxSession := "", ""
+			if !global && os.Getenv("TMUX") != "" {
+				tmuxPane = os.Getenv("TMUX_PANE")
+				tmuxSession = currentTmuxSessionName(tmuxPane)
+			}
+
+			// Default name: tmux session name (in tmux) else basename of dir.
+			// The global default is host-wide, so it gets a fixed clear name.
+			resolvedName := name
+			if resolvedName == "" {
+				switch {
+				case global:
+					resolvedName = "default"
+				case tmuxSession != "":
+					resolvedName = tmuxSession
+				default:
+					resolvedName = filepath.Base(dir)
+				}
+			}
+
+			cs, err := crew.Open(cfg.Home)
+			if err != nil {
+				return fmt.Errorf("open crew store: %w", err)
+			}
+			defer cs.Close()
+
+			// Adopt flow: if this pane/session already hosts a jeff orchestrator,
+			// offer to reuse its id so workers already bound to it keep their
+			// orchestrator (continuity for running orchestrators).
+			adoptID := ""
+			if !global && tmuxPane != "" {
+				if cand := findAdoptableOrchestrator(cs, tmuxPane, tmuxSession); cand != nil {
+					if promptAdopt(cmd, cand.ID) {
+						adoptID = cand.ID
+					}
+				}
+			}
+
+			id := identity.Generate(identity.GenerateOpts{
+				ID:       adoptID,
+				Name:     resolvedName,
+				Dir:      dir,
+				TmuxPane: tmuxPane,
+			})
+			if err := identity.Write(path, id); err != nil {
+				return err
+			}
+
+			// Bridge: ensure an orchestrators DB row exists for this identity so
+			// worker start / scoping / signalling resolve. The identity itself
+			// lives on disk; this row is only the DB-side handle. When adopting,
+			// the row already exists — don't clobber its tmux binding.
+			if adoptID == "" {
+				orch := &crew.Orchestrator{
+					ID:          id.ID,
+					TmuxSession: "", // durable identity: workers host in the shared session
+					TmuxWindow:  "",
+					TmuxPane:    tmuxPane, // enables direct notification routing when set
+					StartedAt:   time.Now().UTC(),
+					Status:      "running",
+				}
+				if err := cs.PutOrchestrator(orch); err != nil {
+					return fmt.Errorf("register orchestrator identity: %w", err)
+				}
+			}
+
+			fmt.Printf("Wrote %s\n", path)
+			fmt.Printf("  id:   %s\n", id.ID)
+			fmt.Printf("  name: %s\n", id.Name)
+			if id.TmuxPane != "" {
+				fmt.Printf("  tmux_pane: %s\n", id.TmuxPane)
+			}
+			if adoptID != "" {
+				fmt.Printf("  adopted existing orchestrator %s\n", adoptID)
+			}
+			fmt.Fprintln(os.Stderr, "Workers started here now bind to this orchestrator.")
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&name, "name", "", "human-readable name (default: tmux session name or basename of cwd)")
+	cmd.Flags().BoolVar(&global, "global", false, "write the machine-wide default (~/.jeff/default-orchestrator.json)")
+	cmd.Flags().BoolVar(&force, "force", false, "overwrite an existing identity file")
+	return cmd
+}
+
+// findAdoptableOrchestrator returns a running orchestrator that this tmux
+// pane/session already hosts, or nil. It first tries the durable pane binding,
+// then a session-name match (jeff orchestrator sessions are named after their id).
+func findAdoptableOrchestrator(cs *crew.Store, tmuxPane, tmuxSession string) *crew.Orchestrator {
+	if id, _ := cs.OrchestratorByPane(tmuxPane); id != "" {
+		if o, err := cs.GetOrchestrator(id); err == nil {
+			return o
+		}
+	}
+	if tmuxSession != "" {
+		if o, err := cs.GetOrchestrator(tmuxSession); err == nil && o.Status == "running" {
+			return o
+		}
+	}
+	return nil
+}
+
+// promptAdopt asks the user whether to adopt an existing orchestrator id.
+// Defaults to yes (empty input). Non-y answers decline.
+func promptAdopt(cmd *cobra.Command, orchID string) bool {
+	fmt.Fprintf(cmd.OutOrStdout(), "adopt existing tmux orchestrator %s for this project? [Y/n] ", orchID)
+	reader := bufio.NewReader(cmd.InOrStdin())
+	line, _ := reader.ReadString('\n')
+	answer := strings.ToLower(strings.TrimSpace(line))
+	return answer == "" || answer == "y" || answer == "yes"
 }
 
 func orchestratorStartCmd() *cobra.Command {
@@ -120,10 +295,14 @@ func orchestratorInfoCmd() *cobra.Command {
 			if len(args) > 0 {
 				orchID = args[0]
 			} else {
-				orchID = detectOrchestratorID()
+				id, _, derr := detectOrchestratorID()
+				if derr != nil {
+					return derr
+				}
+				orchID = id
 			}
 			if orchID == "" {
-				return fmt.Errorf("no orchestrator specified and none detected from current session")
+				return fmt.Errorf("no orchestrator specified and no identity found (run `jeff orchestrator init`)")
 			}
 
 			orch, err := cs.GetOrchestrator(orchID)

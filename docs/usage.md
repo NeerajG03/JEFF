@@ -250,11 +250,40 @@ Uses the IDE configured via `jeff config ide`.
 
 Run multiple AI agents in parallel, each in its own tmux window with dedicated task workspace.
 
-### Start an orchestrator
+### Establish an orchestrator identity (required once per project)
+
+Every worker binds to an **orchestrator identity** — a stable id that scopes
+`crew list`, routes stop-notifications and worker→orchestrator asks, and drives
+stall detection. Create one per project (or a machine-wide default) before
+starting workers:
+
+```bash
+jeff orchestrator init                  # writes .jeff/orchestrator.json in the current dir
+jeff orchestrator init --name jeff-DM20 # override the human-readable name
+jeff orchestrator init --global         # machine-wide default (~/.jeff/default-orchestrator.json)
+jeff orchestrator init --force          # overwrite an existing identity file
+```
+
+The identity is resolved, in order, from: `$JEFF_ORCHESTRATOR_ID` → `.jeff/orchestrator.json`
+in the current dir → the same file in a parent dir (walking up to `$HOME`) → the
+global default. This is decoupled from tmux, so it works in Cursor, VS Code, a
+plain terminal, or CI. `jeff crew start` **fails loud** if no identity is found
+rather than silently stranding workers.
+
+If you run `jeff orchestrator init` inside a tmux pane that already hosts a
+`jeff orchestrator start` session, it offers to adopt that orchestrator's id so
+already-running workers keep their binding.
+
+### Start an orchestrator (optional tmux enhancement)
 
 ```bash
 jeff orchestrator start --name work     # creates tmux session jeff-work
 ```
+
+When the orchestrator runs in its own tmux session (or the identity records a
+`tmux_pane`), workers signal it via direct pane notifications. Without a tmux
+binding, workers still record state to the DB and the orchestrator picks it up
+on its next `jeff crew events` poll.
 
 ### Launch workers
 

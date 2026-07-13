@@ -9,21 +9,30 @@ import (
 	"time"
 )
 
-// TestStartSanitizesWindowName verifies crew.Start stores a window_name with
-// dots replaced by hyphens, so the DB row matches the real tmux window and
-// SessionTarget() builds a resolvable "session:window" target. Regression for
-// the gig-be5c §5 dot bug on the default (non-orchestrated) path.
+// TestStartSanitizesWindowName verifies the worker start path stores a
+// window_name with dots replaced by hyphens, so the DB row matches the real tmux
+// window and SessionTarget() builds a resolvable "session:window" target.
+// Regression for the gig-be5c §5 dot bug. Exercises the non-tmux durable
+// identity path (orchestrator with empty TmuxSession → worker hosted in the
+// shared "jeff" session).
 func TestStartSanitizesWindowName(t *testing.T) {
 	withFakeTmux(t)
 	store := tempStore(t)
 
-	// LaunchCmd set so Start skips the 3s sleep + initial-prompt path.
-	sess, err := Start(store, "gig-f4e8.2", "/tmp/task", StartOpts{
+	// Durable identity: registered orchestrator with no live tmux session.
+	runningOrchestrator(t, store, "orch-durable", "", "running")
+
+	// LaunchCmd set so start skips the 3s sleep + initial-prompt path.
+	sess, err := StartWorkerForOrchestrator(store, "orch-durable", "gig-f4e8.2", "/tmp/task", StartOpts{
 		Agent:     "claude",
 		LaunchCmd: "claude --dangerously-skip-permissions",
 	})
 	if err != nil {
-		t.Fatalf("Start: %v", err)
+		t.Fatalf("StartWorkerForOrchestrator: %v", err)
+	}
+
+	if sess.OrchestratorID != "orch-durable" {
+		t.Errorf("orchestrator_id = %q, want orch-durable (must never be empty)", sess.OrchestratorID)
 	}
 
 	if strings.Contains(sess.WindowName, ".") {

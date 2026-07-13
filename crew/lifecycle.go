@@ -182,8 +182,23 @@ func StartOrchestrator(store *Store, jeffHome string, agent string, name string)
 	return orch, nil
 }
 
-// StartWorkerForOrchestrator creates a tmux window in the orchestrator's session
-// for a worker, launches the agent, and records the session with orchestrator_id set.
+// StartWorkerForOrchestrator launches a worker agent bound to orchestratorID and
+// records the session with a non-empty orchestrator_id. This is the ONLY worker
+// start path — the former shared-default crew.Start (which hard-coded an empty
+// orchestrator_id) was deleted so no code path can strand a worker without an
+// orchestrator (the gig-be5c silent-fallthrough class).
+//
+// Where the worker's tmux window is hosted depends on whether the orchestrator
+// is itself in tmux:
+//   - Orchestrator running in its own tmux session (`jeff orchestrator start`, or
+//     an adopted session): the worker is a tab in that session, so the
+//     orchestrator sees it alongside its other workers and pane notifications
+//     route directly.
+//   - Durable identity with no live tmux session (Cursor, VS Code, plain
+//     terminal, CI — the reason this package exists): the worker is hosted in the
+//     shared "jeff" session instead. It still binds to orchestrator_id for
+//     scoping and DB-backed signalling; real-time pane notifications simply
+//     aren't available and delivery falls back to the events poll.
 func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir string, opts StartOpts) (*Session, error) {
 	orch, err := store.GetOrchestrator(orchestratorID)
 	if err != nil {
@@ -195,7 +210,20 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 	}
 
 	windowName := SanitizeWindowName(taskID)
-	target, err := CreateWindowInSession(orch.TmuxSession, windowName, taskDir)
+
+	// Pick the tmux session that will host the worker window.
+	hostSession := orch.TmuxSession
+	var target string
+	if hostSession != "" && HasSession(hostSession) {
+		target, err = CreateWindowInSession(hostSession, windowName, taskDir)
+	} else {
+		// No live orchestrator session — host in the shared "jeff" session.
+		if err = EnsureSession(); err != nil {
+			return nil, fmt.Errorf("ensure tmux session: %w", err)
+		}
+		hostSession = TmuxSessionName
+		target, err = CreateWindow(windowName, taskDir)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +238,7 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 	now := time.Now().UTC()
 	sess := &Session{
 		TaskID:         taskID,
-		TmuxSession:    orch.TmuxSession,
+		TmuxSession:    hostSession,
 		WindowName:     windowName,
 		TaskDir:        taskDir,
 		Persona:        opts.Persona,
@@ -255,85 +283,6 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 	paneID, _ := PaneID(target)
 	sess.PID = pid
 	sess.TmuxPane = paneID
-	_ = store.PutSession(sess)
-
-	return sess, nil
-}
-
-// Start creates a tmux window for a task and launches the agent.
-// The caller is responsible for running pickup (workspace setup) beforehand.
-// Start only handles tmux window creation + agent launch + session recording.
-func Start(store *Store, taskID, taskDir string, opts StartOpts) (*Session, error) {
-	if err := EnsureTmux(); err != nil {
-		return nil, err
-	}
-	if err := EnsureSession(); err != nil {
-		return nil, fmt.Errorf("ensure tmux session: %w", err)
-	}
-
-	// Use task ID as window name (short, unique). Sanitize dots → hyphens so the
-	// stored window_name matches the real tmux window (tmux rejects dots in
-	// target specs — see gig-be5c RCA §5). StartWorkerForOrchestrator already
-	// does this; keep the two paths symmetric.
-	windowName := SanitizeWindowName(taskID)
-	target, err := CreateWindow(windowName, taskDir)
-	if err != nil {
-		return nil, err
-	}
-
-	// Export worker-specific env vars into the shell so subprocesses
-	// (e.g. "jeff memory propose") route to the correct persona dir.
-	exportWorkerEnv(target, "JEFF_PERSONA", opts.Persona)
-	exportWorkerEnv(target, "JEFF_TASK_ID", taskID)
-
-	// Record session BEFORE launching agent so the SessionStart hook
-	// (which captures session_id) can find the row in the DB.
-	now := time.Now().UTC()
-	sess := &Session{
-		TaskID:      taskID,
-		TmuxSession: TmuxSessionName,
-		WindowName:  windowName,
-		TaskDir:     taskDir,
-		Persona:     opts.Persona,
-		Agent:       opts.Agent,
-		Model:       opts.Model,
-		Repos:       opts.Repos,
-		Status:      "running",
-		StartedAt:   now,
-		LastSeen:    now,
-	}
-	if err := store.PutSession(sess); err != nil {
-		KillWindow(target)
-		return nil, fmt.Errorf("record session: %w", err)
-	}
-
-	// Ensure the self-updating claude install wins over any system install.
-	prependLocalBin(target)
-
-	// Launch agent.
-	agentCmd := buildAgentCmd(opts.LaunchCmd, opts.Agent, opts.Model, opts.ResumeSessionID)
-	if err := SendCommand(target, agentCmd); err != nil {
-		KillWindow(target)
-		return nil, fmt.Errorf("launch agent: %w", err)
-	}
-
-	// If LaunchCmd includes an inline prompt, the agent starts working immediately.
-	// Only fall back to sleep+send for agents without inline prompt support.
-	if opts.LaunchCmd == "" && opts.ResumeSessionID == "" {
-		prompt := opts.Prompt
-		if prompt == "" {
-			prompt = DefaultPrompt
-		}
-		time.Sleep(3 * time.Second)
-		if err := sendCommandForSession(target, prompt, opts.Agent); err != nil {
-			KillWindow(target)
-			return nil, fmt.Errorf("send initial prompt: %w", err)
-		}
-	}
-
-	// Update with PID now that the agent is running.
-	pid, _ := WindowPID(target)
-	sess.PID = pid
 	_ = store.PutSession(sess)
 
 	return sess, nil
@@ -406,6 +355,11 @@ func Refresh(store *Store, isTaskClosed func(taskID string) bool) error {
 		return nil // non-fatal: worker refresh already succeeded
 	}
 	for _, o := range orchs {
+		// A durable identity registered outside tmux has no session to probe;
+		// its liveness is not tied to tmux, so never mark it stopped here.
+		if o.TmuxSession == "" {
+			continue
+		}
 		if !HasSession(o.TmuxSession) {
 			_ = store.UpdateOrchestratorStatus(o.ID, "stopped")
 		}
@@ -566,9 +520,12 @@ func SignalOrchestrator(store *Store, taskID, message string) error {
 		return fmt.Errorf("get orchestrator %s: %w", sess.OrchestratorID, err)
 	}
 
-	target := orch.TmuxPane
+	target := orchestratorSignalTarget(orch)
 	if target == "" {
-		target = SessionTarget(orch.TmuxSession, orch.TmuxWindow)
+		// Durable identity with no tmux pane/session — there is no live pane to
+		// push to. This is fire-and-forget, so drop the real-time signal; the
+		// orchestrator picks it up on its next events/inbox poll.
+		return nil
 	}
 
 	formatted := fmt.Sprintf("[Worker %s]: %s", taskID, message)
@@ -577,6 +534,20 @@ func SignalOrchestrator(store *Store, taskID, message string) error {
 	}
 
 	return nil
+}
+
+// orchestratorSignalTarget returns the tmux target to push real-time signals to,
+// or "" when the orchestrator has no live tmux binding (a non-tmux durable
+// identity). Prefers the pane id (survives window renames); falls back to
+// session:window only when a session name is recorded.
+func orchestratorSignalTarget(orch *Orchestrator) string {
+	if orch.TmuxPane != "" {
+		return orch.TmuxPane
+	}
+	if orch.TmuxSession != "" {
+		return SessionTarget(orch.TmuxSession, orch.TmuxWindow)
+	}
+	return ""
 }
 
 // CheckStalls iterates running workers and signals their orchestrators
@@ -646,10 +617,13 @@ func Ask(store *Store, taskID, content string) (*Message, error) {
 		return nil, fmt.Errorf("store ask message: %w", err)
 	}
 
-	// Deliver to orchestrator pane. Use pane ID if available, else session:window.
-	target := orch.TmuxPane
+	// Best-effort real-time delivery to the orchestrator pane. The message is
+	// already persisted above, so a non-tmux orchestrator (no live pane) still
+	// receives it via `jeff crew orchestrator-inbox` polling — we just skip the
+	// live push rather than failing the ask.
+	target := orchestratorSignalTarget(orch)
 	if target == "" {
-		target = SessionTarget(orch.TmuxSession, orch.TmuxWindow)
+		return msg, nil
 	}
 
 	// Format: "[worker <task-id>]: <content>"

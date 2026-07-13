@@ -99,6 +99,11 @@ func Cleanup(store *Store, jeffHome string, dryRun bool) (*CleanupResult, error)
 		if o.Status != "running" {
 			continue
 		}
+		// Durable identities registered outside tmux have no session; their
+		// liveness isn't tmux-bound, so they are never "stale" on this basis.
+		if o.TmuxSession == "" {
+			continue
+		}
 		if !tmuxSessionSet[o.TmuxSession] {
 			result.StaleOrch = append(result.StaleOrch, o.ID)
 		}

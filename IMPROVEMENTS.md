@@ -40,6 +40,12 @@ Every claim in the plans was verified against the working tree at commit `af1495
 3. **Two sources of truth** — provider registry vs string switches, schema vs structs, docs vs code, legacy memory API vs v1. Each pair has already diverged; #8 and #10 collapse them and add structural guards (consistency tests) so they can't quietly diverge again.
 4. **The trust layer is aspirational** — the roadmap promises "the user controls the blast radius," but permissions are hardcoded off and teardown is destructive. #7 is small precisely because the mechanism just doesn't exist yet.
 
+## Strategic track: JEFF Anywhere (hub + workers + chat)
+
+Beyond the ten fixes, the big directional bet — *run JEFF as a worker on any machine, drive it from Slack or a chat UI, share memory/personas/skills across the fleet* — is designed in **[docs/plans/EPIC-Jeff-Anywhere.md](docs/plans/EPIC-Jeff-Anywhere.md)** (hub-and-spoke architecture, WS protocol, config-driven `jeff up` deployment, five phases that each ship standalone). It has a companion plan for the gig repo itself, **[docs/plans/PLAN-Gig-Upgrades.md](docs/plans/PLAN-Gig-Upgrades.md)** (CAS claim, pooled-PRAGMA fix, transactional events, ID-collision handling, event cursor — gig v0.7.0).
+
+The epic is why several top-10 items are ranked where they are: **#5** provides `task.Pickup` as the worker's loop body (with a store-interface amendment specified in the epic), **#1** makes cross-worker resume possible (checkpoints are the only portable session state), **#2/#8/#7** are the crew/provider/permission groundwork the worker daemon sits on. Doing Wave 1–2 first means the epic starts on solid ground rather than distributing today's races.
+
 ## Honorable mentions (considered, ranked below the line)
 
 Documented here so the findings aren't lost — each is real, none beat the ten above on value-per-effort:

@@ -74,7 +74,7 @@ This epic is mostly *transport*, because the domain layer is already shaped righ
 
 ### Prerequisites from the top-10 (do these first — they are load-bearing here)
 
-- **PLAN-Gig-Upgrades** (separate repo, `docs/plans/PLAN-Gig-Upgrades.md`) — gig itself needs hardening for multi-client use: the same pooled-PRAGMA bug crew has, a compare-and-swap `Claim` with `ErrAlreadyClaimed` (defense in depth under the hub's mutex, and it fixes local crew double-claim races today), transactional event recording (events are the worker progress stream — currently droppable), ID-collision retry + longer default IDs, and an `EventsAfterID` cursor the hub's sweep loop uses. Ship as gig v0.7.0 first.
+- **PLAN-Gig-Upgrades** (separate repo, `roadmaps/PLAN-Gig-Upgrades.md`) — gig itself needs hardening for multi-client use: the same pooled-PRAGMA bug crew has, a compare-and-swap `Claim` with `ErrAlreadyClaimed` (defense in depth under the hub's mutex, and it fixes local crew double-claim races today), transactional event recording (events are the worker progress stream — currently droppable), ID-collision retry + longer default IDs, and an `EventsAfterID` cursor the hub's sweep loop uses. Ship as gig v0.7.0 first.
 
 - **#5 PLAN-Pickup-Rollback** — the worker's core loop body IS `task.Pickup`. It must exist as a library function, and (amendment, see below) take a narrow store interface. Rollback/idempotent-resume also becomes lease-recovery behavior.
 - **#1 PLAN-Phase1-Attrs-Resume** — checkpoints + attrs are the only portable task state; cross-worker resume is impossible without checkpoint injection.

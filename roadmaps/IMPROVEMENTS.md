@@ -1,21 +1,21 @@
 # JEFF Improvement Roadmap — Top 10, Ranked by Leverage
 
-A holistic audit of the codebase (every package read end-to-end: root, `crew/`, `hooks/`, `memory/`, `skill/`, `persona/`, `workspace/`, `tui/`, `cmd/jeff/`, docs, schemas, CI — cross-checked against `docs/roadmap.md`). Each item below has a full execution plan in `docs/plans/PLAN-<Slug>.md` written so a less capable model can implement it without asking questions: goal, exact files, step order, edge cases found during exploration, and verifiable acceptance criteria.
+A holistic audit of the codebase (every package read end-to-end: root, `crew/`, `hooks/`, `memory/`, `skill/`, `persona/`, `workspace/`, `tui/`, `cmd/jeff/`, docs, schemas, CI — cross-checked against `docs/roadmap.md`). Each item below has a full execution plan in `roadmaps/PLAN-<Slug>.md` written so a less capable model can implement it without asking questions: goal, exact files, step order, edge cases found during exploration, and verifiable acceptance criteria.
 
 ## The ranking
 
 | # | Plan | What it fixes | Leverage | Effort | Depends on |
 |---|------|--------------|----------|--------|------------|
-| 1 | [PLAN-Phase1-Attrs-Resume](docs/plans/PLAN-Phase1-Attrs-Resume.md) | The missing 30% of your own roadmap Phase 1: gig attrs (`persona`, `skills_loaded`, `memory_loaded`, `outcome`…) + checkpoint injection and persona agent/model resolution on `jeff work` | Very high | S-M | — |
-| 2 | [PLAN-Crew-Reliability](docs/plans/PLAN-Crew-Reliability.md) | SQLite pragmas that silently don't apply (lost writes under concurrency), every crew message delivered twice, shared paste-buffer race, unversioned schema migrations | Very high | M | — |
-| 3 | [PLAN-Memory-Correctness](docs/plans/PLAN-Memory-Correctness.md) | `jeff memory disable` is a no-op, failed curates destroy their inputs, one corrupt file breaks all reads, silent entry overwrites, "Last curate: never" forever, unbounded growth | Very high | M | — |
-| 4 | [PLAN-Ship-Hardening](docs/plans/PLAN-Ship-Hardening.md) | `jeff ship` exits 0 on partial failure, records nothing in gig, leaks `.jeff-base` into PRs, ships past uncommitted work silently | High | S-M | — |
-| 5 | [PLAN-Pickup-Rollback](docs/plans/PLAN-Pickup-Rollback.md) | A half-failed pickup wedges the task (claimed, no workspace, no un-claim); 185-line orchestration lives untested in the CLI layer; worktree scanning duplicated 4× | High | M-L | best after #1 |
-| 6 | [PLAN-Hooks-Hardening](docs/plans/PLAN-Hooks-Hardening.md) | `jq` missing = all context injection silently vanishes; unescaped TaskID/pattern interpolation into bash; generated scripts drift forever (no version, no re-sync); JSONC settings break installs | High | M | — |
-| 7 | [PLAN-Permission-Safety](docs/plans/PLAN-Permission-Safety.md) | `--dangerously-skip-permissions`/`--approval-mode=yolo` hardcoded into every launch with no off switch; `jeff done` silently `rm -rf`s dirty worktrees; no `git worktree prune` | High (trust) | S | — |
-| 8 | [PLAN-Agent-Providers](docs/plans/PLAN-Agent-Providers.md) | Stringly-typed agent dispatch across ~15 files (adding an agent = ~15-file edit); `buildAgentCmd` builds broken commands for gemini/opencode; doctor doesn't know opencode | Strategic | M-L | after #6, #7 |
-| 9 | [PLAN-Stats](docs/plans/PLAN-Stats.md) | Roadmap Phase 3: `jeff stats` over gig events+attrs — the feedback loop that tells you whether memory/personas actually work | Med-high | M | **needs #1** |
-| 10 | [PLAN-Quality-Gates](docs/plans/PLAN-Quality-Gates.md) | Schemas reject valid configs (gemini/zed/memory missing; personas.json fails its own output); post-setup docs describe a contract the code doesn't implement; phantom `doug`, hidden `marlowe`; CI has no race/lint/macOS/push trigger | Medium | S-M | — |
+| 1 | [PLAN-Phase1-Attrs-Resume](PLAN-Phase1-Attrs-Resume.md) | The missing 30% of your own roadmap Phase 1: gig attrs (`persona`, `skills_loaded`, `memory_loaded`, `outcome`…) + checkpoint injection and persona agent/model resolution on `jeff work` | Very high | S-M | — |
+| 2 | [PLAN-Crew-Reliability](PLAN-Crew-Reliability.md) | SQLite pragmas that silently don't apply (lost writes under concurrency), every crew message delivered twice, shared paste-buffer race, unversioned schema migrations | Very high | M | — |
+| 3 | [PLAN-Memory-Correctness](PLAN-Memory-Correctness.md) | `jeff memory disable` is a no-op, failed curates destroy their inputs, one corrupt file breaks all reads, silent entry overwrites, "Last curate: never" forever, unbounded growth | Very high | M | — |
+| 4 | [PLAN-Ship-Hardening](PLAN-Ship-Hardening.md) | `jeff ship` exits 0 on partial failure, records nothing in gig, leaks `.jeff-base` into PRs, ships past uncommitted work silently | High | S-M | — |
+| 5 | [PLAN-Pickup-Rollback](PLAN-Pickup-Rollback.md) | A half-failed pickup wedges the task (claimed, no workspace, no un-claim); 185-line orchestration lives untested in the CLI layer; worktree scanning duplicated 4× | High | M-L | best after #1 |
+| 6 | [PLAN-Hooks-Hardening](PLAN-Hooks-Hardening.md) | `jq` missing = all context injection silently vanishes; unescaped TaskID/pattern interpolation into bash; generated scripts drift forever (no version, no re-sync); JSONC settings break installs | High | M | — |
+| 7 | [PLAN-Permission-Safety](PLAN-Permission-Safety.md) | `--dangerously-skip-permissions`/`--approval-mode=yolo` hardcoded into every launch with no off switch; `jeff done` silently `rm -rf`s dirty worktrees; no `git worktree prune` | High (trust) | S | — |
+| 8 | [PLAN-Agent-Providers](PLAN-Agent-Providers.md) | Stringly-typed agent dispatch across ~15 files (adding an agent = ~15-file edit); `buildAgentCmd` builds broken commands for gemini/opencode; doctor doesn't know opencode | Strategic | M-L | after #6, #7 |
+| 9 | [PLAN-Stats](PLAN-Stats.md) | Roadmap Phase 3: `jeff stats` over gig events+attrs — the feedback loop that tells you whether memory/personas actually work | Med-high | M | **needs #1** |
+| 10 | [PLAN-Quality-Gates](PLAN-Quality-Gates.md) | Schemas reject valid configs (gemini/zed/memory missing; personas.json fails its own output); post-setup docs describe a contract the code doesn't implement; phantom `doug`, hidden `marlowe`; CI has no race/lint/macOS/push trigger | Medium | S-M | — |
 
 ## Do this first
 
@@ -42,7 +42,7 @@ Every claim in the plans was verified against the working tree at commit `af1495
 
 ## Strategic track: JEFF Anywhere (hub + workers + chat)
 
-Beyond the ten fixes, the big directional bet — *run JEFF as a worker on any machine, drive it from Slack or a chat UI, share memory/personas/skills across the fleet* — is designed in **[docs/plans/EPIC-Jeff-Anywhere.md](docs/plans/EPIC-Jeff-Anywhere.md)** (hub-and-spoke architecture, WS protocol, config-driven `jeff up` deployment, five phases that each ship standalone). It has a companion plan for the gig repo itself, **[docs/plans/PLAN-Gig-Upgrades.md](docs/plans/PLAN-Gig-Upgrades.md)** (CAS claim, pooled-PRAGMA fix, transactional events, ID-collision handling, event cursor — gig v0.7.0).
+Beyond the ten fixes, the big directional bet — *run JEFF as a worker on any machine, drive it from Slack or a chat UI, share memory/personas/skills across the fleet* — is designed in **[EPIC-Jeff-Anywhere.md](EPIC-Jeff-Anywhere.md)** (hub-and-spoke architecture, WS protocol, config-driven `jeff up` deployment, five phases that each ship standalone). It has a companion plan for the gig repo itself, **[PLAN-Gig-Upgrades.md](PLAN-Gig-Upgrades.md)** (CAS claim, pooled-PRAGMA fix, transactional events, ID-collision handling, event cursor — gig v0.7.0).
 
 The epic is why several top-10 items are ranked where they are: **#5** provides `task.Pickup` as the worker's loop body (with a store-interface amendment specified in the epic), **#1** makes cross-worker resume possible (checkpoints are the only portable session state), **#2/#8/#7** are the crew/provider/permission groundwork the worker daemon sits on. Doing Wave 1–2 first means the epic starts on solid ground rather than distributing today's races.
 

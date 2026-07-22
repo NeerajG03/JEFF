@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	jeff "github.com/NeerajG03/JEFF"
@@ -160,6 +162,68 @@ func TestRunUpdate_CreatesGeminiSkillsAlias(t *testing.T) {
 	target, err := os.Readlink(link)
 	if err != nil {
 		t.Fatalf(".gemini/skills symlink not created: %v", err)
+	}
+	wantTarget := filepath.Join("..", ".claude", "skills")
+	if target != wantTarget {
+		t.Errorf("target = %q, want %q", target, wantTarget)
+	}
+
+	// Re-running update should be a no-op for the alias.
+	if err := runUpdate(); err != nil {
+		t.Fatalf("second runUpdate failed: %v", err)
+	}
+	target2, err := os.Readlink(link)
+	if err != nil || target2 != wantTarget {
+		t.Errorf("alias broke on second update: target=%q err=%v", target2, err)
+	}
+}
+
+func TestRunUpdate_OutputNoMemoryMigrate(t *testing.T) {
+	home := setupJeffHome(t)
+	t.Setenv("JEFF_HOME", home)
+
+	// Create legacy persona memory layout so detectOldLayout produces hints.
+	legacy := filepath.Join(home, "personas", "testpersona", "memory")
+	os.MkdirAll(legacy, 0o755)
+	os.WriteFile(filepath.Join(legacy, "MEMORY.md"), []byte("# legacy"), 0o644)
+
+	// Capture stdout from runUpdate.
+	r, w, _ := os.Pipe()
+	orig := os.Stdout
+	os.Stdout = w
+
+	err := runUpdate()
+
+	w.Close()
+	os.Stdout = orig
+
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatal(err)
+	}
+	output := buf.String()
+
+	if err != nil {
+		t.Fatalf("runUpdate failed: %v\noutput:\n%s", err, output)
+	}
+
+	if strings.Contains(output, "memory migrate") {
+		t.Errorf("update output contains 'memory migrate':\n%s", output)
+	}
+}
+
+func TestRunUpdate_CreatesOpenCodeSkillsAlias(t *testing.T) {
+	home := setupJeffHome(t)
+	t.Setenv("JEFF_HOME", home)
+
+	if err := runUpdate(); err != nil {
+		t.Fatalf("runUpdate failed: %v", err)
+	}
+
+	link := filepath.Join(home, ".opencode", "skills")
+	target, err := os.Readlink(link)
+	if err != nil {
+		t.Fatalf(".opencode/skills symlink not created: %v", err)
 	}
 	wantTarget := filepath.Join("..", ".claude", "skills")
 	if target != wantTarget {

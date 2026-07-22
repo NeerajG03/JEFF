@@ -208,6 +208,42 @@ func TestWriteHomeDefaults(t *testing.T) {
 	}
 }
 
+func TestWriteOpenCodeDefaults_RemovesStaleSettings(t *testing.T) {
+	home := t.TempDir()
+	p := GetProvider(AgentOpenCode)
+	_ = p.EnsureHomeDirs(home)
+
+	// Plant stale settings files (old format).
+	for _, name := range []string{"settings.json", "settings.local.json"} {
+		path := filepath.Join(home, ".opencode", name)
+		if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := p.WriteHomeDefaults(home); err != nil {
+		t.Fatalf("WriteHomeDefaults: %v", err)
+	}
+
+	// Stale files should be removed.
+	for _, name := range []string{"settings.json", "settings.local.json"} {
+		path := filepath.Join(home, ".opencode", name)
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("%s should be removed, err=%v", name, err)
+		}
+	}
+
+	// New config should exist.
+	if _, err := os.Stat(filepath.Join(home, ".opencode", "opencode.json")); err != nil {
+		t.Error("opencode.json should exist")
+	}
+
+	// Second call should be idempotent (no error when files already gone).
+	if err := p.WriteHomeDefaults(home); err != nil {
+		t.Errorf("second call: %v", err)
+	}
+}
+
 func TestAgentToolCommandViaProvider(t *testing.T) {
 	if AgentClaudeCode.Command() != "claude" {
 		t.Error("claude Command() mismatch")

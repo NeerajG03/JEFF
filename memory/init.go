@@ -190,7 +190,7 @@ func detectOldLayout(home string) []string {
 			}
 			memFile := filepath.Join(personasDir, e.Name(), "memory", "MEMORY.md")
 			if exists(memFile) {
-				hints = append(hints, fmt.Sprintf("personas/%s/memory/ → memory/personas/%s/semantic/ (run `jeff memory migrate`)", e.Name(), e.Name()))
+				hints = append(hints, fmt.Sprintf("personas/%s/memory/ → memory/personas/%s/semantic/ (move manually)", e.Name(), e.Name()))
 			}
 		}
 	}
@@ -204,7 +204,7 @@ func detectOldLayout(home string) []string {
 			}
 			indexFile := filepath.Join(learningsDir, e.Name(), "INDEX.md")
 			if exists(indexFile) {
-				hints = append(hints, fmt.Sprintf("learnings/%s/ → memory/repos/%s/semantic/ (run `jeff memory migrate`)", e.Name(), e.Name()))
+				hints = append(hints, fmt.Sprintf("learnings/%s/ → memory/repos/%s/semantic/ (move manually)", e.Name(), e.Name()))
 			}
 		}
 	}

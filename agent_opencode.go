@@ -56,8 +56,16 @@ func (o *opencodeProvider) EnsureHomeDirs(home string) error {
 }
 
 func (o *opencodeProvider) WriteHomeDefaults(home string) error {
-	writeIfNotExists(filepath.Join(home, ".opencode", "opencode.json"),
+	opencodeDir := filepath.Join(home, ".opencode")
+	writeIfNotExists(filepath.Join(opencodeDir, "opencode.json"),
 		`{"$schema":"https://opencode.ai/config.json","instructions":["CLAUDE.md"]}`+"\n")
+
+	// Remove stale config files from before opencode.json was adopted.
+	for _, stale := range []string{"settings.json", "settings.local.json"} {
+		if err := os.Remove(filepath.Join(opencodeDir, stale)); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove stale %s: %w", stale, err)
+		}
+	}
 	return nil
 }
 

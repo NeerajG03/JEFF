@@ -98,6 +98,9 @@ func runInit(here bool) error {
 	if err := jeffembed.EnsureGeminiSkillsAlias(home); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: alias .gemini/skills: %v\n", err)
 	}
+	if err := jeffembed.EnsureOpenCodeSkillsAlias(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: alias .opencode/skills: %v\n", err)
+	}
 
 	writeDefaults(home)
 
@@ -175,6 +178,9 @@ func runUpdate() error {
 	if err := jeffembed.EnsureGeminiSkillsAlias(home); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: alias .gemini/skills: %v\n", err)
 	}
+	if err := jeffembed.EnsureOpenCodeSkillsAlias(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: alias .opencode/skills: %v\n", err)
+	}
 
 	// Seed default personas (adds any new built-in personas, doesn't overwrite existing).
 	if err := persona.SeedDefaults(home); err != nil {
@@ -205,14 +211,14 @@ func runUpdate() error {
 		return fmt.Errorf("update memory: %w", err)
 	}
 
-	fmt.Printf("JEFF updated at %s (dirs, hooks, personas, settings synced)\n", home)
+	fmt.Printf("JEFF updated at %s (dirs, hooks, personas, providers, config synced)\n", home)
 	fmt.Printf("  memory: %d new, %d skipped\n", len(memReport.Created), len(memReport.Skipped))
 	if len(memReport.Migrations) > 0 {
 		fmt.Println("  migration hints:")
 		for _, h := range memReport.Migrations {
 			fmt.Printf("    • %s\n", h)
 		}
-		fmt.Println("  Run `jeff memory migrate --dry-run` to preview, then --confirm to apply.")
+		fmt.Println("  Move legacy directories manually (source → dest under memory/...).")
 	}
 	return nil
 }

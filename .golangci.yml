@@ -1,0 +1,34 @@
+version: "2"
+linters:
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+        path: _test\.go
+      - linters:
+          - unused
+        path: tui/
+      - linters:
+          - unused
+        path: cmd/jeff/completion.go
+      - linters:
+          - unused
+        path: cmd/jeff/color.go
+    paths:
+      - embed
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

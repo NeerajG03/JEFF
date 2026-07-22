@@ -10,13 +10,13 @@
     "agent": {
       "type": "string",
       "description": "Preferred agent tool.",
-      "enum": ["claude", "opencode"],
+      "enum": ["claude", "opencode", "gemini"],
       "default": "claude"
     },
     "ide": {
       "type": "string",
       "description": "Preferred IDE for jeff open.",
-      "enum": ["vscode", "cursor", "windsurf", "nvim"]
+      "enum": ["vscode", "cursor", "windsurf", "nvim", "zed"]
     },
     "gig_home": {
       "type": "string",
@@ -47,7 +47,7 @@
           },
           "post_setup": {
             "type": "string",
-            "description": "Script run after worktree creation. Receives src_dir and dest_dir as args."
+            "description": "Script run after worktree creation from the worktree directory. Receives a JSON object on stdin: {\"src_dir\", \"dest_dir\", \"repo\", \"branch\"}."
           }
         },
         "additionalProperties": false
@@ -71,6 +71,14 @@
     "skip_permissions": {
       "type": "boolean",
       "description": "Launch agents with permission prompts disabled (default true). Set false to keep native permission prompts; --safe overrides per run."
+    },
+    "memory": {
+      "type": "object",
+      "description": "Memory subsystem settings.",
+      "properties": {
+        "disabled": {"type": "boolean", "description": "Disable memory injection, capture, and proposals."}
+      },
+      "additionalProperties": false
     }
   }
 }

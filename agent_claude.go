@@ -75,5 +75,5 @@ func writeIfNotExists(path, content string) {
 	if _, err := os.Stat(path); err == nil {
 		return
 	}
-	os.WriteFile(path, []byte(content), 0o644)
+	_ = os.WriteFile(path, []byte(content), 0o644)
 }

@@ -14,7 +14,7 @@ func TempHome(t *testing.T, subdirs ...string) string {
 	dir := t.TempDir()
 	home := filepath.Join(dir, ".jeff")
 	for _, sub := range subdirs {
-		os.MkdirAll(filepath.Join(home, sub), 0o755)
+		_ = os.MkdirAll(filepath.Join(home, sub), 0o755)
 	}
 	return home
 }

@@ -106,7 +106,7 @@ func repoSyncCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&repoName, "repo", "", "Sync a specific repo only")
-	cmd.RegisterFlagCompletionFunc("repo", repoNameCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("repo", repoNameCompletion)
 	return cmd
 }
 

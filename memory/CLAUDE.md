@@ -58,7 +58,7 @@ Canonical (marlowe-enriched, bi-temporal) adds: `status`, `scope`, `goal_served`
 
 | Persona | `JEFF_MEMORY_CAN_ADD` | Allowed ops |
 |---|---|---|
-| jenko, schmidt, eric, hardy, doug, dickson | unset / 0 | `propose`, `list`, `show`, `status`, `doc` |
+| jenko, schmidt, eric, hardy, dickson | unset / 0 | `propose`, `list`, `show`, `status`, `doc` |
 | marlowe | `1` | all of the above + `add`, `curate` |
 
 ## Conventions

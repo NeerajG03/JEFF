@@ -141,7 +141,7 @@ func crewStartCmd() *cobra.Command {
 			// class: a worker must never be started with an empty orchestrator_id.
 			if orchestratorID == "" {
 				return fmt.Errorf(
-					"no orchestrator identity found. Run `jeff orchestrator init` in the project directory, or set JEFF_ORCHESTRATOR_ID. See `jeff orchestrator init --help`.",
+					"no orchestrator identity found. Run `jeff orchestrator init` in the project directory, or set JEFF_ORCHESTRATOR_ID. See `jeff orchestrator init --help`",
 				)
 			}
 			// The identity must have a registered orchestrator record so worker
@@ -232,13 +232,13 @@ func crewStartCmd() *cobra.Command {
 	cmd.Flags().StringVar(&orchestratorID, "orchestrator", "", "Orchestrator ID to attach worker to")
 	cmd.Flags().StringVar(&modelOverride, "model", "", "Model name; auto-routes backend (sonnet/opus/haiku/claude-* → claude, pro/flash/flash-lite/auto/gemini-* → gemini)")
 	cmd.Flags().StringVar(&promptOverride, "prompt", "", "Custom initial prompt (overrides default)")
-	cmd.Flags().MarkDeprecated("prompt", "use the positional argument instead: jeff crew start <gig-id> \"<prompt>\" [flags]")
+	_ = cmd.Flags().MarkDeprecated("prompt", "use the positional argument instead: jeff crew start <gig-id> \"<prompt>\" [flags]")
 	cmd.Flags().BoolVar(&safeFlag, "safe", false, `Launch the worker with its permission prompts enabled (pass "--safe" to override skip_permissions)`)
 	cmd.ValidArgsFunction = readyTaskCompletion
-	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
-	cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)
-	cmd.RegisterFlagCompletionFunc("repos-readonly", repoNameCompletion)
-	cmd.RegisterFlagCompletionFunc("orchestrator", orchestratorCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("repos-readonly", repoNameCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("orchestrator", orchestratorCompletion)
 	return cmd
 }
 
@@ -356,7 +356,7 @@ func crewResumeCmd() *cobra.Command {
 			// an empty orchestrator_id.
 			if orchestratorID == "" {
 				return fmt.Errorf(
-					"no orchestrator identity found for resume. Run `jeff orchestrator init` in the project directory, or set JEFF_ORCHESTRATOR_ID.",
+					"no orchestrator identity found for resume. Run `jeff orchestrator init` in the project directory, or set JEFF_ORCHESTRATOR_ID",
 				)
 			}
 			fmt.Fprintf(os.Stderr, "Orchestrator identity: %s\n", orchestratorID)
@@ -414,7 +414,7 @@ func crewListCmd() *cobra.Command {
 			if gigStore != nil {
 				defer gigStore.Close()
 			}
-			crew.Refresh(cs, func(taskID string) bool {
+			_ = crew.Refresh(cs, func(taskID string) bool {
 				if gigStore == nil {
 					return false
 				}
@@ -837,7 +837,7 @@ func crewInboxCmd() *cobra.Command {
 				fmt.Println()
 				for _, m := range msgs {
 					fmt.Printf("[Orchestrator %s]: %s\n", m.ID, m.Content)
-					cs.AckMessage(m.ID, "")
+					_ = cs.AckMessage(m.ID, "")
 				}
 			case "json":
 				data, _ := json.MarshalIndent(msgs, "", "  ")
@@ -958,7 +958,7 @@ func crewOrchestratorInboxCmd() *cobra.Command {
 				fmt.Println()
 				for _, m := range msgs {
 					fmt.Printf("[Worker %s]: %s\n", m.TaskID, m.Content)
-					cs.AckMessage(m.ID, "")
+					_ = cs.AckMessage(m.ID, "")
 				}
 			case "json":
 				data, _ := json.MarshalIndent(msgs, "", "  ")

@@ -22,7 +22,7 @@ Registers skills in `skills.json` and symlinks matched skills into task workspac
 ## Adding an embedded skill
 
 1. Create `skill/templates/<name>/` with `SKILL.md` at root
-2. Add to `templates.go` `InstallEmbeddedSkills()`
+2. Add a seed function in `templates.go` (see `SeedDefaults`/`SeedCuration`)
 
 ## Adding a user skill
 

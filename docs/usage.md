@@ -10,6 +10,8 @@ jeff init --here         # initialize in current directory
 jeff init --update       # sync existing home (refreshes skills alias, hooks, settings)
 ```
 
+Creates `repos/`, `tasks/`, `worktrees/`, `exports/`, `scripts/`, `projects/`, `.skills/`, `.personas/`, and `memory/` under the JEFF home.
+
 ### Register Codebases
 
 ```bash
@@ -51,7 +53,7 @@ jeff ship --repo backend     # only one repo
 jeff ship --draft            # create draft PRs
 jeff ship --dry-run          # show what would happen
 jeff ship --title "Custom"   # override PR title
-jeff ship --body "Custom"    # override PR body
+jeff ship --body "Custom PR body"  # override PR body
 ```
 
 Requires `gh` (the GitHub CLI) on `PATH`, unless `--dry-run` is set — `jeff ship`

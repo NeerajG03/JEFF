@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	jeff "github.com/NeerajG03/JEFF"
+	"github.com/NeerajG03/JEFF/persona"
 	"github.com/NeerajG03/JEFF/skill"
 	"github.com/spf13/cobra"
 )
@@ -105,8 +106,8 @@ func skillListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&persona, "persona", "", "Filter by persona")
 	cmd.Flags().StringVar(&gigType, "type", "", "Filter by gig task type")
 	cmd.Flags().StringVar(&tag, "tag", "", "Filter by tag")
-	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
-	cmd.RegisterFlagCompletionFunc("type", gigTypeCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("type", gigTypeCompletion)
 	return cmd
 }
 
@@ -233,11 +234,11 @@ func skillTagCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringSliceVar(&personas, "persona", nil, "Persona names (dickson, eric, hardy, jenko, schmidt)")
+	cmd.Flags().StringSliceVar(&personas, "persona", nil, "Persona names ("+strings.Join(persona.Names(), ", ")+")")
 	cmd.Flags().StringSliceVar(&types, "type", nil, "Gig task types (task, bug, feature, epic, chore)")
 	cmd.Flags().StringSliceVar(&tags, "tag", nil, "Free-form tags matched against task labels")
-	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
-	cmd.RegisterFlagCompletionFunc("type", gigTypeCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("type", gigTypeCompletion)
 	return cmd
 }
 
@@ -288,8 +289,8 @@ func skillInjectCmd() *cobra.Command {
 	cmd.Flags().StringVar(&task, "task", "", "Inject into a task workspace instead of JEFF home")
 	cmd.Flags().StringVar(&project, "project", "", "Inject into a project instead of JEFF home")
 	cmd.MarkFlagsMutuallyExclusive("task", "project")
-	cmd.RegisterFlagCompletionFunc("task", activeTaskCompletion)
-	cmd.RegisterFlagCompletionFunc("project", projectNameCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("task", activeTaskCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("project", projectNameCompletion)
 	return cmd
 }
 
@@ -336,7 +337,7 @@ func skillEjectCmd() *cobra.Command {
 	cmd.Flags().StringVar(&task, "task", "", "Eject from a task workspace instead of JEFF home")
 	cmd.Flags().StringVar(&project, "project", "", "Eject from a project instead of JEFF home")
 	cmd.MarkFlagsMutuallyExclusive("task", "project")
-	cmd.RegisterFlagCompletionFunc("task", activeTaskCompletion)
-	cmd.RegisterFlagCompletionFunc("project", projectNameCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("task", activeTaskCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("project", projectNameCompletion)
 	return cmd
 }

@@ -29,6 +29,10 @@
           "model": {
             "type": "string",
             "description": "Default model for this persona (e.g. sonnet, opus, haiku)."
+          },
+          "agent": {
+            "type": "string",
+            "description": "Agent tool this persona runs on (claude, opencode, gemini)."
           }
         },
         "additionalProperties": false

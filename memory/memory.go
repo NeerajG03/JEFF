@@ -170,14 +170,14 @@ func buildLearnContent(taskDir, taskID, personaName, jeffHome string, repos []st
 	sb.WriteString("Process the scratchpad from this task and curate observations into persistent memory.\n\n")
 
 	sb.WriteString("## Context\n\n")
-	sb.WriteString(fmt.Sprintf("- **Task:** %s\n", taskID))
-	sb.WriteString(fmt.Sprintf("- **Scratchpad:** %s\n", ScratchpadPath(taskDir)))
+	fmt.Fprintf(&sb, "- **Task:** %s\n", taskID)
+	fmt.Fprintf(&sb, "- **Scratchpad:** %s\n", ScratchpadPath(taskDir))
 	if personaName != "" {
-		sb.WriteString(fmt.Sprintf("- **Persona:** %s\n", personaName))
-		sb.WriteString(fmt.Sprintf("- **Persona memory:** %s\n", PersonaMemoryDir(jeffHome, personaName)))
+		fmt.Fprintf(&sb, "- **Persona:** %s\n", personaName)
+		fmt.Fprintf(&sb, "- **Persona memory:** %s\n", PersonaMemoryDir(jeffHome, personaName))
 	}
 	for _, repo := range repos {
-		sb.WriteString(fmt.Sprintf("- **Repo learnings (%s):** %s\n", repo, RepoLearningsDir(jeffHome, repo)))
+		fmt.Fprintf(&sb, "- **Repo learnings (%s):** %s\n", repo, RepoLearningsDir(jeffHome, repo))
 	}
 	sb.WriteString("\n")
 
@@ -192,17 +192,17 @@ func buildLearnContent(taskDir, taskID, personaName, jeffHome string, repos []st
 `)
 
 	if personaName != "" {
-		sb.WriteString(fmt.Sprintf(`4. For persona-scoped learnings:
+		fmt.Fprintf(&sb, `4. For persona-scoped learnings:
    - Read the current MEMORY.md at %s/MEMORY.md
    - Create or update detail files in that directory
    - Update the MEMORY.md index with one-line entries
-`, PersonaMemoryDir(jeffHome, personaName)))
+`, PersonaMemoryDir(jeffHome, personaName))
 	}
 
 	sb.WriteString("5. For repo-scoped learnings:\n")
 	for _, repo := range repos {
-		sb.WriteString(fmt.Sprintf("   - **%s:** Read INDEX.md at %s/INDEX.md, create/update detail files, update index\n",
-			repo, RepoLearningsDir(jeffHome, repo)))
+		fmt.Fprintf(&sb, "   - **%s:** Read INDEX.md at %s/INDEX.md, create/update detail files, update index\n",
+			repo, RepoLearningsDir(jeffHome, repo))
 	}
 
 	sb.WriteString(`6. Present a summary of what was added/updated for the user to review

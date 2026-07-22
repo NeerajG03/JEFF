@@ -52,12 +52,12 @@ func pickupCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&personaName, "persona", "", "Persona template to use (dickson, eric, hardy, jenko, schmidt)")
+	cmd.Flags().StringVar(&personaName, "persona", "", "Persona template to use ("+strings.Join(persona.Names(), ", ")+")")
 	cmd.Flags().StringSliceVar(&repos, "repos", nil, "Repos this task touches (creates worktrees)")
 	cmd.Flags().BoolVar(&safeFlag, "safe", false, `Launch the agent with its permission prompts enabled (pass "--safe" to override skip_permissions)`)
 	cmd.ValidArgsFunction = readyTaskCompletion
-	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
-	cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)
 	return cmd
 }
 
@@ -91,18 +91,18 @@ func writeTaskClaudeMD(taskDir, jeffHome string, store *gig.Store, task *gig.Tas
 
 	// Task context.
 	sb.WriteString("# Current Task\n\n")
-	sb.WriteString(fmt.Sprintf("- **ID:** %s\n", task.ID))
-	sb.WriteString(fmt.Sprintf("- **Title:** %s\n", task.Title))
+	fmt.Fprintf(&sb, "- **ID:** %s\n", task.ID)
+	fmt.Fprintf(&sb, "- **Title:** %s\n", task.Title)
 	if task.Description != "" {
-		sb.WriteString(fmt.Sprintf("- **Description:** %s\n", task.Description))
+		fmt.Fprintf(&sb, "- **Description:** %s\n", task.Description)
 	}
-	sb.WriteString(fmt.Sprintf("- **Priority:** P%d\n", task.Priority))
-	sb.WriteString(fmt.Sprintf("- **Type:** %s\n", task.Type))
+	fmt.Fprintf(&sb, "- **Priority:** P%d\n", task.Priority)
+	fmt.Fprintf(&sb, "- **Type:** %s\n", task.Type)
 	if task.ParentID != "" {
-		sb.WriteString(fmt.Sprintf("- **Parent:** %s\n", task.ParentID))
+		fmt.Fprintf(&sb, "- **Parent:** %s\n", task.ParentID)
 	}
 	if len(task.Labels) > 0 {
-		sb.WriteString(fmt.Sprintf("- **Labels:** %s\n", strings.Join(task.Labels, ", ")))
+		fmt.Fprintf(&sb, "- **Labels:** %s\n", strings.Join(task.Labels, ", "))
 	}
 	sb.WriteString("\n")
 
@@ -110,7 +110,7 @@ func writeTaskClaudeMD(taskDir, jeffHome string, store *gig.Store, task *gig.Tas
 	if store != nil {
 		if cp, err := store.LatestCheckpoint(task.ID); err == nil && cp != nil {
 			sb.WriteString("## Resuming: Last Checkpoint\n\n")
-			sb.WriteString(fmt.Sprintf("_Recorded %s_\n\n", cp.CreatedAt.Format("2006-01-02 15:04")))
+			fmt.Fprintf(&sb, "_Recorded %s_\n\n", cp.CreatedAt.Format("2006-01-02 15:04"))
 			if cp.Done != "" {
 				sb.WriteString("- **Done:** " + cp.Done + "\n")
 			}
@@ -140,7 +140,7 @@ func writeTaskClaudeMD(taskDir, jeffHome string, store *gig.Store, task *gig.Tas
 			sb.WriteString("## Persona Memory\n\n")
 			sb.WriteString(content)
 			sb.WriteString("\n\n")
-			sb.WriteString(fmt.Sprintf("Detail files: `%s`\n\n", memory.PersonaMemoryDir(jeffHome, personaName)))
+			fmt.Fprintf(&sb, "Detail files: `%s`\n\n", memory.PersonaMemoryDir(jeffHome, personaName))
 		}
 	}
 
@@ -152,10 +152,10 @@ func writeTaskClaudeMD(taskDir, jeffHome string, store *gig.Store, task *gig.Tas
 			continue
 		}
 		if content != "" {
-			sb.WriteString(fmt.Sprintf("## Repo Learnings: %s\n\n", repoName))
+			fmt.Fprintf(&sb, "## Repo Learnings: %s\n\n", repoName)
 			sb.WriteString(content)
 			sb.WriteString("\n\n")
-			sb.WriteString(fmt.Sprintf("Detail files: `%s`\n\n", memory.RepoLearningsDir(jeffHome, repoName)))
+			fmt.Fprintf(&sb, "Detail files: `%s`\n\n", memory.RepoLearningsDir(jeffHome, repoName))
 		}
 	}
 
@@ -212,7 +212,7 @@ func writeScratchpadGuide(sb *strings.Builder, taskDir, jeffHome, personaName st
 	sb.WriteString("### Writing to Scratchpad\n")
 	sb.WriteString("During your work, you'll discover things worth remembering — corrections from the user, ")
 	sb.WriteString("repo quirks, commands that were wrong, debugging insights, outdated skill/hook info.\n\n")
-	sb.WriteString(fmt.Sprintf("Append raw observations to: `%s`\n\n", memory.ScratchpadPath(taskDir)))
+	fmt.Fprintf(sb, "Append raw observations to: `%s`\n\n", memory.ScratchpadPath(taskDir))
 	sb.WriteString("Format — just append, don't overthink structure:\n\n")
 	sb.WriteString("```\n## <short title>\n[persona] or [repo:<name>]\n<what you observed, what went wrong, what the user corrected>\n```\n\n")
 
@@ -229,7 +229,7 @@ func writeScratchpadGuide(sb *strings.Builder, taskDir, jeffHome, personaName st
 			hint = persona.MemoryHint(personaName)
 		}
 		if hint != "" {
-			sb.WriteString(fmt.Sprintf("\n**As %s, especially capture:** %s\n", personaName, hint))
+			fmt.Fprintf(sb, "\n**As %s, especially capture:** %s\n", personaName, hint)
 		}
 	}
 	sb.WriteString("\n")

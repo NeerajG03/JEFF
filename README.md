@@ -140,6 +140,9 @@ jeff dashboard                          # interactive TUI (auto-refreshes every 
 | `jeff done [id] [--reason] [--force]` | Close task and clean up workspace |
 | `jeff status [--all]` | Overview of active tasks and workspaces |
 | `jeff open [id]` | Open workspace in IDE |
+| `jeff doctor` | Check required and optional dependencies |
+| `jeff notify` | Surface a macOS system notification |
+| `jeff project init\|open\|list` | Manage JEFF projects |
 | **Crew orchestration** | |
 | `jeff orchestrator start [--name]` | Launch orchestrator tmux session |
 | `jeff orchestrator list` | List orchestrator sessions |
@@ -157,9 +160,10 @@ jeff dashboard                          # interactive TUI (auto-refreshes every 
 | `jeff crew capture <id> [--lines]` | Raw terminal output from worker pane |
 | `jeff crew stop <id> [--all]` | Stop worker(s) |
 | `jeff crew cleanup` | Reconcile tmux state vs DB |
+| `jeff crew attach <id>` | Attach to a worker's tmux window |
 | `jeff dashboard` | Interactive TUI dashboard |
 | **Resources** | |
-| `jeff repo add\|list\|remove\|sync` | Manage registered codebases |
+| `jeff repo add\|list\|remove\|sync\|describe` | Manage registered codebases |
 | `jeff worktree add\|rm [--force]\|list` | Manage git worktrees |
 | `jeff skill doc\|list\|show\|add\|remove\|tag\|inject\|eject` | Manage agent skills |
 | `jeff persona list\|show\|set-model` | Manage personas and model defaults |
@@ -174,9 +178,10 @@ Shape agent behavior with embedded personas. Each has a default model for cost o
 |---------|------|--------------|----------|
 | **jenko** | Implementer — writes code, ships | opus | Building features, fixing bugs |
 | **schmidt** | Debugger — traces root causes | opus | Investigating issues, debugging |
-| **dickson** | Orchestrator — plans, delegates | sonnet | Breaking down epics, coordinating |
+| **dickson** | Orchestrator — plans, delegates | opus | Breaking down epics, coordinating |
 | **eric** | Researcher — explores, documents | sonnet | Investigating code, researching |
 | **hardy** | Reviewer — checks quality | sonnet | Code review, PR review |
+| **marlowe** | Memory curator — curates proposals into canonical memory | sonnet | `jeff memory curate` |
 
 ```bash
 jeff pickup gig-ab12 --persona jenko --repos backend
@@ -237,7 +242,7 @@ See [docs/config.md](docs/config.md) for full configuration reference.
 ## Requirements
 
 - [gig](https://github.com/NeerajG03/gig) — task management
-- [Claude Code](https://claude.com/product/claude-code) or [opencode](https://github.com/anomalyco/opencode) — agent tool
+- [Claude Code](https://claude.com/product/claude-code), [opencode](https://github.com/anomalyco/opencode), or [Gemini CLI](https://github.com/google-gemini/gemini-cli) — agent tool
 - Git, `gh` CLI (for `jeff ship`), tmux (for crew mode)
 
 ## License

@@ -59,9 +59,19 @@ func pickupCmd() *cobra.Command {
 	return cmd
 }
 
+// resolveTaskPersona returns the persona for a task: the gig attr written at
+// pickup, falling back to CLAUDE.md prefix detection for workspaces created
+// by older binaries.
+func resolveTaskPersona(store *gig.Store, taskID, taskDir string) string {
+	if attr, err := store.GetAttr(taskID, jeff.AttrPersona); err == nil && attr != nil && attr.Value != "" {
+		return attr.Value
+	}
+	return detectPersona(taskDir)
+}
+
 // writeTaskClaudeMD generates a CLAUDE.md for the task directory combining
 // persona instructions, task context, memory, workspace layout, and scratchpad guide.
-func writeTaskClaudeMD(taskDir, jeffHome string, task *gig.Task, personaName string, repos []string) error {
+func writeTaskClaudeMD(taskDir, jeffHome string, store *gig.Store, task *gig.Task, personaName string, repos []string) error {
 	var sb strings.Builder
 
 	// Persona section — try registry first, fall back to embedded.
@@ -93,6 +103,30 @@ func writeTaskClaudeMD(taskDir, jeffHome string, task *gig.Task, personaName str
 		sb.WriteString(fmt.Sprintf("- **Labels:** %s\n", strings.Join(task.Labels, ", ")))
 	}
 	sb.WriteString("\n")
+
+	// Latest checkpoint — so resumed sessions start with prior progress.
+	if store != nil {
+		if cp, err := store.LatestCheckpoint(task.ID); err == nil && cp != nil {
+			sb.WriteString("## Resuming: Last Checkpoint\n\n")
+			sb.WriteString(fmt.Sprintf("_Recorded %s_\n\n", cp.CreatedAt.Format("2006-01-02 15:04")))
+			if cp.Done != "" {
+				sb.WriteString("- **Done:** " + cp.Done + "\n")
+			}
+			if cp.Decisions != "" {
+				sb.WriteString("- **Decisions:** " + cp.Decisions + "\n")
+			}
+			if cp.Next != "" {
+				sb.WriteString("- **Next:** " + cp.Next + "\n")
+			}
+			if cp.Blockers != "" {
+				sb.WriteString("- **Blockers:** " + cp.Blockers + "\n")
+			}
+			if len(cp.Files) > 0 {
+				sb.WriteString("- **Files touched:** " + strings.Join(cp.Files, ", ") + "\n")
+			}
+			sb.WriteString("\n")
+		}
+	}
 
 	// Persona memory.
 	if personaName != "" {
@@ -214,13 +248,14 @@ func refreshTaskClaudeMD(taskDir string, store *gig.Store, taskID string) error 
 		return err
 	}
 
-	// Detect persona from existing CLAUDE.md (it's above the --- separator).
-	personaName := detectPersona(taskDir)
+	// Resolve persona: gig attr set at pickup, falling back to CLAUDE.md
+	// prefix detection for workspaces created by older binaries.
+	personaName := resolveTaskPersona(store, taskID, taskDir)
 
 	// Detect repos from existing worktree symlinks.
 	repos := detectRepos(taskDir)
 
-	return writeTaskClaudeMD(taskDir, cfg.Home, task, personaName, repos)
+	return writeTaskClaudeMD(taskDir, cfg.Home, store, task, personaName, repos)
 }
 
 // detectRepos returns repo names from worktree symlinks in the task directory.

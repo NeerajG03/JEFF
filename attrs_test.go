@@ -28,21 +28,25 @@ func TestEnsureAttrs(t *testing.T) {
 		t.Fatalf("ensure attrs: %v", err)
 	}
 
-	// Verify both attrs exist.
-	def, err := store.GetAttrDef(AttrRepos)
-	if err != nil {
-		t.Fatalf("get repos attr: %v", err)
+	// Verify all 8 attrs exist with the expected type.
+	wantTypes := map[string]gig.AttrType{
+		AttrRepos:          gig.AttrObject,
+		AttrWorktreeSetup:  gig.AttrString,
+		AttrPersona:        gig.AttrString,
+		AttrSkillsLoaded:   gig.AttrObject,
+		AttrMemoryLoaded:   gig.AttrObject,
+		AttrTeamSize:       gig.AttrString,
+		AttrOutcome:        gig.AttrString,
+		AttrRejectionCount: gig.AttrString,
 	}
-	if def.Type != gig.AttrObject {
-		t.Errorf("expected object type, got %s", def.Type)
-	}
-
-	def, err = store.GetAttrDef(AttrWorktreeSetup)
-	if err != nil {
-		t.Fatalf("get worktree_setup attr: %v", err)
-	}
-	if def.Type != gig.AttrString {
-		t.Errorf("expected string type, got %s", def.Type)
+	for key, wantType := range wantTypes {
+		def, err := store.GetAttrDef(key)
+		if err != nil {
+			t.Fatalf("get %s attr: %v", key, err)
+		}
+		if def.Type != wantType {
+			t.Errorf("%s: expected type %s, got %s", key, wantType, def.Type)
+		}
 	}
 }
 

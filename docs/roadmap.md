@@ -44,7 +44,7 @@ User runs one agent per task. JEFF makes that agent excellent by front-loading c
 
 **Current state:** Pickup creates workspace, branches worktree, injects skills, writes task CLAUDE.md, launches agent. Checkpoints save progress to gig. Ship creates PRs.
 
-**What's missing:** No persona memory (agent starts fresh every session). No repo learnings (agent rediscovers the same patterns). No checkpoint injection on resume (context lost between sessions). Dickson template references `jeff plan` and `jeff delegate` which don't exist.
+**What's missing:** Persona memory, repo learnings, and checkpoint injection on resume are now implemented (see "New Gig Attributes" below and `jeff work`). Dickson template references `jeff plan` and `jeff delegate` which don't exist.
 
 **What pickup looks like after this phase:**
 
@@ -237,7 +237,7 @@ This uses `store.LatestCheckpoint(taskID)` which already exists. The injection p
 
 ### New Gig Attributes
 
-Extend `attrs.go` with attributes that enable the data layer:
+Implemented in `attrs.go` — these attributes enable the data layer:
 
 ```go
 const (
@@ -255,7 +255,7 @@ const (
 ```
 
 Set on pickup: `persona`, `skills_loaded`, `memory_loaded`, `team_size`.
-Set on completion: `outcome`, `rejection_count`.
+Set on completion: `outcome` (via `jeff done`); `rejection_count` is defined but has no writer yet — a future reject flow will set it.
 
 These cost nothing to store (gig attributes are key-value pairs in SQLite) but make every task queryable for stats.
 

@@ -19,7 +19,12 @@ func (o *opencodeProvider) Name() AgentTool    { return AgentOpenCode }
 func (o *opencodeProvider) Command() string    { return "opencode" }
 
 func (o *opencodeProvider) BuildLaunchArgs(opts LaunchOpts) []string {
-	args := []string{"--auto"}
+	// --auto is OpenCode's permission-skip equivalent (auto-accepts edits
+	// without prompting) — gate it the same as the other providers' flags.
+	args := []string{}
+	if opts.SkipPermissions {
+		args = append(args, "--auto")
+	}
 	if isOpenCodeModel(opts.Model) {
 		args = append(args, "--model", opts.Model)
 	}
@@ -36,7 +41,9 @@ func (o *opencodeProvider) BuildLaunchArgs(opts LaunchOpts) []string {
 	return args
 }
 
-func (o *opencodeProvider) BuildCurateArgs(prompt string) []string {
+// BuildCurateArgs ignores opts.SkipPermissions: curate is a piped,
+// non-interactive run, so permissions are always skipped regardless of config.
+func (o *opencodeProvider) BuildCurateArgs(prompt string, opts LaunchOpts) []string {
 	return []string{"run", "--auto", prompt}
 }
 

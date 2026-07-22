@@ -76,6 +76,34 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	}
 }
 
+func TestSkipPermissionsRoundTrip(t *testing.T) {
+	home := testutil.TempHome(t)
+	os.MkdirAll(home, 0o755)
+
+	skip := false
+	cfg := &Config{
+		Agent:           AgentClaudeCode,
+		Repos:           map[string]*RepoConfig{},
+		SkipPermissions: &skip,
+		Home:            home,
+	}
+
+	if err := SaveConfig(cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	loaded, err := LoadConfig(home)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if loaded.SkipPermissions == nil {
+		t.Fatal("SkipPermissions should survive Save/Load as a non-nil pointer, got nil")
+	}
+	if *loaded.SkipPermissions != false {
+		t.Errorf("SkipPermissions = %v, want false", *loaded.SkipPermissions)
+	}
+}
+
 func TestLoadConfigInvalidAgent(t *testing.T) {
 	home := testutil.TempHome(t)
 	os.MkdirAll(home, 0o755)

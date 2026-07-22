@@ -246,7 +246,9 @@ func orchestratorStartCmd() *cobra.Command {
 			if provider == nil {
 				return fmt.Errorf("no provider registered for agent %q", agentTool)
 			}
-			launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{Model: model})
+			// No --safe flag on orchestrator start (out of scope for this knob);
+			// resolve from config only so `skip_permissions: false` still applies.
+			launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{Model: model, SkipPermissions: effectiveSkipPermissions(cfg, false)})
 			launchCmd := provider.Command()
 			for _, arg := range launchArgs {
 				launchCmd += " " + shellQuote(arg)

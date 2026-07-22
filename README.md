@@ -133,11 +133,11 @@ jeff dashboard                          # interactive TUI (auto-refreshes every 
 |---------|-------------|
 | **Task lifecycle** | |
 | `jeff init [--here] [--update]` | Initialize or update JEFF home |
-| `jeff pickup <id> [--persona] [--repos]` | Claim task, set up workspace, launch agent |
-| `jeff work [id]` | Resume work in existing task workspace |
+| `jeff pickup <id> [--persona] [--repos] [--safe]` | Claim task, set up workspace, launch agent |
+| `jeff work [id] [--safe]` | Resume work in existing task workspace |
 | `jeff checkpoint --done "..."` | Save structured progress snapshot |
 | `jeff ship [--repo] [--draft] [--dry-run]` | Push branches and create PRs |
-| `jeff done [id] [--reason]` | Close task and clean up workspace |
+| `jeff done [id] [--reason] [--force]` | Close task and clean up workspace |
 | `jeff status [--all]` | Overview of active tasks and workspaces |
 | `jeff open [id]` | Open workspace in IDE |
 | **Crew orchestration** | |
@@ -146,7 +146,7 @@ jeff dashboard                          # interactive TUI (auto-refreshes every 
 | `jeff orchestrator info [id]` | Show all tasks under an orchestrator |
 | `jeff orchestrator attach <id>` | Attach to orchestrator session |
 | `jeff orchestrator stop <id>` | Stop orchestrator and all workers |
-| `jeff crew start <id> "<prompt>" [--persona] [--repos] [--model]` | Launch worker in tmux |
+| `jeff crew start <id> "<prompt>" [--persona] [--repos] [--model] [--safe]` | Launch worker in tmux |
 | `jeff crew resume <id>` | Resume stopped worker (restores Claude session) |
 | `jeff crew list [--all]` | List workers (filtered to current orchestrator by default) |
 | `jeff crew status <id>` | Worker detail + checkpoint + pane output |
@@ -160,7 +160,7 @@ jeff dashboard                          # interactive TUI (auto-refreshes every 
 | `jeff dashboard` | Interactive TUI dashboard |
 | **Resources** | |
 | `jeff repo add\|list\|remove\|sync` | Manage registered codebases |
-| `jeff worktree add\|rm\|list` | Manage git worktrees |
+| `jeff worktree add\|rm [--force]\|list` | Manage git worktrees |
 | `jeff skill doc\|list\|show\|add\|remove\|tag\|inject\|eject` | Manage agent skills |
 | `jeff persona list\|show\|set-model` | Manage personas and model defaults |
 | `jeff config [agent\|ide\|hooks\|reset-claude-md]` | View and update configuration |
@@ -225,9 +225,12 @@ JEFF is configured via `jeff.json` with [JSON schema](https://raw.githubusercont
   },
   "hooks": {
     "gig-ready-tasks": true
-  }
+  },
+  "skip_permissions": true
 }
 ```
+
+Agents launch with their native permission prompts disabled by default (`skip_permissions: true`). Set it to `false` to keep permission prompts enabled, or pass `--safe` on `jeff pickup`/`jeff work`/`jeff crew start` to override per invocation. `jeff done`/`jeff worktree rm` refuse to discard a worktree with uncommitted changes unless `--force` is passed.
 
 See [docs/config.md](docs/config.md) for full configuration reference.
 

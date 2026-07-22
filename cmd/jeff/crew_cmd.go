@@ -63,6 +63,7 @@ func crewStartCmd() *cobra.Command {
 		orchestratorID string
 		modelOverride  string
 		promptOverride string
+		safeFlag       bool
 	)
 
 	cmd := &cobra.Command{
@@ -174,13 +175,15 @@ func crewStartCmd() *cobra.Command {
 				}
 				promptOverride = "Read INITIAL-PROMPT.md at task root and execute it end to end."
 			}
+			skip := effectiveSkipPermissions(cfg, safeFlag)
 			provider := jeff.GetProvider(agentTool)
 			var launchCmd string
 			if provider != nil && provider.SupportsInlinePrompt() {
 				launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{
-					Model:     model,
-					AgentName: personaName,
-					Prompt:    promptOverride,
+					Model:           model,
+					AgentName:       personaName,
+					Prompt:          promptOverride,
+					SkipPermissions: skip,
 				})
 				launchCmd = provider.Command()
 				for _, a := range launchArgs {
@@ -194,13 +197,17 @@ func crewStartCmd() *cobra.Command {
 					}
 				}
 			}
+			if safeFlag {
+				fmt.Fprintf(os.Stderr, "worker will pause on permission prompts — attach with: jeff crew attach %s\n", taskID)
+			}
 			opts := crew.StartOpts{
-				Persona:   personaName,
-				Repos:     repos,
-				Agent:     string(agentTool),
-				Model:     model,
-				Prompt:    promptOverride,
-				LaunchCmd: launchCmd,
+				Persona:         personaName,
+				Repos:           repos,
+				Agent:           string(agentTool),
+				Model:           model,
+				Prompt:          promptOverride,
+				LaunchCmd:       launchCmd,
+				SkipPermissions: skip,
 			}
 			// Single worker-start path: the identity was validated above, so the
 			// worker always binds to a non-empty orchestrator_id. The worker's
@@ -226,6 +233,7 @@ func crewStartCmd() *cobra.Command {
 	cmd.Flags().StringVar(&modelOverride, "model", "", "Model name; auto-routes backend (sonnet/opus/haiku/claude-* → claude, pro/flash/flash-lite/auto/gemini-* → gemini)")
 	cmd.Flags().StringVar(&promptOverride, "prompt", "", "Custom initial prompt (overrides default)")
 	cmd.Flags().MarkDeprecated("prompt", "use the positional argument instead: jeff crew start <gig-id> \"<prompt>\" [flags]")
+	cmd.Flags().BoolVar(&safeFlag, "safe", false, `Launch the worker with its permission prompts enabled (pass "--safe" to override skip_permissions)`)
 	cmd.ValidArgsFunction = readyTaskCompletion
 	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
 	cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)
@@ -314,7 +322,10 @@ func crewResumeCmd() *cobra.Command {
 				orchestratorID = detected
 			}
 
-			// Build launch command via provider.
+			// Build launch command via provider. Resume has no --safe flag
+			// (per plan); the safety posture always follows current config,
+			// not the original session, so it resolves fresh on every resume.
+			skip := effectiveSkipPermissions(cfg, false)
 			provider := jeff.GetProvider(agentTool)
 			var launchCmd string
 			if provider != nil {
@@ -322,6 +333,7 @@ func crewResumeCmd() *cobra.Command {
 					Model:           model,
 					ResumeSessionID: resumeSessionID,
 					AgentName:       personaName,
+					SkipPermissions: skip,
 				})
 				launchCmd = provider.Command()
 				for _, a := range launchArgs {
@@ -331,6 +343,7 @@ func crewResumeCmd() *cobra.Command {
 			opts := crew.StartOpts{
 				Persona:         personaName,
 				Repos:           repos,
+				SkipPermissions: skip,
 				Resume:          true,
 				Agent:           string(agentTool),
 				Model:           model,

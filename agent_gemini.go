@@ -36,7 +36,10 @@ func resolveGeminiModel(m string) string {
 }
 
 func (g *geminiProvider) BuildLaunchArgs(opts LaunchOpts) []string {
-	args := []string{"--approval-mode=yolo"}
+	args := []string{}
+	if opts.SkipPermissions {
+		args = append(args, "--approval-mode=yolo")
+	}
 	if opts.Model != "" && isGeminiModel(opts.Model) {
 		args = append(args, "-m", resolveGeminiModel(opts.Model))
 	}
@@ -49,7 +52,9 @@ func (g *geminiProvider) BuildLaunchArgs(opts LaunchOpts) []string {
 	return args
 }
 
-func (g *geminiProvider) BuildCurateArgs(prompt string) []string {
+// BuildCurateArgs ignores opts.SkipPermissions: curate is a piped,
+// non-interactive run, so permissions are always skipped regardless of config.
+func (g *geminiProvider) BuildCurateArgs(prompt string, opts LaunchOpts) []string {
 	return []string{"--approval-mode=yolo", "-p", prompt}
 }
 

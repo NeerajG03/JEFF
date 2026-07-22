@@ -67,6 +67,10 @@
         "type": "string"
       },
       "examples": [["git commit", "go test.*PASS", "npm test"]]
+    },
+    "skip_permissions": {
+      "type": "boolean",
+      "description": "Launch agents with permission prompts disabled (default true). Set false to keep native permission prompts; --safe overrides per run."
     }
   }
 }

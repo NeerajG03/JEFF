@@ -26,7 +26,10 @@ func (c *claudeProvider) Name() AgentTool    { return AgentClaudeCode }
 func (c *claudeProvider) Command() string    { return "claude" }
 
 func (c *claudeProvider) BuildLaunchArgs(opts LaunchOpts) []string {
-	args := []string{"--dangerously-skip-permissions"}
+	args := []string{}
+	if opts.SkipPermissions {
+		args = append(args, "--dangerously-skip-permissions")
+	}
 	if opts.Model != "" {
 		args = append(args, "--model", opts.Model)
 	}
@@ -39,7 +42,9 @@ func (c *claudeProvider) BuildLaunchArgs(opts LaunchOpts) []string {
 	return args
 }
 
-func (c *claudeProvider) BuildCurateArgs(prompt string) []string {
+// BuildCurateArgs ignores opts.SkipPermissions: curate is a piped,
+// non-interactive run, so permissions are always skipped regardless of config.
+func (c *claudeProvider) BuildCurateArgs(prompt string, opts LaunchOpts) []string {
 	return []string{"--dangerously-skip-permissions", "-p", prompt}
 }
 

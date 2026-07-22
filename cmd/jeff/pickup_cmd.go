@@ -21,6 +21,7 @@ func pickupCmd() *cobra.Command {
 	var (
 		personaName string
 		repos       []string
+		safeFlag    bool
 	)
 
 	cmd := &cobra.Command{
@@ -47,12 +48,13 @@ func pickupCmd() *cobra.Command {
 			fmt.Fprintf(os.Stderr, "\nLaunching %s in %s...\n", agentTool, taskDir)
 			// Resolve persona model for foreground launch.
 			model := persona.RegisteredModel(cfg.Home, personaName)
-			return launchAgent(taskDir, agentTool, model, personaName)
+			return launchAgent(taskDir, agentTool, model, personaName, effectiveSkipPermissions(cfg, safeFlag))
 		},
 	}
 
 	cmd.Flags().StringVar(&personaName, "persona", "", "Persona template to use (dickson, eric, hardy, jenko, schmidt)")
 	cmd.Flags().StringSliceVar(&repos, "repos", nil, "Repos this task touches (creates worktrees)")
+	cmd.Flags().BoolVar(&safeFlag, "safe", false, `Launch the agent with its permission prompts enabled (pass "--safe" to override skip_permissions)`)
 	cmd.ValidArgsFunction = readyTaskCompletion
 	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
 	cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)

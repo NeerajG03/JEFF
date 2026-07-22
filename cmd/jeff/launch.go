@@ -9,9 +9,21 @@ import (
 	"github.com/NeerajG03/JEFF/memory"
 )
 
+// effectiveSkipPermissions resolves the launch permission mode:
+// --safe flag > jeff.json skip_permissions > default (true, current behavior).
+func effectiveSkipPermissions(cfg *jeff.Config, safeFlag bool) bool {
+	if safeFlag {
+		return false
+	}
+	if cfg.SkipPermissions != nil {
+		return *cfg.SkipPermissions
+	}
+	return true
+}
+
 // launchAgent starts the configured agent tool in the given directory.
 // Uses the provider to determine the command and args.
-func launchAgent(dir string, agent jeff.AgentTool, model, agentName string) error {
+func launchAgent(dir string, agent jeff.AgentTool, model, agentName string, skip bool) error {
 	p := jeff.GetProvider(agent)
 	if p == nil {
 		return fmt.Errorf("no provider registered for agent %q", agent)
@@ -22,7 +34,7 @@ func launchAgent(dir string, agent jeff.AgentTool, model, agentName string) erro
 		return fmt.Errorf("%s not found in PATH: %w", p.Command(), err)
 	}
 
-	args := p.BuildLaunchArgs(jeff.LaunchOpts{Model: model, AgentName: agentName})
+	args := p.BuildLaunchArgs(jeff.LaunchOpts{Model: model, AgentName: agentName, SkipPermissions: skip})
 
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir

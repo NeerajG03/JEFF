@@ -36,7 +36,11 @@ type Config struct {
 	Hooks              map[string]bool        `json:"hooks,omitempty" yaml:"hooks,omitempty"`
 	CheckpointPatterns []string               `json:"checkpoint_patterns,omitempty" yaml:"checkpoint_patterns,omitempty"`
 	Memory             *MemoryConfig          `json:"memory,omitempty" yaml:"memory,omitempty"`
-	Home               string                 `json:"-" yaml:"-"` // resolved JEFF_HOME (not persisted)
+	// SkipPermissions controls whether agents launch with their native
+	// permission prompts disabled. Pointer so "unset" (nil → default true,
+	// current behavior) is distinguishable from an explicit false.
+	SkipPermissions *bool  `json:"skip_permissions,omitempty" yaml:"skip_permissions,omitempty"`
+	Home            string `json:"-" yaml:"-"` // resolved JEFF_HOME (not persisted)
 }
 
 // DefaultConfig returns a Config with sensible defaults.

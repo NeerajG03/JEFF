@@ -23,9 +23,10 @@ func (o *opencodeProvider) BuildLaunchArgs(opts LaunchOpts) []string {
 	if isOpenCodeModel(opts.Model) {
 		args = append(args, "--model", opts.Model)
 	}
-	if opts.AgentName != "" {
-		args = append(args, "--agent", opts.AgentName)
-	}
+	// Intentionally ignore opts.AgentName: JEFF personas are not OpenCode
+	// agents. OpenCode resolves --agent against .opencode/agents/, which JEFF
+	// does not populate in task dirs, so passing it selects a nonexistent
+	// agent. Persona context reaches OpenCode via CLAUDE.md instead.
 	if opts.ResumeSessionID != "" {
 		args = append(args, "--session", opts.ResumeSessionID)
 	}

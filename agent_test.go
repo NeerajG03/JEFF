@@ -138,6 +138,14 @@ func TestOpenCodeProviderArgs(t *testing.T) {
 		t.Errorf("prompt args = %v, want [--auto --prompt hello]", args)
 	}
 
+	// AgentName must NOT become --agent: JEFF personas are not OpenCode agents,
+	// and OpenCode would resolve --agent against .opencode/agents/ (unpopulated
+	// in task dirs), selecting a nonexistent agent.
+	args = p.BuildLaunchArgs(LaunchOpts{AgentName: "jenko"})
+	if slices.Contains(args, "--agent") {
+		t.Errorf("opencode args must not contain --agent, got %v", args)
+	}
+
 	// Curate is supported via `run --auto`.
 	curate := p.BuildCurateArgs("test prompt")
 	if len(curate) != 3 || curate[0] != "run" || curate[1] != "--auto" || curate[2] != "test prompt" {

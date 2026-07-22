@@ -141,7 +141,7 @@ func crewStartCmd() *cobra.Command {
 			// class: a worker must never be started with an empty orchestrator_id.
 			if orchestratorID == "" {
 				return fmt.Errorf(
-					"no orchestrator identity found. Run `jeff orchestrator init` in the project directory, or set JEFF_ORCHESTRATOR_ID. See `jeff orchestrator init --help`.",
+					"no orchestrator identity found. Run `jeff orchestrator init` in the project directory, or set JEFF_ORCHESTRATOR_ID. See `jeff orchestrator init --help`",
 				)
 			}
 			// The identity must have a registered orchestrator record so worker
@@ -356,7 +356,7 @@ func crewResumeCmd() *cobra.Command {
 			// an empty orchestrator_id.
 			if orchestratorID == "" {
 				return fmt.Errorf(
-					"no orchestrator identity found for resume. Run `jeff orchestrator init` in the project directory, or set JEFF_ORCHESTRATOR_ID.",
+					"no orchestrator identity found for resume. Run `jeff orchestrator init` in the project directory, or set JEFF_ORCHESTRATOR_ID",
 				)
 			}
 			fmt.Fprintf(os.Stderr, "Orchestrator identity: %s\n", orchestratorID)

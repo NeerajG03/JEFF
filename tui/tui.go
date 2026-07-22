@@ -334,7 +334,7 @@ func (m Model) submitTaskForm() tea.Cmd {
 		return nil
 	}
 
-	var pri gig.Priority = gig.P2
+	pri := gig.P2
 	if len(priStr) == 1 && priStr[0] >= '0' && priStr[0] <= '4' {
 		pri = gig.Priority(priStr[0] - '0')
 	}

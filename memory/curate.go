@@ -181,16 +181,16 @@ func buildCuratePrompt(skillContent string, qe SessionQueueEntry, proposals []Pr
 	}
 
 	sb.WriteString("## SESSION TO PROCESS\n\n")
-	sb.WriteString(fmt.Sprintf("Task:    %s\n", qe.Task))
-	sb.WriteString(fmt.Sprintf("Persona: %s\n", qe.Persona))
+	fmt.Fprintf(&sb, "Task:    %s\n", qe.Task)
+	fmt.Fprintf(&sb, "Persona: %s\n", qe.Persona)
 	if !qe.EndedAt.IsZero() {
-		sb.WriteString(fmt.Sprintf("Ended:   %s\n", qe.EndedAt.Format(time.RFC3339)))
+		fmt.Fprintf(&sb, "Ended:   %s\n", qe.EndedAt.Format(time.RFC3339))
 	}
 	if len(qe.Repos) > 0 {
-		sb.WriteString(fmt.Sprintf("Repos:   %s\n", strings.Join(qe.Repos, ", ")))
+		fmt.Fprintf(&sb, "Repos:   %s\n", strings.Join(qe.Repos, ", "))
 	}
 	if qe.Reason != "" {
-		sb.WriteString(fmt.Sprintf("Reason:  %s\n", qe.Reason))
+		fmt.Fprintf(&sb, "Reason:  %s\n", qe.Reason)
 	}
 	sb.WriteString("\n")
 
@@ -199,9 +199,9 @@ func buildCuratePrompt(skillContent string, qe SessionQueueEntry, proposals []Pr
 	} else {
 		sb.WriteString("## PROPOSALS\n\n")
 		for i, p := range proposals {
-			sb.WriteString(fmt.Sprintf("### Proposal %d: %s\n\n", i+1, p.Slug))
-			sb.WriteString(fmt.Sprintf("Type: %s\n", p.FM.Type))
-			sb.WriteString(fmt.Sprintf("Description: %s\n\n", p.FM.Description))
+			fmt.Fprintf(&sb, "### Proposal %d: %s\n\n", i+1, p.Slug)
+			fmt.Fprintf(&sb, "Type: %s\n", p.FM.Type)
+			fmt.Fprintf(&sb, "Description: %s\n\n", p.FM.Description)
 			sb.WriteString(p.Body)
 			sb.WriteString("\n---\n\n")
 		}

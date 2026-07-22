@@ -325,7 +325,7 @@ func UpdateIndex(home, scope, bucket string) error {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# INDEX — %s/%s\n\n", scope, bucket))
+	fmt.Fprintf(&sb, "# INDEX — %s/%s\n\n", scope, bucket)
 	sb.WriteString("| Name | Type | Description | Status | Valid From | Valid To |\n")
 	sb.WriteString("|------|------|-------------|--------|------------|----------|\n")
 	for _, row := range rows {

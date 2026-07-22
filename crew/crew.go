@@ -15,20 +15,20 @@ import (
 )
 
 const (
-	dbFile    = "jeff.db"
+	dbFile     = "jeff.db"
 	timeLayout = "2006-01-02T15:04:05Z"
 )
 
 // Orchestrator represents an orchestrator agent running in a tmux session.
 type Orchestrator struct {
-	ID          string     `json:"id"`
-	TmuxSession string     `json:"tmux_session"`
-	TmuxWindow  string     `json:"tmux_window"`
-	TmuxPane    string     `json:"tmux_pane"`
-	StartedAt   time.Time  `json:"started_at"`
-	Status      string     `json:"status"` // running, stopped
-	Agent       string     `json:"agent,omitempty"`
-	Model       string     `json:"model,omitempty"`
+	ID          string    `json:"id"`
+	TmuxSession string    `json:"tmux_session"`
+	TmuxWindow  string    `json:"tmux_window"`
+	TmuxPane    string    `json:"tmux_pane"`
+	StartedAt   time.Time `json:"started_at"`
+	Status      string    `json:"status"` // running, stopped
+	Agent       string    `json:"agent,omitempty"`
+	Model       string    `json:"model,omitempty"`
 }
 
 // Session represents a worker agent running in a tmux window.
@@ -39,7 +39,7 @@ type Session struct {
 	TmuxPane       string     `json:"tmux_pane,omitempty"`
 	TaskDir        string     `json:"task_dir"`
 	Persona        string     `json:"persona,omitempty"`
-	Agent          string     `json:"agent,omitempty"`  // agent CLI command (e.g. "claude", "gemini")
+	Agent          string     `json:"agent,omitempty"` // agent CLI command (e.g. "claude", "gemini")
 	Model          string     `json:"model,omitempty"`
 	Repos          []string   `json:"repos,omitempty"`
 	OrchestratorID string     `json:"orchestrator_id,omitempty"`
@@ -529,6 +529,18 @@ func (s *Store) PendingCount(taskID, direction string) (int, error) {
 		SELECT COUNT(*) FROM messages
 		WHERE task_id = ? AND direction = ? AND acked_at IS NULL`,
 		taskID, direction).Scan(&count)
+	return count, err
+}
+
+// PendingCountByType returns the number of unacknowledged messages for a task
+// in a direction that also match a given msg_type. Used to de-duplicate durable
+// worker→orchestrator signals so repeated turn-end pings collapse into one row.
+func (s *Store) PendingCountByType(taskID, direction, msgType string) (int, error) {
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM messages
+		WHERE task_id = ? AND direction = ? AND msg_type = ? AND acked_at IS NULL`,
+		taskID, direction, msgType).Scan(&count)
 	return count, err
 }
 

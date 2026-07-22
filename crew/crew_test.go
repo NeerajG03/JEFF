@@ -307,10 +307,10 @@ func TestGenerateMsgID(t *testing.T) {
 
 func TestBuildAgentCmd(t *testing.T) {
 	tests := []struct {
-		agent     string
-		model     string
-		resumeID  string
-		want      string
+		agent    string
+		model    string
+		resumeID string
+		want     string
 	}{
 		{"claude", "", "", "claude --dangerously-skip-permissions"},
 		{"claude", "sonnet", "", "claude --dangerously-skip-permissions --model sonnet"},
@@ -529,14 +529,25 @@ func sessionForSendTest(t *testing.T, store *Store, taskID string) {
 	}
 }
 
-// TestSendUsesTwoSeparateTmuxCalls verifies that a plain send produces exactly
-// two send-keys calls (paste + Enter) with no chaining.
+// forceWindowLive makes windowIsLive return true for the duration of a test, so
+// Send takes the live-delivery branch (type into pane) without a real tmux.
+func forceWindowLive(t *testing.T) {
+	t.Helper()
+	prev := windowIsLive
+	windowIsLive = func(_, _ string) bool { return true }
+	t.Cleanup(func() { windowIsLive = prev })
+}
+
+// TestSendUsesTwoSeparateTmuxCalls verifies that a plain send to a LIVE worker
+// produces exactly two send-keys calls (paste + Enter) with no chaining (Model B
+// direct delivery), and that the typed line carries the attributed framing.
 func TestSendUsesTwoSeparateTmuxCalls(t *testing.T) {
 	store := tempStore(t)
 	sessionForSendTest(t, store, "gig-send1")
 	calls := withFakeTmux(t)
+	forceWindowLive(t)
 
-	_, err := Send(store, "gig-send1", "Focus on error handling", false)
+	msg, err := Send(store, "gig-send1", "Focus on error handling", false)
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
@@ -550,17 +561,63 @@ func TestSendUsesTwoSeparateTmuxCalls(t *testing.T) {
 	if !strings.Contains(got[0], " -l ") {
 		t.Errorf("first call missing -l flag: %q", got[0])
 	}
+	// The typed line must carry the attribution + msg-id + content (Model B: the
+	// keystroke IS the delivery).
+	if !strings.Contains(got[0], "[Orchestrator "+msg.ID+"]") {
+		t.Errorf("typed line missing attribution/msg-id: %q", got[0])
+	}
+	if !strings.Contains(got[0], "Focus on error handling") {
+		t.Errorf("typed line missing content: %q", got[0])
+	}
 	if !strings.Contains(got[1], "Enter") {
 		t.Errorf("second call missing Enter: %q", got[1])
+	}
+
+	// Live-delivered → acked, so it is NOT left pending (won't replay on resume).
+	pending, err := store.PendingMessages("gig-send1", "to_worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 0 {
+		t.Errorf("live-delivered message should be acked (0 pending), got %d", len(pending))
+	}
+}
+
+// TestSendToDeadPaneQueuesForReplay is the recovery unit test (Model B): sending
+// to a worker whose pane is NOT live must NOT type anything, must NOT error, and
+// must leave the log row unacked so the SessionStart replay surfaces it on resume.
+func TestSendToDeadPaneQueuesForReplay(t *testing.T) {
+	store := tempStore(t)
+	sessionForSendTest(t, store, "gig-dead1")
+	calls := withFakeTmux(t)
+
+	// windowIsLive defaults to the real HasWindowInSession, which returns false
+	// under the fake tmux (no real window) — exactly the dead-pane case.
+	msg, err := Send(store, "gig-dead1", "recover me", false)
+	if err != nil {
+		t.Fatalf("Send to dead pane should not error (message is queued): %v", err)
+	}
+
+	if got := sendKeysCalls(calls()); len(got) != 0 {
+		t.Errorf("dead pane: expected no keystrokes typed, got %v", got)
+	}
+
+	pending, err := store.PendingMessages("gig-dead1", "to_worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0].ID != msg.ID {
+		t.Fatalf("expected 1 unacked row queued for SessionStart replay, got %d", len(pending))
 	}
 }
 
 // TestSendWithInterrupt verifies that interrupt=true triggers C-c before
-// the paste+Enter sequence, and stores a message in the DB.
+// the paste+Enter sequence to a live worker, and logs the message.
 func TestSendWithInterrupt(t *testing.T) {
 	store := tempStore(t)
 	sessionForSendTest(t, store, "gig-int1")
 	calls := withFakeTmux(t)
+	forceWindowLive(t)
 
 	msg, err := Send(store, "gig-int1", "urgent redirect", true)
 	if err != nil {
@@ -582,13 +639,14 @@ func TestSendWithInterrupt(t *testing.T) {
 	}
 	assertNoSingleCallCombinesTextAndEnter(t, sk)
 
-	// Message must be stored in DB.
-	msgs, err := store.PendingMessages("gig-int1", "to_worker")
+	// Message must be recorded in the DB (as a log row). Live delivery acked it,
+	// so it is no longer pending — assert it exists via the recent-message log.
+	msgs, err := store.RecentMessages("gig-int1", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(msgs) != 1 {
-		t.Fatalf("want 1 pending message, got %d", len(msgs))
+		t.Fatalf("want 1 logged message, got %d", len(msgs))
 	}
 	if msgs[0].Content != "urgent redirect" {
 		t.Errorf("content = %q, want %q", msgs[0].Content, "urgent redirect")

@@ -16,7 +16,7 @@ func builtinHooks() []*Hook {
 		taskContextHook(),
 		taskCommandsHook(),
 		checkpointNudgeHook(),
-		inboxCheckHook(),
+		inboxReplayHook(),
 		workerHeartbeatHook(),
 		workerStopHook(),
 		sessionCaptureHook(),
@@ -297,14 +297,15 @@ func checkpointNudgeHook() *Hook {
 		Timeout: 5,
 		Scripts: map[string]func(ctx HookContext) string{
 			"claude": func(ctx HookContext) string {
-				return buildCheckpointNudgeScript(ctx.CheckpointPatterns)
+				return buildCheckpointNudgeScript(ctx.CheckpointPatterns, "PostToolUse")
 			},
 			"opencode": func(ctx HookContext) string {
 				return buildOpenCodeCheckpointNudgeSnippet(ctx.CheckpointPatterns)
 			},
-			// Gemini maps PostToolUse → AfterTool; same bash script works.
+			// Gemini maps PostToolUse → AfterTool; the emitted hookEventName MUST
+			// match the settings key or Gemini discards the output (gig-ddd6).
 			"gemini": func(ctx HookContext) string {
-				return buildCheckpointNudgeScript(ctx.CheckpointPatterns)
+				return buildCheckpointNudgeScript(ctx.CheckpointPatterns, "AfterTool")
 			},
 		},
 	}
@@ -312,8 +313,9 @@ func checkpointNudgeHook() *Hook {
 
 // buildCheckpointNudgeScript generates a bash script that checks the tool
 // input command against a list of regex patterns. If any match, it outputs
-// a checkpoint reminder via the hook protocol.
-func buildCheckpointNudgeScript(patterns []string) string {
+// a checkpoint reminder via the hook protocol. eventName is emitted as
+// hookSpecificOutput.hookEventName and must match the agent's settings key.
+func buildCheckpointNudgeScript(patterns []string, eventName string) string {
 	if len(patterns) == 0 {
 		// No patterns configured — script exits silently.
 		return `#!/bin/bash
@@ -344,9 +346,11 @@ fi
 
 # Check against configured checkpoint patterns.
 if echo "$COMMAND" | grep -qE '` + combined + `'; then
-  jq -n '{
+  jq -n \
+    --arg ev "` + eventName + `" \
+    '{
     hookSpecificOutput: {
-      hookEventName: "PostToolUse",
+      hookEventName: $ev,
       additionalContext: "You just completed a significant action. Consider running jeff checkpoint --done ... --next ... to save a progress snapshot for the user."
     }
   }'
@@ -397,33 +401,41 @@ func crewContextHook() *Hook {
 	}
 }
 
-// inboxCheckHook checks for pending orchestrator messages and surfaces
-// them to the worker agent. Only nudge-type messages go through this hook;
-// status/divert/normal messages are delivered directly via tmux.
-func inboxCheckHook() *Hook {
+// inboxReplayHook is the SessionStart recovery path (Model B). Delivery happens
+// directly via the pane keystroke in crew.Send; the inbox is a durable LOG. This
+// hook replays any log rows still unacked at launch/resume — i.e. messages typed
+// while the worker's pane was dead — attributes them, and acks them. It is the
+// SOLE remaining hook-driven surfacing of message content: there is deliberately
+// no PostToolUse / turn-end re-surfacing (that was the double-delivery).
+func inboxReplayHook() *Hook {
 	return &Hook{
-		Name:    "inbox-check",
+		Name:    "inbox-replay",
 		Source:  SourceTask,
-		Event:   "PostToolUse",
+		Event:   "SessionStart",
 		Matcher: "*",
-		Timeout: 3,
+		Timeout: 5,
 		Scripts: map[string]func(ctx HookContext) string{
 			"claude": func(ctx HookContext) string {
-				return buildInboxCheckScript(ctx.TaskID)
+				return buildInboxReplayScript(ctx.TaskID, "SessionStart")
 			},
 			"opencode": func(ctx HookContext) string {
+				// SessionStart → session.created (see openCodeEventName).
 				return buildOpenCodeInboxCheckSnippet(ctx.TaskID)
 			},
 			"gemini": func(ctx HookContext) string {
-				return buildInboxCheckScript(ctx.TaskID)
+				// SessionStart is the same key on Claude and Gemini.
+				return buildInboxReplayScript(ctx.TaskID, "SessionStart")
 			},
 		},
 	}
 }
 
-// buildInboxCheckScript generates a bash script that checks jeff.db
-// for pending nudge messages and surfaces them via the hook protocol.
-func buildInboxCheckScript(taskID string) string {
+// buildInboxReplayScript generates the SessionStart replay script. It surfaces
+// any unacked log rows via `jeff crew inbox --format agent` (which frames them as
+// "[Orchestrator <msg-id>]: <content>" — identical to the direct-send framing —
+// and acks them, so each is replayed exactly once). eventName is emitted as
+// hookSpecificOutput.hookEventName and MUST match the agent's settings key.
+func buildInboxReplayScript(taskID, eventName string) string {
 	if taskID == "" {
 		return `#!/bin/bash
 set -euo pipefail
@@ -437,18 +449,21 @@ set -euo pipefail
 
 INPUT=$(cat)
 
-# Quick check: any pending messages?
+# Recovery only: replay log rows left unacked because they were typed while this
+# worker's pane was dead. Live-delivered messages were acked at send time, so in
+# the normal case this is empty and nothing is re-surfaced.
 PENDING=$(jeff crew inbox ` + taskID + ` --count 2>/dev/null || echo "0")
 [ "$PENDING" = "0" ] && exit 0
 
-# Fetch messages formatted for agent consumption.
+# --format agent frames + acks, so each row replays exactly once.
 MESSAGES=$(jeff crew inbox ` + taskID + ` --format agent 2>/dev/null)
 
 jq -n \
   --arg ctx "$MESSAGES" \
+  --arg ev "` + eventName + `" \
   '{
     hookSpecificOutput: {
-      hookEventName: "PostToolUse",
+      hookEventName: $ev,
       additionalContext: $ctx
     }
   }'
@@ -598,34 +613,33 @@ echo '{}'
 `
 	}
 
-	// Send directly to orchestrator pane via tmux — no DB lookup needed.
-	// The orchestrator is always in the "orchestrator" window of its session.
-	target := orchestratorID + ":orchestrator"
-	message := "[Worker " + taskID + " stopped]: Agent has stopped working — the tmux session is still active."
-
+	// Durable + real-time in one call: `jeff crew worker-stopped` persists a
+	// de-duplicated to_orchestrator row (recovered by the orchestrator-inbox poll
+	// even if the pane is dead) AND wakes the orchestrator pane. The de-dup means
+	// Claude's per-turn Stop can't spam the orchestrator with "[Worker stopped]".
 	return `#!/bin/bash
 set -euo pipefail
 
 INPUT=$(cat)
 
-# Signal orchestrator directly via tmux — DB may already be cleaned up.
-# Two separate tmux invocations: paste text first, then send Enter.
-# Chaining with \; in a single invocation drops the Enter (same class of bug as gig-4040).
-tmux send-keys -t "` + target + `" -l "` + message + `" 2>/dev/null || true
-tmux send-keys -t "` + target + `" Enter 2>/dev/null || true
+jeff crew worker-stopped ` + taskID + ` 2>/dev/null || true
 
 echo '{}'
 `
 }
 
-// orchestratorInboxHook fires after every tool use at JEFF_HOME level.
-// It detects if we're running inside an orchestrator session (jeff-N),
-// and if so, checks for pending to_orchestrator messages from workers.
+// orchestratorInboxHook is the orchestrator-side mirror of inbox-replay (Model B).
+// Worker→orchestrator delivery happens directly by typing framed content into the
+// orchestrator pane (Ask / SignalOrchestrator / worker-stop); this hook does NOT
+// re-surface those mid-session. It runs at SessionStart only, replaying any
+// to_orchestrator log rows left unacked because they were typed while the
+// orchestrator pane was dead — so a stop-ping sent to a down orchestrator is
+// recovered exactly once on relaunch.
 func orchestratorInboxHook() *Hook {
 	return &Hook{
 		Name:    "orchestrator-inbox",
 		Source:  SourceHome,
-		Event:   "PostToolUse",
+		Event:   "SessionStart",
 		Matcher: "*",
 		Timeout: 5,
 		Scripts: map[string]func(ctx HookContext) string{
@@ -666,18 +680,20 @@ INPUT=$(cat)
 
 ` + detection + `
 
-# Quick check: any pending messages for this orchestrator?
+# Recovery only: replay to_orchestrator rows left unacked because they were typed
+# while this orchestrator's pane was dead. Live-delivered signals were acked at
+# send time, so in the normal case this is empty.
 PENDING=$(jeff crew orchestrator-inbox "$ORCH_ID" --count 2>/dev/null || echo "0")
 [ "$PENDING" = "0" ] && exit 0
 
-# Fetch messages formatted for orchestrator consumption.
+# --format agent frames + acks, so each row replays exactly once.
 MESSAGES=$(jeff crew orchestrator-inbox "$ORCH_ID" --format agent 2>/dev/null)
 
 jq -n \
   --arg ctx "$MESSAGES" \
   '{
     hookSpecificOutput: {
-      hookEventName: "PostToolUse",
+      hookEventName: "SessionStart",
       additionalContext: $ctx
     }
   }'
@@ -718,10 +734,9 @@ func buildOpenCodeWorkerStopSnippet(taskID, orchestratorID string) string {
 	if taskID == "" || orchestratorID == "" {
 		return ""
 	}
-	target := orchestratorID + ":orchestrator"
-	message := "[Worker " + taskID + " stopped]: Agent has stopped working — the tmux session is still active."
-	return jsExecFileSnippet("worker-stop", "tmux", "send-keys", "-t", target, "-l", message) + "\n" +
-		jsExecFileSnippet("worker-stop-enter", "tmux", "send-keys", "-t", target, "Enter")
+	// Durable + real-time in one call (see buildWorkerStopScript). The stopSignalled
+	// debounce in the generated plugin still guards against per-idle repetition.
+	return jsExecFileSnippet("worker-stop", "jeff", "crew", "worker-stopped", taskID)
 }
 
 func buildOpenCodeOrchestratorInboxSnippet(orchestratorID string) string {

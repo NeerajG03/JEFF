@@ -43,18 +43,10 @@ func TestBuiltinHooksGenerateContent(t *testing.T) {
 }
 
 func TestHomeHooksAreSessionStart(t *testing.T) {
-	// Some home hooks are PostToolUse (e.g. orchestrator-inbox).
-	postToolUseHome := map[string]bool{
-		"orchestrator-inbox": true,
-	}
+	// Under Model B every home hook is SessionStart — orchestrator-inbox moved
+	// from PostToolUse polling to a SessionStart replay (gig-ddd6).
 	for _, h := range builtinHooks() {
 		if h.Source != SourceHome {
-			continue
-		}
-		if postToolUseHome[h.Name] {
-			if h.Event != "PostToolUse" {
-				t.Errorf("%s: event = %q, want PostToolUse", h.Name, h.Event)
-			}
 			continue
 		}
 		if h.Event != "SessionStart" {
@@ -65,8 +57,8 @@ func TestHomeHooksAreSessionStart(t *testing.T) {
 
 func TestTaskHookSources(t *testing.T) {
 	taskHooks := map[string]bool{
-		"task-context":    true,
-		"task-commands":   true,
+		"task-context":     true,
+		"task-commands":    true,
 		"checkpoint-nudge": true,
 	}
 	for _, h := range builtinHooks() {
@@ -123,77 +115,33 @@ func TestTimeoutOrDefault(t *testing.T) {
 	}
 }
 
-// --- Worker stop hook tmux regression tests (gig-33ab) ---
+// --- Worker stop hook durability tests (gig-ddd6) ---
 //
-// buildWorkerStopScript generates a shell script that signals the orchestrator
-// pane when a worker session ends.  It calls tmux send-keys directly (it
-// cannot use Go's SendCommand because it is a shell script).
-//
-// gig-33ab: the original script used tmux's \; chaining to combine paste and
-// Enter in one invocation — the same pattern that caused gig-4040 in Go code.
-// Text was delivered to the orchestrator pane but Enter was never sent, so the
-// orchestrator never processed the stop signal.
-//
-// These tests assert the invariant structurally: inspect the generated script
-// for the broken pattern and for the correct two-invocation pattern.
+// buildWorkerStopScript now routes through `jeff crew worker-stopped <taskID>`,
+// which persists a de-duplicated to_orchestrator row AND wakes the orchestrator
+// pane in one call. This makes the stop signal durable (recovered by the
+// orchestrator-inbox poll even if the pane is dead) and moves the tmux-paste
+// mechanics into Go's SendCommand, where the gig-4040/gig-33ab two-invocation
+// invariant is enforced by crew/tmux_test.go.
 
-// TestWorkerStopScriptUsesTwoSeparateSendKeys is the primary regression test
-// for gig-33ab.  The generated script must contain two separate tmux send-keys
-// lines: one that pastes text (with -l) and one that sends Enter (without -l).
-func TestWorkerStopScriptUsesTwoSeparateSendKeys(t *testing.T) {
+// TestWorkerStopScriptUsesDurableCommand asserts the generated script signals
+// the orchestrator via the durable `jeff crew worker-stopped` command rather
+// than typing raw tmux keystrokes.
+func TestWorkerStopScriptUsesDurableCommand(t *testing.T) {
 	script := buildWorkerStopScript("gig-test1", "jeff-1")
 
-	// Count distinct tmux send-keys lines.
-	var pasteLines, enterLines int
-	for _, line := range strings.Split(script, "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "tmux send-keys") {
-			continue
-		}
-		if strings.Contains(line, " -l ") {
-			pasteLines++
-		}
-		if strings.Contains(line, "Enter") && !strings.Contains(line, " -l ") {
-			enterLines++
-		}
+	if !strings.Contains(script, "jeff crew worker-stopped gig-test1") {
+		t.Errorf("script missing durable `jeff crew worker-stopped` call:\n%s", script)
 	}
-
-	if pasteLines != 1 {
-		t.Errorf("want exactly 1 send-keys line with -l (paste), got %d\nscript:\n%s", pasteLines, script)
-	}
-	if enterLines != 1 {
-		t.Errorf("want exactly 1 send-keys line with Enter (no -l), got %d\nscript:\n%s", enterLines, script)
-	}
-}
-
-// TestWorkerStopScriptNoSemicolonChaining is the explicit guard against the
-// exact broken pattern from gig-33ab: using tmux's \; command chaining to
-// combine paste and Enter in a single invocation.
-func TestWorkerStopScriptNoSemicolonChaining(t *testing.T) {
-	script := buildWorkerStopScript("gig-test1", "jeff-1")
-
-	// The broken pattern: a single line with both -l and Enter chained via \;
-	for _, line := range strings.Split(script, "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "tmux") {
-			continue
-		}
-		// Detect the chained form: send-keys -l ... \; send-keys ... Enter
-		// (with or without whitespace around \;)
-		hasSemichain := strings.Contains(line, `\;`) || strings.Contains(line, ` ; `)
-		if hasSemichain && strings.Contains(line, " -l ") && strings.Contains(line, "Enter") {
-			t.Errorf(
-				"regression (gig-33ab): single tmux line combines -l paste and Enter via chaining:\n  %q\n"+
-					"Fix: two separate tmux send-keys invocations — paste first, Enter second.",
-				line,
-			)
-		}
+	// It must NOT type the message directly into a tmux pane anymore — that path
+	// was fire-and-forget (no DB row) and lost on a dead orchestrator pane.
+	if strings.Contains(script, "tmux send-keys") {
+		t.Errorf("worker-stop script should no longer type raw tmux keys:\n%s", script)
 	}
 }
 
 // TestWorkerStopScriptEmptyArgsIsNoop confirms that a missing taskID or
-// orchestratorID produces a no-op script (no tmux calls at all).
-// This prevents partial delivery (text without Enter) on misconfiguration.
+// orchestratorID produces a no-op script (no signalling at all).
 func TestWorkerStopScriptEmptyArgsIsNoop(t *testing.T) {
 	cases := []struct{ taskID, orchID string }{
 		{"", "jeff-1"},
@@ -202,24 +150,109 @@ func TestWorkerStopScriptEmptyArgsIsNoop(t *testing.T) {
 	}
 	for _, tc := range cases {
 		script := buildWorkerStopScript(tc.taskID, tc.orchID)
-		if strings.Contains(script, "tmux send-keys") {
-			t.Errorf("buildWorkerStopScript(%q,%q): expected no-op, got tmux calls:\n%s",
+		if strings.Contains(script, "worker-stopped") {
+			t.Errorf("buildWorkerStopScript(%q,%q): expected no-op, got signal:\n%s",
 				tc.taskID, tc.orchID, script)
 		}
 	}
 }
 
-// TestWorkerStopScriptContainsTaskIDAndOrchestratorTarget verifies the script
-// sends to the correct tmux target (orchestratorID:orchestrator) and includes
-// the worker task ID in the message — both are required for the orchestrator
-// to identify which worker stopped.
-func TestWorkerStopScriptContainsTaskIDAndOrchestratorTarget(t *testing.T) {
+// TestWorkerStopScriptContainsTaskID verifies the durable command targets the
+// correct worker task.
+func TestWorkerStopScriptContainsTaskID(t *testing.T) {
 	script := buildWorkerStopScript("gig-abc1", "jeff-42")
 
-	if !strings.Contains(script, "jeff-42:orchestrator") {
-		t.Errorf("script missing orchestrator target %q:\n%s", "jeff-42:orchestrator", script)
-	}
 	if !strings.Contains(script, "gig-abc1") {
 		t.Errorf("script missing task ID %q:\n%s", "gig-abc1", script)
+	}
+}
+
+// --- Model B delivery/replay generation tests (gig-ddd6, Section A) ---
+
+// TestInboxReplayIsSessionStartOnly asserts the inbox surfacing hook fires only
+// at SessionStart. Under Model B the pane keystroke is the delivery, so there
+// must be no PostToolUse/turn-end inbox hook at all.
+func TestInboxReplayIsSessionStartOnly(t *testing.T) {
+	h := inboxReplayHook()
+	if h.Event != "SessionStart" {
+		t.Errorf("inbox-replay event = %q, want SessionStart", h.Event)
+	}
+	if h.Source != SourceTask {
+		t.Errorf("inbox-replay source = %q, want task", h.Source)
+	}
+}
+
+// TestNoPostToolUseResurfacesInboxContent is the anti-double-delivery guard: no
+// builtin hook may re-surface message content mid-session (i.e. run
+// `jeff crew inbox ... --format agent`) on PostToolUse or Stop. That behavior was
+// the [Orchestrator msg-x] double-delivery; Model B replays only at SessionStart.
+func TestNoPostToolUseResurfacesInboxContent(t *testing.T) {
+	ctx := HookContext{TaskID: "gig-ab12", OrchestratorID: "jeff-1"}
+	for _, h := range builtinHooks() {
+		if h.Event == "SessionStart" {
+			continue // SessionStart replay is the sanctioned surfacing.
+		}
+		for key, gen := range h.Scripts {
+			script := gen(ctx)
+			if strings.Contains(script, "crew inbox") && strings.Contains(script, "--format agent") {
+				t.Errorf("hook %q (%s, event=%s) re-surfaces inbox content mid-session — double-delivery risk:\n%s",
+					h.Name, key, h.Event, script)
+			}
+			// The rejected Model-A Stop-drain used a block/continue decision.
+			if h.Event == "Stop" && strings.Contains(script, `"block"`) {
+				t.Errorf("hook %q emits a Stop block/continue decision — Model A was rejected", h.Name)
+			}
+		}
+	}
+}
+
+// TestInboxReplayScriptRepliesAndAcks asserts the SessionStart replay script
+// drains via `--format agent` (which frames + acks, so each row replays once).
+func TestInboxReplayScriptRepliesAndAcks(t *testing.T) {
+	script := buildInboxReplayScript("gig-ab12", "SessionStart")
+	if !strings.Contains(script, "jeff crew inbox gig-ab12 --format agent") {
+		t.Errorf("replay script missing framed+acking drain:\n%s", script)
+	}
+	if !strings.Contains(script, `hookEventName: $ev`) || !strings.Contains(script, `"SessionStart"`) {
+		t.Errorf("replay script must emit SessionStart hookEventName:\n%s", script)
+	}
+}
+
+// TestGeminiInboxReplayEmitsSessionStart / TestGeminiCheckpointNudgeEmitsAfterTool
+// lock in the gig-ddd6 hookEventName fix: the emitted event name must match the
+// Gemini settings key (SessionStart is shared; PostToolUse maps to AfterTool).
+func TestGeminiInboxReplayEmitsSessionStart(t *testing.T) {
+	script := inboxReplayHook().Scripts["gemini"](HookContext{TaskID: "gig-ab12"})
+	if !strings.Contains(script, `"SessionStart"`) {
+		t.Errorf("gemini inbox-replay must emit SessionStart:\n%s", script)
+	}
+}
+
+func TestGeminiCheckpointNudgeEmitsAfterTool(t *testing.T) {
+	ctx := HookContext{CheckpointPatterns: []string{"git commit"}}
+	gemini := checkpointNudgeHook().Scripts["gemini"](ctx)
+	if !strings.Contains(gemini, `"AfterTool"`) {
+		t.Errorf("gemini checkpoint-nudge must emit AfterTool (matches settings key):\n%s", gemini)
+	}
+	claude := checkpointNudgeHook().Scripts["claude"](ctx)
+	if !strings.Contains(claude, `"PostToolUse"`) {
+		t.Errorf("claude checkpoint-nudge must emit PostToolUse:\n%s", claude)
+	}
+}
+
+// TestOrchestratorInboxIsSessionStartReplay asserts the orchestrator direction
+// mirrors the worker one: SessionStart replay, emitting SessionStart, draining
+// the framed+acking orchestrator inbox.
+func TestOrchestratorInboxIsSessionStartReplay(t *testing.T) {
+	h := orchestratorInboxHook()
+	if h.Event != "SessionStart" {
+		t.Errorf("orchestrator-inbox event = %q, want SessionStart", h.Event)
+	}
+	script := h.Scripts["claude"](HookContext{OrchestratorID: "jeff-1"})
+	if !strings.Contains(script, "orchestrator-inbox") || !strings.Contains(script, "--format agent") {
+		t.Errorf("orchestrator-inbox replay must drain framed+acking messages:\n%s", script)
+	}
+	if !strings.Contains(script, `"SessionStart"`) {
+		t.Errorf("orchestrator-inbox must emit SessionStart hookEventName:\n%s", script)
 	}
 }

@@ -245,7 +245,10 @@ func TestAskStoresMessageForDurableIdentity(t *testing.T) {
 	withFakeTmux(t)
 	store := tempStore(t)
 
-	runningOrchestrator(t, store, "orch-durable", "", "running")
+	// A truly non-tmux durable identity: no session, no pane, so there is no live
+	// target. Under Model B the ask row is left unacked (queued) for the
+	// orchestrator's SessionStart replay rather than acked on live delivery.
+	durableOrchestrator(t, store, "orch-durable")
 	now := time.Now().UTC()
 	if err := store.PutSession(&Session{
 		TaskID:         "gig-ask",
@@ -270,6 +273,49 @@ func TestAskStoresMessageForDurableIdentity(t *testing.T) {
 	}
 	if len(pending) != 1 || pending[0].ID != msg.ID {
 		t.Errorf("expected the asked message to be queued for polling; got %d messages", len(pending))
+	}
+}
+
+// TestSignalWorkerStoppedDurableAndDeduped covers gig-ddd6 item 3 + the
+// no-[Worker stopped]-spam bar: to a durable orchestrator with no live pane, the
+// stop signal is persisted as an unacked to_orchestrator row (recovered on the
+// orchestrator's SessionStart), and repeated stop signals collapse to ONE
+// unacked row (the cross-turn debounce for Claude's per-turn Stop).
+func TestSignalWorkerStoppedDurableAndDeduped(t *testing.T) {
+	withFakeTmux(t)
+	store := tempStore(t)
+
+	durableOrchestrator(t, store, "orch-durable")
+	now := time.Now().UTC()
+	if err := store.PutSession(&Session{
+		TaskID:         "gig-ws",
+		TmuxSession:    "jeff",
+		WindowName:     "gig-ws",
+		TaskDir:        "/tmp",
+		OrchestratorID: "orch-durable",
+		Status:         "running",
+		StartedAt:      now,
+		LastSeen:       now,
+	}); err != nil {
+		t.Fatalf("put bound session: %v", err)
+	}
+
+	// Simulate Claude firing Stop three times in a row.
+	for i := 0; i < 3; i++ {
+		if err := SignalWorkerStopped(store, "gig-ws"); err != nil {
+			t.Fatalf("SignalWorkerStopped: %v", err)
+		}
+	}
+
+	pending, err := store.PendingOrchestratorMessages("orch-durable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 {
+		t.Fatalf("want exactly 1 de-duplicated worker-stop row, got %d", len(pending))
+	}
+	if pending[0].Type != "worker-stop" {
+		t.Errorf("row type = %q, want worker-stop", pending[0].Type)
 	}
 }
 

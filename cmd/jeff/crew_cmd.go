@@ -47,6 +47,7 @@ func crewCmd() *cobra.Command {
 		crewEventsCmd(),
 		crewCleanupCmd(),
 		crewSignalOrchestratorCmd(),
+		crewWorkerStoppedCmd(),
 		crewCheckStallsCmd(),
 	)
 
@@ -178,9 +179,9 @@ func crewStartCmd() *cobra.Command {
 			var launchCmd string
 			if provider != nil && provider.SupportsInlinePrompt() {
 				launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{
-					Model:  model,
+					Model:     model,
 					AgentName: personaName,
-					Prompt: prompt,
+					Prompt:    prompt,
 				})
 				launchCmd = provider.Command()
 				for _, a := range launchArgs {
@@ -1321,6 +1322,24 @@ func crewSignalOrchestratorCmd() *cobra.Command {
 
 			fmt.Fprintf(os.Stderr, "Signaled orchestrator for %s\n", taskID)
 			return nil
+		},
+	}
+}
+
+func crewWorkerStoppedCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "worker-stopped <gig-id>",
+		Short:  "Signal that a worker's agent turn ended (used by the worker-stop hook)",
+		Long:   "Persists a de-duplicated to_orchestrator stop signal and wakes the orchestrator pane. Durable: recovered by the orchestrator-inbox poll even if the pane is dead.",
+		Args:   cobra.ExactArgs(1),
+		Hidden: true, // Used by the worker-stop hook.
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cs, err := crew.Open(cfg.Home)
+			if err != nil {
+				return err
+			}
+			defer cs.Close()
+			return crew.SignalWorkerStopped(cs, args[0])
 		},
 	}
 }

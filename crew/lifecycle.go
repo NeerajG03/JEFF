@@ -458,8 +458,30 @@ func sendCommandForSession(target, command, agent string) error {
 	return SendCommand(target, command)
 }
 
-// Send stores the message in the inbox and delivers it to the worker's pane.
-// If interrupt is true, the agent is interrupted (Ctrl-C) before delivery.
+// windowIsLive reports whether a worker's tmux window is currently alive. It is
+// a package var so tests can force a deterministic answer without a real tmux.
+var windowIsLive = HasWindowInSession
+
+// FrameToWorker renders the attributed line typed into a worker's pane (and
+// replayed from the log). The msg-id is carried in the frame so the worker can
+// still `jeff crew ack <msg-id>`. This is the single source of the
+// `[Orchestrator <msg-id>]: <content>` framing — the inbox replay path
+// (`jeff crew inbox --format agent`) produces the identical string.
+func FrameToWorker(msgID, content string) string {
+	return fmt.Sprintf("[Orchestrator %s]: %s", msgID, content)
+}
+
+// Send delivers a message to a worker under the Model B (direct-delivery +
+// inbox-as-log) contract: it writes ONE durable log row and types the ATTRIBUTED
+// content straight into the worker's pane. The pane keystroke IS the delivery;
+// the log row exists only for crash/restart recovery (replayed once at the
+// worker's next SessionStart).
+//
+// The row is acked as soon as the pane delivery succeeds, so a live-delivered
+// message is never replayed. If the pane is not live (worker stopped/restarting)
+// the type fails and the row is left unacked — the SessionStart replay hook
+// surfaces it exactly once on resume. `jeff crew send` therefore succeeds even
+// when the worker is down: the message is durably queued.
 func Send(store *Store, taskID, content string, interrupt bool) (*Message, error) {
 	sess, err := store.GetSession(taskID)
 	if err != nil {
@@ -477,29 +499,65 @@ func Send(store *Store, taskID, content string, interrupt bool) (*Message, error
 		CreatedAt: time.Now().UTC(),
 	}
 
+	// Durable log row (unacked). Its role is recovery, not live delivery.
 	if err := store.SendMessage(msg); err != nil {
 		return nil, fmt.Errorf("store message: %w", err)
 	}
 
-	if interrupt {
+	// Only interrupt a live worker; a Ctrl-C to a dead pane is pointless.
+	live := windowIsLive(sess.TmuxSession, sess.WindowName)
+	if interrupt && live {
 		if err := SendInterrupt(target); err != nil {
 			return nil, fmt.Errorf("interrupt: %w", err)
 		}
 		time.Sleep(interruptSettleDelay(sess.Agent))
 	}
 
-	if err := sendCommandForSession(target, content, sess.Agent); err != nil {
-		return nil, fmt.Errorf("send message: %w", err)
+	// The delivery: type the attributed content into the pane. On success, ack
+	// the row so it is not replayed on the next SessionStart. On failure (pane
+	// not live), leave it unacked for SessionStart recovery — this is not an
+	// error, the message is durably logged.
+	framed := FrameToWorker(msg.ID, content)
+	if live {
+		if err := sendCommandForSession(target, framed, sess.Agent); err == nil {
+			_ = store.AckMessage(msg.ID, "")
+		}
 	}
 
 	return msg, nil
 }
 
-// SignalOrchestrator sends a formatted message directly to a worker's
-// orchestrator tmux pane. Unlike Ask, it does not store a DB message — it's
-// a fire-and-forget notification for completion/stall signals that the
-// orchestrator receives as user input immediately, even when idle.
+// FrameToOrchestrator renders the attributed line typed into an orchestrator's
+// pane (and replayed from the log). It mirrors FrameToWorker for the reverse
+// direction. `jeff crew orchestrator-inbox --format agent` produces the identical
+// string on the SessionStart replay path.
+func FrameToOrchestrator(taskID, message string) string {
+	return fmt.Sprintf("[Worker %s]: %s", taskID, message)
+}
+
+// SignalOrchestrator delivers a worker→orchestrator signal under the same Model B
+// contract as Send, in the reverse direction: type the framed content into the
+// orchestrator pane AND write a durable to_orchestrator log row. On successful
+// live delivery the row is acked; otherwise it is left unacked and replayed once
+// on the orchestrator's next SessionStart.
 func SignalOrchestrator(store *Store, taskID, message string) error {
+	return signalOrchestrator(store, taskID, message, "signal", false)
+}
+
+// SignalWorkerStopped records a durable, de-duplicated worker-stopped signal and
+// delivers it to the orchestrator pane. De-duplication collapses repeated
+// turn-end stop signals (e.g. Claude's per-turn Stop) while one is still unacked,
+// so the orchestrator is not spammed with "[Worker stopped]" lines.
+func SignalWorkerStopped(store *Store, taskID string) error {
+	message := "Agent has stopped working — the tmux window is still active."
+	return signalOrchestrator(store, taskID, message, "worker-stop", true)
+}
+
+// signalOrchestrator is the shared implementation for durable worker→orchestrator
+// signals. msgType tags the stored row; when dedupe is true, no new row is stored
+// (and no duplicate pane line typed) if an unacked to_orchestrator row of the
+// same type already exists for the task.
+func signalOrchestrator(store *Store, taskID, message, msgType string, dedupe bool) error {
 	sess, err := store.GetSession(taskID)
 	if err != nil {
 		return fmt.Errorf("get session: %w", err)
@@ -515,17 +573,38 @@ func SignalOrchestrator(store *Store, taskID, message string) error {
 		return fmt.Errorf("get orchestrator %s: %w", sess.OrchestratorID, err)
 	}
 
+	// De-dup: while an equivalent signal is still unacked (undelivered/unseen),
+	// don't queue another row or re-type the pane line. This is the cross-turn
+	// debounce for Claude's per-turn Stop.
+	if dedupe {
+		if n, err := store.PendingCountByType(taskID, "to_orchestrator", msgType); err == nil && n > 0 {
+			return nil
+		}
+	}
+
+	// Durable log row first (unacked), so the signal survives a dead orchestrator
+	// pane and is replayed on the orchestrator's next SessionStart.
+	msg := &Message{
+		ID:        generateMsgID(),
+		TaskID:    taskID,
+		Direction: "to_orchestrator",
+		Type:      msgType,
+		Content:   message,
+		CreatedAt: time.Now().UTC(),
+	}
+	_ = store.SendMessage(msg)
+
 	target := orchestratorSignalTarget(orch)
 	if target == "" {
-		// Durable identity with no tmux pane/session — there is no live pane to
-		// push to. This is fire-and-forget, so drop the real-time signal; the
-		// orchestrator picks it up on its next events/inbox poll.
+		// Durable identity with no live pane — the stored row is the delivery
+		// path; the orchestrator replays it on its next SessionStart.
 		return nil
 	}
 
-	formatted := fmt.Sprintf("[Worker %s]: %s", taskID, message)
-	if err := SendCommand(target, formatted); err != nil {
-		return fmt.Errorf("signal orchestrator: %w", err)
+	// Type the framed content into the orchestrator pane. On success, ack the row
+	// so it is not replayed; on failure leave it unacked for SessionStart recovery.
+	if err := SendCommand(target, FrameToOrchestrator(taskID, message)); err == nil {
+		_ = store.AckMessage(msg.ID, "")
 	}
 
 	return nil
@@ -612,19 +691,18 @@ func Ask(store *Store, taskID, content string) (*Message, error) {
 		return nil, fmt.Errorf("store ask message: %w", err)
 	}
 
-	// Best-effort real-time delivery to the orchestrator pane. The message is
-	// already persisted above, so a non-tmux orchestrator (no live pane) still
-	// receives it via `jeff crew orchestrator-inbox` polling — we just skip the
-	// live push rather than failing the ask.
+	// Direct delivery to the orchestrator pane (Model B). The row above is the
+	// durable log; a non-tmux orchestrator (no live pane) recovers the message on
+	// its next SessionStart replay, so we don't fail the ask.
 	target := orchestratorSignalTarget(orch)
 	if target == "" {
 		return msg, nil
 	}
 
-	// Format: "[worker <task-id>]: <content>"
-	formatted := fmt.Sprintf("[worker %s]: %s", taskID, content)
-	if err := SendCommand(target, formatted); err != nil {
-		return nil, fmt.Errorf("deliver to orchestrator: %w", err)
+	// On successful live delivery, ack so the row is not replayed on the
+	// orchestrator's next SessionStart; on failure leave it unacked for recovery.
+	if err := SendCommand(target, FrameToOrchestrator(taskID, content)); err == nil {
+		_ = store.AckMessage(msg.ID, "")
 	}
 
 	return msg, nil

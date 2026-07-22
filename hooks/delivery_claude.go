@@ -1,6 +1,9 @@
 package hooks
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // claudeDelivery installs hooks as bash scripts + Claude Code settings.json entries.
 type claudeDelivery struct{}
@@ -40,6 +43,9 @@ func claudeSettingsPath(targetDir string) string {
 // Extracted from installClaude to support reuse by geminiDelivery.
 func installClaudeScript(h *Hook, targetDir string, ctx HookContext, gen func(HookContext) string, settingsFile string) error {
 	content := gen(ctx)
+	if strings.HasPrefix(content, "#!/bin/bash\n") {
+		content = "#!/bin/bash\n# jeff-hook-version: " + ScriptVersion + "\n" + strings.TrimPrefix(content, "#!/bin/bash\n")
+	}
 	sp := scriptPath(targetDir, h.Name)
 
 	if err := mkdirAll(sp); err != nil {

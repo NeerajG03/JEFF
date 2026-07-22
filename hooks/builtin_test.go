@@ -130,7 +130,7 @@ func TestTimeoutOrDefault(t *testing.T) {
 func TestWorkerStopScriptUsesDurableCommand(t *testing.T) {
 	script := buildWorkerStopScript("gig-test1", "jeff-1")
 
-	if !strings.Contains(script, "jeff crew worker-stopped gig-test1") {
+	if !strings.Contains(script, "jeff crew worker-stopped 'gig-test1'") {
 		t.Errorf("script missing durable `jeff crew worker-stopped` call:\n%s", script)
 	}
 	// It must NOT type the message directly into a tmux pane anymore — that path
@@ -210,7 +210,7 @@ func TestNoPostToolUseResurfacesInboxContent(t *testing.T) {
 // drains via `--format agent` (which frames + acks, so each row replays once).
 func TestInboxReplayScriptRepliesAndAcks(t *testing.T) {
 	script := buildInboxReplayScript("gig-ab12", "SessionStart")
-	if !strings.Contains(script, "jeff crew inbox gig-ab12 --format agent") {
+	if !strings.Contains(script, "jeff crew inbox 'gig-ab12' --format agent") {
 		t.Errorf("replay script missing framed+acking drain:\n%s", script)
 	}
 	if !strings.Contains(script, `hookEventName: $ev`) || !strings.Contains(script, `"SessionStart"`) {

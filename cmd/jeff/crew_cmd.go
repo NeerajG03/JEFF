@@ -325,6 +325,7 @@ func crewResumeCmd() *cobra.Command {
 			// Build launch command via provider. Resume has no --safe flag
 			// (per plan); the safety posture always follows current config,
 			// not the original session, so it resolves fresh on every resume.
+			syncTaskHooks(cfg, td.Path, taskID, personaName, repos, orchestratorID)
 			skip := effectiveSkipPermissions(cfg, false)
 			provider := jeff.GetProvider(agentTool)
 			var launchCmd string
@@ -1263,32 +1264,7 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 		fmt.Fprintf(os.Stderr, "Warning: memory session-start: %v\n", err)
 	}
 
-	reg := hooks.DefaultRegistry()
-	mgr := hooks.NewManager(reg)
-	hctx := hooks.HookContext{
-		JeffHome:           cfg.Home,
-		TargetDir:          td.Path,
-		GigHome:            cfg.GigHome,
-		TaskID:             taskID,
-		OrchestratorID:     orchestratorID,
-		CheckpointPatterns: cfg.CheckpointPatterns,
-		Persona:            personaName,
-		Repos:              allRepos,
-	}
-	// Install hooks for ALL registered agents so the workspace is ready
-	// regardless of which agent launches (same pattern as context aliases).
-	taskEnabled := hooks.EnabledForSource(cfg.Hooks, hooks.SourceTask, reg)
-	if len(taskEnabled) > 0 {
-		for _, agent := range jeff.RegisteredAgents() {
-			p := jeff.GetProvider(agent)
-			if p == nil {
-				continue
-			}
-			if err := mgr.Sync(td.Path, taskEnabled, p.HookDeliveryKey(), hctx); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: task hooks (%s): %v\n", agent, err)
-			}
-		}
-	}
+	syncTaskHooks(cfg, td.Path, taskID, personaName, allRepos, orchestratorID)
 
 	// Always alias .gemini/skills → .claude/skills before injecting skills,
 	// regardless of whether the gemini agent is registered. Skills should be

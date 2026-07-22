@@ -2,6 +2,16 @@
 // into agent sessions (Claude Code, OpenCode, Gemini CLI).
 package hooks
 
+import (
+	"bufio"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// ScriptVersion is the current version stamp written into generated hook scripts.
+const ScriptVersion = "2"
+
 // Source identifies where a hook gets installed.
 type Source string
 
@@ -60,4 +70,33 @@ func EnabledForSource(cfg map[string]bool, source Source, reg *Registry) map[str
 		}
 	}
 	return result
+}
+
+// shellQuote wraps s in single quotes, escaping any single quotes within.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+// TaskHooksStale reads any one generated script under <dir>/hooks/*.sh and
+// returns true if the marker is missing or ≠ ScriptVersion (missing dir → false).
+func TaskHooksStale(dir string) bool {
+	matches, err := filepath.Glob(filepath.Join(dir, "hooks", "*.sh"))
+	if err != nil || len(matches) == 0 {
+		return false
+	}
+	f, err := os.Open(matches[0])
+	if err != nil {
+		return true // treat unreadable as stale
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for i := 0; i < 3 && scanner.Scan(); i++ {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "# jeff-hook-version: ") {
+			v := strings.TrimPrefix(line, "# jeff-hook-version: ")
+			return v != ScriptVersion
+		}
+	}
+	return true
 }

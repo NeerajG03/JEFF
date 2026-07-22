@@ -70,11 +70,7 @@ func sessionStartMemoryHook() *Hook {
 		Event:   "SessionStart",
 		Matcher: "*",
 		Timeout: 15,
-		Scripts: map[string]func(ctx HookContext) string{
-			"claude": buildSessionStartMemoryScript,
-			"opencode": buildOpenCodeSessionStartMemorySnippet,
-			"gemini": buildSessionStartMemoryScript,
-		},
+		Scripts: bashBoth(buildSessionStartMemoryScript, buildOpenCodeSessionStartMemorySnippet),
 	}
 }
 
@@ -99,6 +95,10 @@ func buildSessionStartMemoryScript(ctx HookContext) string {
 	return `#!/bin/bash
 set -euo pipefail
 
+if ! command -v jq >/dev/null 2>&1; then
+  echo '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"[jeff] jq not installed - hooks degraded. Run: jeff doctor"}}'
+  exit 0
+fi
 INPUT=$(cat)
 JEFF_HOME="${JEFF_HOME:-}"
 TASK_DIR="$(pwd)"
@@ -124,7 +124,3 @@ echo '{}'
 `
 }
 
-// shellQuote wraps s in single quotes, escaping any single quotes within.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
-}

@@ -23,7 +23,7 @@ Injects context into Claude Code and OpenCode sessions via hooks. Two delivery m
 
 Home-level (6): gig-instructions, gig-ready-tasks, jeff-repos, jeff-instructions, crew-context, orchestrator-inbox
 
-Task-level (7): task-context, task-commands, checkpoint-nudge, inbox-check, worker-heartbeat, worker-stop, session-capture
+Task-level (7): task-context, task-commands, checkpoint-nudge, inbox-replay, worker-heartbeat, worker-stop, session-capture
 
 Memory (3): memory-session-start, memory-session-end, memory-propose-nudge
 
@@ -38,4 +38,10 @@ Choosing wrong type is a correctness bug — static content with `$()` won't exp
 
 1. Define func in `builtin.go` returning `*Hook`
 2. Add to `builtinHooks()` slice
-3. Tests: `builtin_test.go` checks each hook generates non-empty content
+3. Tests: Add expected name to `registry_test.go`, update `HookContext` if fields added, map gemini event if needed.
+
+
+## Hardening & Re-sync
+- **bashBoth**: helper to register identical closures for claude/gemini.
+- **Version stamp**: `ScriptVersion` in `hook.go`. Scripts are stamped with `# jeff-hook-version: N`.
+- **Re-sync**: `TaskHooksStale` checks version. `jeff work` and `jeff crew resume` re-sync task hooks automatically before agent launch.

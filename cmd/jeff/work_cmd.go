@@ -47,7 +47,10 @@ func workCmd() *cobra.Command {
 			model := persona.RegisteredModel(cfg.Home, personaName)
 
 			fmt.Fprintf(os.Stderr, "Resuming %s in %s...\n", taskID, taskDir)
-			return launchAgent(taskDir, agentTool, model, personaName, effectiveSkipPermissions(cfg, safeFlag))
+			repos := detectRepos(taskDir)
+				orchestratorID, _, _ := detectOrchestratorID()
+				syncTaskHooks(cfg, taskDir, taskID, personaName, repos, orchestratorID)
+				return launchAgent(taskDir, agentTool, model, personaName, effectiveSkipPermissions(cfg, safeFlag))
 		},
 	}
 	cmd.Flags().BoolVar(&safeFlag, "safe", false, `Launch the agent with its permission prompts enabled (pass "--safe" to override skip_permissions)`)

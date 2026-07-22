@@ -3,6 +3,7 @@ package jeff
 import (
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // geminiProvider implements AgentProvider for Gemini CLI.
@@ -66,6 +67,27 @@ func (g *geminiProvider) CommandFileExt() string     { return "toml" }
 
 func (g *geminiProvider) ContextFileAliases() []string {
 	return []string{"GEMINI.md"}
+}
+
+func (g *geminiProvider) ContextFileName() string { return "GEMINI.md" }
+func (g *geminiProvider) MemorySuppressEnv() map[string]string {
+	return map[string]string{
+		"GEMINI_NO_AUTO_MEMORY": "1",
+	}
+}
+func (g *geminiProvider) SendTiming() SendTiming {
+	return SendTiming{
+		PasteDelay:        500 * time.Millisecond,
+		InterruptSettle:   4 * time.Second,
+		UseBracketedPaste: true,
+	}
+}
+func (g *geminiProvider) OwnsModel(model string) bool { return isGeminiModel(model) }
+func (g *geminiProvider) ModelExamples() []string {
+	return []string{"pro", "flash", "flash-lite", "auto", "gemini-<full-id>"}
+}
+func (g *geminiProvider) DoctorDeps() []DoctorDep {
+	return []DoctorDep{{Name: "gemini", Required: true}}
 }
 
 func (g *geminiProvider) EnsureHomeDirs(home string) error {

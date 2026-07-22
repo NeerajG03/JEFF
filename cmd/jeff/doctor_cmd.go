@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/NeerajG03/JEFF"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -34,64 +35,78 @@ type depResult struct {
 	Version string
 }
 
-var doctorDeps = []dep{
-	{
-		Name:        "tmux",
-		Required:    true,
-		Binary:      "tmux",
-		VersionArgs: []string{"-V"},
-		MinVersion:  "3.0",
-		InstallCmd:  "brew install tmux",
-	},
-	{
-		Name:        "git",
-		Required:    true,
-		Binary:      "git",
-		VersionArgs: []string{"--version"},
-		InstallCmd:  "brew install git",
-	},
-	{
-		Name:        "terminal-notifier",
-		Required:    false,
-		Binary:      "terminal-notifier",
-		VersionArgs: []string{"-version"},
-		InstallCmd:  "brew install terminal-notifier",
-	},
-	{
-		Name:        "gh",
-		Required:    false,
-		Binary:      "gh",
-		VersionArgs: []string{"--version"},
-		InstallCmd:  "brew install gh",
-	},
-	{
-		Name:        "claude",
-		Required:    false,
-		Binary:      "claude",
-		VersionArgs: []string{"--version"},
-		InstallCmd:  "npm install -g @anthropic-ai/claude-code",
-	},
-	{
-		Name:        "gemini",
-		Required:    false,
-		Binary:      "gemini",
-		VersionArgs: []string{"--version"},
-		InstallCmd:  "npm install -g @google/gemini-cli",
-	},
-	{
-		Name:        "jq",
-		Required:    true,
-		Binary:      "jq",
-		VersionArgs: []string{"--version"},
-		InstallCmd:  "brew install jq",
-	},
-	{
-		Name:        "opencode",
-		Required:    false,
-		Binary:      "opencode",
-		VersionArgs: []string{"--version"},
-		InstallCmd:  "npm install -g @opencode/cli",
-	},
+func getDoctorDeps() []dep {
+	base := []dep{
+		{
+			Name:        "tmux",
+			Required:    true,
+			Binary:      "tmux",
+			VersionArgs: []string{"-V"},
+			MinVersion:  "3.0",
+			InstallCmd:  "brew install tmux",
+		},
+		{
+			Name:        "git",
+			Required:    true,
+			Binary:      "git",
+			VersionArgs: []string{"--version"},
+			InstallCmd:  "brew install git",
+		},
+		{
+			Name:        "terminal-notifier",
+			Required:    false,
+			Binary:      "terminal-notifier",
+			VersionArgs: []string{"-version"},
+			InstallCmd:  "brew install terminal-notifier",
+		},
+		{
+			Name:        "gh",
+			Required:    false,
+			Binary:      "gh",
+			VersionArgs: []string{"--version"},
+			InstallCmd:  "brew install gh",
+		},
+		{
+			Name:        "jq",
+			Required:    true,
+			Binary:      "jq",
+			VersionArgs: []string{"--version"},
+			InstallCmd:  "brew install jq",
+		},
+	}
+
+	seen := make(map[string]bool)
+	for _, d := range base {
+		seen[d.Name] = true
+	}
+
+	for _, agent := range jeff.RegisteredAgents() {
+		p := jeff.GetProvider(agent)
+		if p == nil {
+			continue
+		}
+		for _, adep := range p.DoctorDeps() {
+			if !seen[adep.Name] {
+				seen[adep.Name] = true
+				installCmd := ""
+				if adep.Name == "claude" {
+					installCmd = "npm install -g @anthropic-ai/claude-code"
+				} else if adep.Name == "gemini" {
+					installCmd = "npm install -g @google/gemini-cli"
+				} else if adep.Name == "opencode" {
+					installCmd = "npm install -g @opencode/cli"
+				}
+				base = append(base, dep{
+					Name:        adep.Name,
+					Required:    adep.Required,
+					Binary:      adep.Name,
+					VersionArgs: []string{"--version"},
+					InstallCmd:  installCmd,
+				})
+			}
+		}
+	}
+	return base
 }
 
 func doctorCmd() *cobra.Command {
@@ -102,7 +117,7 @@ func doctorCmd() *cobra.Command {
 		Short:        "Check required and optional dependencies",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			results := checkAllDeps(doctorDeps)
+			results := checkAllDeps(getDoctorDeps())
 
 			anyRequiredFailed := false
 			for _, r := range results {

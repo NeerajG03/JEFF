@@ -22,8 +22,8 @@ type PersonaEntry struct {
 
 // PersonaConfig is the top-level structure of personas.json.
 type PersonaConfig struct {
-	Schema   string                    `json:"$schema,omitempty"`
-	Personas map[string]*PersonaEntry  `json:"personas"`
+	Schema   string                   `json:"$schema,omitempty"`
+	Personas map[string]*PersonaEntry `json:"personas"`
 }
 
 // PersonaInfo pairs a persona name with its entry for display.

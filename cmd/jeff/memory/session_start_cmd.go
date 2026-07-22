@@ -4,6 +4,7 @@ package memory
 
 import (
 	"fmt"
+	"github.com/NeerajG03/JEFF"
 	"os"
 	"strings"
 
@@ -35,7 +36,7 @@ func init() {
 	sessionStartCmd.Flags().StringVar(&ssPersona, "persona", "", "Worker persona name")
 	sessionStartCmd.Flags().StringVar(&ssTaskID, "task-id", "", "Task ID (e.g. gig-1d33.2)")
 	sessionStartCmd.Flags().StringVar(&ssRepos, "repos", "", "Comma-separated repo names in scope")
-	sessionStartCmd.Flags().StringVar(&ssAgent, "agent", "claude", "Agent kind: claude | gemini")
+	sessionStartCmd.Flags().StringVar(&ssAgent, "agent", "claude", fmt.Sprintf("Agent kind: %s", strings.Join(jeff.AgentTool("").ValidNames(), " | ")))
 }
 
 func runSessionStart(cmd *cobra.Command, args []string) error {
@@ -47,6 +48,9 @@ func runSessionStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("session-start: JEFF_HOME not set (use --jeff-home or $JEFF_HOME)")
 	}
 
+	if !jeff.AgentTool(ssAgent).IsValid() {
+		return fmt.Errorf("invalid agent %q (must be one of: %s)", ssAgent, strings.Join(jeff.AgentTool("").ValidNames(), ", "))
+	}
 	taskDir := ssTaskDir
 	if taskDir == "" {
 		var err error

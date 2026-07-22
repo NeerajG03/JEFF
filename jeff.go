@@ -23,50 +23,39 @@ func InferBackend(model string) AgentTool {
 	if model == "" {
 		return ""
 	}
-	if isClaudeModel(model) {
-		return AgentClaudeCode
-	}
-	if isGeminiModel(model) {
-		return AgentGemini
-	}
-	if isOpenCodeModel(model) {
-		return AgentOpenCode
+	for _, t := range RegisteredAgents() {
+		if GetProvider(t).OwnsModel(model) {
+			return t
+		}
 	}
 	return ""
 }
 
 // IsValidModel reports whether model is a known model for the given agent.
 func IsValidModel(agent AgentTool, model string) bool {
-	switch agent {
-	case AgentClaudeCode:
-		return isClaudeModel(model)
-	case AgentGemini:
-		return isGeminiModel(model)
-	case AgentOpenCode:
-		return isOpenCodeModel(model)
-	}
-	return false
+	p := GetProvider(agent)
+	return p != nil && p.OwnsModel(model)
 }
 
 // ValidModelsForBackend returns the human-readable model names for an agent (for error messages).
 func ValidModelsForBackend(agent AgentTool) []string {
-	switch agent {
-	case AgentClaudeCode:
-		return []string{"sonnet", "opus", "haiku", "claude-<full-id>"}
-	case AgentGemini:
-		return []string{"pro", "flash", "flash-lite", "auto", "gemini-<full-id>"}
-	case AgentOpenCode:
-		return []string{"provider/model"}
+	if p := GetProvider(agent); p != nil {
+		return p.ModelExamples()
 	}
 	return nil
 }
 
 // UnknownModelError returns an error message for an unrecognized model name.
 func UnknownModelError(model string) string {
-	return "unknown model " + `"` + model + `"` +
-		"\nValid Claude models: " + strings.Join(ValidModelsForBackend(AgentClaudeCode), ", ") +
-		"\nValid Gemini models: " + strings.Join(ValidModelsForBackend(AgentGemini), ", ") +
-		"\nValid OpenCode models: " + strings.Join(ValidModelsForBackend(AgentOpenCode), ", ")
+	msg := "unknown model \"" + model + "\""
+	for _, t := range RegisteredAgents() {
+		name := string(t)
+		if name != "" {
+			name = strings.ToUpper(name[:1]) + name[1:]
+		}
+		msg += "\nValid " + name + " models: " + strings.Join(ValidModelsForBackend(t), ", ")
+	}
+	return msg
 }
 
 // IsValid returns true if t is a recognized agent tool (has a registered provider).

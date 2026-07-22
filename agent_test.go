@@ -390,3 +390,38 @@ func TestUnknownModelError(t *testing.T) {
 		t.Error("error message should list valid gemini models")
 	}
 }
+
+func TestProviderNewMethods(t *testing.T) {
+	for _, agent := range RegisteredAgents() {
+		p := GetProvider(agent)
+		if p == nil {
+			t.Fatalf("provider missing for %s", agent)
+		}
+
+		if p.ContextFileName() == "" {
+			t.Errorf("ContextFileName missing for %s", agent)
+		}
+
+		deps := p.DoctorDeps()
+		if len(deps) == 0 {
+			t.Errorf("DoctorDeps empty for %s", agent)
+		}
+
+		examples := p.ModelExamples()
+		if len(examples) == 0 {
+			t.Errorf("ModelExamples empty for %s", agent)
+		}
+
+		timing := p.SendTiming()
+		if timing.InterruptSettle == 0 {
+			t.Errorf("InterruptSettle zero for %s", agent)
+		}
+
+		for _, _ = range examples {
+			// Some examples like claude-<full-id> won't match exactly, but let's test the first one.
+			if p.Name() != AgentOpenCode && !p.OwnsModel(examples[0]) {
+				t.Errorf("OwnsModel failed for its own example %s on agent %s", examples[0], agent)
+			}
+		}
+	}
+}

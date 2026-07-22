@@ -25,7 +25,7 @@ const (
 // Hook defines a single injectable behavior for agent sessions.
 type Hook struct {
 	Name    string // unique identifier, e.g. "gig-instructions"
-	Source  Source  // where this hook belongs (home or task)
+	Source  Source // where this hook belongs (home or task)
 	Event   string // agent event: "SessionStart", "PreCompact", "PostToolUse", "Stop"
 	Matcher string // event matcher: "*", "Bash"
 	Timeout int    // seconds; 0 defaults to 10

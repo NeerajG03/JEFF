@@ -289,8 +289,8 @@ func migrateDir(srcDir, destDir, archiveDir, scope string, dryRun bool, r *Migra
 // indexEntryRe matches a markdown index line and captures (slug, description).
 // Recognises both common shapes:
 //
-//	- [Title](slug.md) — description text
-//	- **slug** (`type`): description text
+//   - [Title](slug.md) — description text
+//   - **slug** (`type`): description text
 var indexEntryRe = regexp.MustCompile(`(?m)^\s*-\s+(?:\[[^\]]+\]\(([^)]+?)\.md\)|\*\*([^*]+)\*\*[^:]*:)\s*[—–\-:]?\s*(.+)$`)
 
 // readLegacyDescriptions scans MEMORY.md and INDEX.md in srcDir to extract

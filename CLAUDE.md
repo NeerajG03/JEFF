@@ -129,3 +129,4 @@ Embedded in binary via `persona/templates/`. Used via `--persona` flag on pickup
 - `docs/config.md` — full configuration reference (repos, hooks, branch naming, IDE)
 - `docs/testing.md` — test infrastructure, existing test files
 - `docs/adding-commands.md` — step-by-step guide for new CLI commands
+crew, memory may import the root package; the root package must never import them

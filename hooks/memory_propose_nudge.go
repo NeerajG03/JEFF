@@ -8,11 +8,11 @@ package hooks
 // before exiting. Fires on Stop; blocks once per task via a .nudged sentinel.
 func memoryProposeNudgeHook() *Hook {
 	return &Hook{
-		Name:    "memory-propose-nudge",
-		Source:  SourceTask,
-		Event:   "Stop",
-		Matcher: "*",
-		Timeout: 5,
+		Name:          "memory-propose-nudge",
+		Source:        SourceTask,
+		Event:         "Stop",
+		Matcher:       "*",
+		Timeout:       5,
 		OpenCodeEvent: "session.idle",
 		Scripts: bashBoth(buildMemoryProposeNudgeScript, buildOpenCodeMemoryProposeNudgeSnippet),
 	}

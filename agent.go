@@ -3,7 +3,20 @@ package jeff
 import (
 	"sort"
 	"sync"
+	"time"
 )
+
+type SendTiming struct {
+	PasteDelay        time.Duration // between paste and Enter (0 = default 100ms)
+	InterruptSettle   time.Duration // after C-c before typing (divert)
+	UseBracketedPaste bool          // route via load-buffer/paste-buffer -p
+}
+
+type DoctorDep struct {
+	Name     string // binary name
+	Required bool
+	Hint     string // install hint
+}
 
 // LaunchOpts provides parameters for building agent launch commands.
 type LaunchOpts struct {
@@ -57,6 +70,25 @@ type AgentProvider interface {
 	// ContextFileAliases returns extra filenames that should be symlinked to CLAUDE.md.
 	// For example, gemini returns ["GEMINI.md"].
 	ContextFileAliases() []string
+
+	// ContextFileName returns the primary context filename (e.g. "CLAUDE.md", "GEMINI.md").
+	ContextFileName() string
+
+	// MemorySuppressEnv returns env assignments that disable the agent's native
+	// memory, or nil when not applicable.
+	MemorySuppressEnv() map[string]string
+
+	// SendTiming returns tmux delivery tuning for this agent's TUI.
+	SendTiming() SendTiming
+
+	// OwnsModel reports whether the model alias/id belongs to this agent's family.
+	OwnsModel(model string) bool
+
+	// ModelExamples returns human-readable model names for error messages.
+	ModelExamples() []string
+
+	// DoctorDeps returns binaries this agent needs, checked by jeff doctor.
+	DoctorDeps() []DoctorDep
 
 	// EnsureHomeDirs creates agent-specific directories under JEFF_HOME.
 	EnsureHomeDirs(home string) error

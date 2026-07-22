@@ -4,6 +4,7 @@ package memory
 
 import (
 	"fmt"
+	"github.com/NeerajG03/JEFF"
 	"os"
 	"strings"
 
@@ -21,13 +22,13 @@ calls are made. Called automatically by the memory-session-end hook on agent Sto
 }
 
 var (
-	seJeffHome    string
-	seTask        string
-	sePersona     string
-	seRepos       string
-	seTranscript  string
-	seReason      string
-	seAgent       string
+	seJeffHome   string
+	seTask       string
+	sePersona    string
+	seRepos      string
+	seTranscript string
+	seReason     string
+	seAgent      string
 )
 
 func init() {
@@ -37,7 +38,7 @@ func init() {
 	sessionEndCmd.Flags().StringVar(&seRepos, "repos", "", "Comma-separated repo names in scope")
 	sessionEndCmd.Flags().StringVar(&seTranscript, "transcript", "", "Path to session transcript file")
 	sessionEndCmd.Flags().StringVar(&seReason, "reason", "unknown", "Stop reason")
-	sessionEndCmd.Flags().StringVar(&seAgent, "agent", "claude", "Agent kind: claude | gemini")
+	sessionEndCmd.Flags().StringVar(&seAgent, "agent", "claude", fmt.Sprintf("Agent kind: %s", strings.Join(jeff.AgentTool("").ValidNames(), " | ")))
 }
 
 func runSessionEnd(cmd *cobra.Command, args []string) error {

@@ -112,12 +112,12 @@ func TestSyncOpenCodeEmptyRemovesFile(t *testing.T) {
 func TestSyncOpenCodeFullRegistry_ProducesValidPlugin(t *testing.T) {
 	dir := t.TempDir()
 	ctx := HookContext{
-		JeffHome:        dir,
-		TargetDir:       dir,
-		Persona:         "jenko",
-		TaskID:          "gig-test-123",
-		OrchestratorID:  "orch-1",
-		Repos:           []string{"backend", "frontend"},
+		JeffHome:           dir,
+		TargetDir:          dir,
+		Persona:            "jenko",
+		TaskID:             "gig-test-123",
+		OrchestratorID:     "orch-1",
+		Repos:              []string{"backend", "frontend"},
 		CheckpointPatterns: []string{"*.go", "*.ts"},
 	}
 

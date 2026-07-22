@@ -26,8 +26,8 @@ type Frontmatter struct {
 // Only the curator (Worker C) writes these; FND defines the type so D can read.
 type CanonicalFrontmatter struct {
 	Frontmatter  `yaml:",inline"`
-	Status       string     `yaml:"status"`               // accepted | superseded
-	Scope        string     `yaml:"scope"`                // persona:<x> | repo:<y> | project:<z>
+	Status       string     `yaml:"status"` // accepted | superseded
+	Scope        string     `yaml:"scope"`  // persona:<x> | repo:<y> | project:<z>
 	GoalServed   string     `yaml:"goal_served,omitempty"`
 	Importance   int        `yaml:"importance,omitempty"`
 	ValidFrom    time.Time  `yaml:"valid_from"`

@@ -82,6 +82,9 @@ func crewStartCmd() *cobra.Command {
 			} else {
 				return fmt.Errorf("missing required prompt. Usage: jeff crew start <gig-id> \"<prompt>\" [flags]")
 			}
+			if strings.TrimSpace(inputPrompt) == "" {
+				return fmt.Errorf("prompt cannot be empty. Usage: jeff crew start <gig-id> \"<prompt>\" [flags]")
+			}
 			promptOverride = inputPrompt // set it for the rest of the flow
 
 			// Resolve the orchestrator identity from the durable identity file

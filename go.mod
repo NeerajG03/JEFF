@@ -3,7 +3,7 @@ module github.com/NeerajG03/JEFF
 go 1.26.1
 
 require (
-	github.com/NeerajG03/gig v0.6.2
+	github.com/NeerajG03/gig v0.7.0
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0

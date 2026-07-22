@@ -64,9 +64,9 @@ Override model with `--model` on `jeff crew start` for one-off needs.
 
 ### During execution
 - **Respond to signals** — workers signal on completion/stall via hooks. Don't manually poll.
-- **Reuse existing workers** for follow-up work (review feedback, fixes). Send the work to the existing worker via `--type normal` instead of spinning up a new one. Only start a new worker if the original hit context limits (95%+).
+- **Reuse existing workers** for follow-up work (review feedback, fixes). Send the work to the existing worker via `jeff crew send` instead of spinning up a new one. Only start a new worker if the original hit context limits (95%+).
 - **Nudge with context** — when starting a coder after research, send the research path and key findings as a nudge so the worker doesn't repeat work
-- **Use the lightest message type** that fits: nudge > status > normal > divert
+- **Use --interrupt** when the agent is mid-turn and you need to redirect it (sends Ctrl-C first)
 
 ### Before shipping / reviewing
 - **Verify every claim** against actual code before posting PR reviews. Read the files, confirm the issue exists at the line cited.
@@ -74,7 +74,7 @@ Override model with `--model` on `jeff crew start` for one-off needs.
   - **Foundation / blocking PRs** (anything other workers will build on, shared interfaces, schema, package skeletons): read every substantive file end-to-end before merging. Build-green is a smoke test, not a review.
   - **Leaf PRs** (own subtask only, no downstream dependencies): build + vet + test + spot-check is fine.
 - **Review the diff yourself** before telling the user it's ready to ship
-- **Confirm tests pass** — check worker's checkpoint or ask via `--type status`
+- **Confirm tests pass** — check worker's checkpoint or ask via `jeff crew ask`
 - **Check `mergeStateStatus`** before merging when there's been parallel work. UNSTABLE often means the merge will compile-break against current main even if GH calls it MERGEABLE.
 
 ### Worker lifecycle

@@ -83,36 +83,18 @@ jeff dashboard
 
 ## Messaging Workers
 
-Four message types, from lightest to heaviest context impact:
-
-### Nudge (default) — low context pollution
-Delivered to worker's tmux pane AND stored in DB. Worker's PostToolUse hook surfaces it at the next tool call. One-way instruction.
-
 ```bash
-jeff crew send <gig-id> "add error handling for expired tokens" --type nudge
-jeff crew send <gig-id> "run integration tests before shipping" --type nudge
-```
+# Send a message — stored in the inbox + delivered to the worker's tmux pane
+jeff crew send <gig-id> "add error handling for expired tokens"
+jeff crew send <gig-id> "run integration tests before shipping"
+jeff crew send <gig-id> "the API spec changed, new endpoint: POST /v2/auth/refresh"
 
-### Status — sidechain, no context pollution
-Sends `/btw <question>` to the worker. Agent answers in a sidechain without polluting main context.
+# Interrupt the agent (Ctrl-C) first, then send the message
+jeff crew send <gig-id> "stop — priority changed, focus on payments bug" --interrupt
 
-```bash
-jeff crew send <gig-id> "what are you currently working on?" --type status
-jeff crew send <gig-id> "are the tests passing?" --type status
-```
-
-### Normal — full conversation turn
-Types directly into the agent's input. Full context impact.
-
-```bash
-jeff crew send <gig-id> "the API spec changed, new endpoint: POST /v2/auth/refresh" --type normal
-```
-
-### Divert — redirects the agent (heavy)
-Interrupts the agent (C-c), then sends a new message. Use sparingly.
-
-```bash
-jeff crew send <gig-id> "stop — priority changed, focus on payments bug" --type divert
+# To ask the worker a question (not a command), use jeff crew ask
+jeff crew ask "what are you currently working on?"
+jeff crew ask "are the tests passing?"
 ```
 
 ## Worker → Orchestrator Signals
@@ -167,10 +149,10 @@ jeff crew list
 
 ### Review after implementation
 ```bash
-jeff crew send gig-ab12 "ship when tests pass" --type nudge
+jeff crew send gig-ab12 "ship when tests pass"
 # after PR created:
 jeff crew start gig-review "Fix the issue" --persona hardy --repos backend
-jeff crew send gig-review "review PR #42 on backend" --type normal
+jeff crew send gig-review "review PR #42 on backend"
 ```
 
 ### Investigate and fix
@@ -178,7 +160,7 @@ jeff crew send gig-review "review PR #42 on backend" --type normal
 jeff crew start gig-xyz "Fix the issue" --persona schmidt --repos backend
 jeff crew status gig-xyz
 jeff crew capture gig-xyz
-jeff crew send gig-xyz "check the logs at /var/log/app.log" --type nudge
+jeff crew send gig-xyz "check the logs at /var/log/app.log"
 ```
 
 ## Known Gotchas

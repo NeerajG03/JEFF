@@ -47,7 +47,7 @@ sessions only). ` + "`jeff memory add`" + ` refuses without it. Workers use ` + 
   jeff memory status       queue depth, counts, last curate
   jeff memory diff <name>  bi-temporal supersede chain
   jeff memory curate       run marlowe
-  jeff memory migrate      move legacy layout into v1 tree
+  jeff memory migrate      (removed — move legacy layout manually)
   jeff memory disable      toggle in jeff.json
 
 ## Disabling

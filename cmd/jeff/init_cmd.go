@@ -98,12 +98,18 @@ func runInit(here bool) error {
 	if err := jeffembed.EnsureGeminiSkillsAlias(home); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: alias .gemini/skills: %v\n", err)
 	}
+	if err := jeffembed.EnsureOpenCodeSkillsAlias(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: alias .opencode/skills: %v\n", err)
+	}
 
 	writeDefaults(home)
 
 	// Seed default personas.
 	if err := persona.SeedDefaults(home); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: seed personas: %v\n", err)
+	}
+	if err := syncPersonaAgents(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: sync persona agents: %v\n", err)
 	}
 
 	// Seed built-in skills.
@@ -172,10 +178,16 @@ func runUpdate() error {
 	if err := jeffembed.EnsureGeminiSkillsAlias(home); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: alias .gemini/skills: %v\n", err)
 	}
+	if err := jeffembed.EnsureOpenCodeSkillsAlias(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: alias .opencode/skills: %v\n", err)
+	}
 
 	// Seed default personas (adds any new built-in personas, doesn't overwrite existing).
 	if err := persona.SeedDefaults(home); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: seed personas: %v\n", err)
+	}
+	if err := syncPersonaAgents(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: sync persona agents: %v\n", err)
 	}
 
 	// Refresh built-in skills (updates files, clears persona injection tags).
@@ -199,14 +211,14 @@ func runUpdate() error {
 		return fmt.Errorf("update memory: %w", err)
 	}
 
-	fmt.Printf("JEFF updated at %s (dirs, hooks, personas, settings synced)\n", home)
+	fmt.Printf("JEFF updated at %s (dirs, hooks, personas, providers, config synced)\n", home)
 	fmt.Printf("  memory: %d new, %d skipped\n", len(memReport.Created), len(memReport.Skipped))
 	if len(memReport.Migrations) > 0 {
 		fmt.Println("  migration hints:")
 		for _, h := range memReport.Migrations {
 			fmt.Printf("    • %s\n", h)
 		}
-		fmt.Println("  Run `jeff memory migrate --dry-run` to preview, then --confirm to apply.")
+		fmt.Println("  Move legacy directories manually (source → dest under memory/...).")
 	}
 	return nil
 }
@@ -253,4 +265,27 @@ func writeIfMissing(path, content string) {
 		return
 	}
 	os.WriteFile(path, []byte(content), 0o644)
+}
+
+// syncPersonaAgents installs provider-native persona definitions where the
+// provider supports them. Markdown CLAUDE.md remains the shared fallback.
+func syncPersonaAgents(home string) error {
+	for _, agent := range jeff.RegisteredAgents() {
+		p := jeff.GetProvider(agent)
+		if p == nil {
+			continue
+		}
+		for _, name := range persona.RegisteredNames(home) {
+			content, err := persona.GetTemplate(home, name)
+			if err != nil {
+				continue
+			}
+			if err := p.InstallPersonaAgent(home, name,
+				persona.RegisteredDescription(home, name),
+				persona.RegisteredModel(home, name), content); err != nil {
+				return fmt.Errorf("%s/%s: %w", agent, name, err)
+			}
+		}
+	}
+	return nil
 }

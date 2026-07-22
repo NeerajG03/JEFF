@@ -68,13 +68,6 @@ func TestUpdatePreservesUserEditedFiles(t *testing.T) {
 		t.Fatalf("write user goal: %v", err)
 	}
 
-	// Simulate user editing a slash command.
-	cmdPath := filepath.Join(home, ".claude", "commands", "memory.md")
-	userCmd := "# My custom memory command\n"
-	if err := os.WriteFile(cmdPath, []byte(userCmd), 0o644); err != nil {
-		t.Fatalf("write user cmd: %v", err)
-	}
-
 	// Update should not overwrite user edits.
 	if _, err := memory.Update(home); err != nil {
 		t.Fatalf("Update: %v", err)
@@ -87,15 +80,6 @@ func TestUpdatePreservesUserEditedFiles(t *testing.T) {
 	}
 	if string(data) != userContent {
 		t.Errorf("GOAL.md was overwritten; want user content, got %q", string(data))
-	}
-
-	// Slash command should still have user content.
-	cmdData, err := os.ReadFile(cmdPath)
-	if err != nil {
-		t.Fatalf("read cmd: %v", err)
-	}
-	if string(cmdData) != userCmd {
-		t.Errorf("slash command was overwritten; want user content, got %q", string(cmdData))
 	}
 }
 

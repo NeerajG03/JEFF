@@ -100,6 +100,46 @@ func TestEnsureGeminiSkillsAlias_ReplacesStaleSymlink(t *testing.T) {
 	}
 }
 
+func TestEnsureOpenCodeSkillsAlias_FreshDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := EnsureOpenCodeSkillsAlias(dir); err != nil {
+		t.Fatalf("EnsureOpenCodeSkillsAlias: %v", err)
+	}
+	link := filepath.Join(dir, ".opencode", "skills")
+	target, err := os.Readlink(link)
+	if err != nil {
+		t.Fatalf("Readlink: %v", err)
+	}
+	wantTarget := filepath.Join("..", ".claude", "skills")
+	if target != wantTarget {
+		t.Errorf("target = %q, want %q", target, wantTarget)
+	}
+	claudeSkills := filepath.Join(dir, ".claude", "skills")
+	if fi, err := os.Stat(claudeSkills); err != nil || !fi.IsDir() {
+		t.Error(".claude/skills should exist as a directory")
+	}
+}
+
+func TestEnsureOpenCodeSkillsAlias_Idempotent(t *testing.T) {
+	dir := t.TempDir()
+	if err := EnsureOpenCodeSkillsAlias(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureOpenCodeSkillsAlias(dir); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(dir, ".claude", "skills", "marker")
+	if err := os.WriteFile(marker, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureOpenCodeSkillsAlias(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".opencode", "skills", "marker")); err != nil {
+		t.Errorf("marker not visible via .opencode/skills alias: %v", err)
+	}
+}
+
 func TestEnsureGeminiSkillsAlias_ErrorsOnNonSymlinkFile(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, ".gemini"), 0o755); err != nil {

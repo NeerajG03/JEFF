@@ -13,11 +13,21 @@ func memoryProposeNudgeHook() *Hook {
 		Event:   "Stop",
 		Matcher: "*",
 		Timeout: 5,
+		OpenCodeEvent: "session.idle",
 		Scripts: map[string]func(ctx HookContext) string{
 			"claude": buildMemoryProposeNudgeScript,
+			"opencode": buildOpenCodeMemoryProposeNudgeSnippet,
 			"gemini": buildMemoryProposeNudgeScript,
 		},
 	}
+}
+
+func buildOpenCodeMemoryProposeNudgeSnippet(_ HookContext) string {
+	return `        // [memory-propose-nudge]
+        if (!ok("test -f .nudged")) {
+          execSync("touch .nudged", { stdio: "ignore" });
+          parts.push("Before exiting: did anything surface this session worth remembering? If yes, tell the user. Otherwise just continue.");
+        }`
 }
 
 func buildMemoryProposeNudgeScript(_ HookContext) string {

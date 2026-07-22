@@ -18,7 +18,7 @@ const (
 
 // ApplyToTask injects the memory addendum into the task's context file.
 //
-// For agentKind=="claude" (or any unrecognised kind), the target is CLAUDE.md.
+// For agentKind=="claude", "opencode", or any unrecognised kind, the target is CLAUDE.md.
 // For agentKind=="gemini", the target is GEMINI.md (often a symlink to CLAUDE.md).
 //
 // jeffHome is used to look up canonical memory entries in scope (persona,

@@ -48,7 +48,7 @@ func main() {
 			if cfg == nil {
 				return fmt.Errorf("JEFF is not initialized. Run: jeff init")
 			}
-			return launchAgent(cfg.Home, cfg.Agent, "")
+			return launchAgent(cfg.Home, cfg.Agent, "", "")
 		},
 	}
 
@@ -57,6 +57,7 @@ func main() {
 		pickupCmd(),
 		workCmd(),
 		doneCmd(),
+		memorycmd.Cmd,
 		statusCmd(),
 		repoCmd(),
 		worktreeCmd(),
@@ -71,7 +72,6 @@ func main() {
 		crewCmd(),
 		orchestratorCmd(),
 		dashboardCmd(),
-		memorycmd.Cmd,
 		notifyCmd(),
 		doctorCmd(),
 	)

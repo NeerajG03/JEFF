@@ -8,7 +8,6 @@ import (
 
 	jeff "github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/crew"
-	"github.com/NeerajG03/JEFF/memory"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/spf13/cobra"
 )
@@ -77,45 +76,20 @@ func doneCmd() *cobra.Command {
 				}
 			}
 
-			// 2. Auto-curate scratchpad before cleanup.
-			if tdErr == nil {
-				personaName := detectPersona(td.Path)
-				repoNames := detectRepos(td.Path)
-				provider := jeff.GetProvider(cfg.Agent)
-				var curateCmd string
-				var curateArgs []string
-				if provider != nil {
-					curateCmd = provider.Command()
-					// Read the learn command and build curate args.
-					learnExt := provider.CommandFileExt()
-					if learnExt != "" && provider.CommandsSubdir() != "" {
-						learnPath := filepath.Join(td.Path, provider.ConfigDir(), provider.CommandsSubdir(), "learn."+learnExt)
-						if promptData, err := os.ReadFile(learnPath); err == nil {
-							curateArgs = provider.BuildCurateArgs(string(promptData))
-						}
-					}
-				}
-				if err := memory.AutoCurate(td.Path, taskID, personaName, cfg.Home, repoNames, curateCmd, curateArgs); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: auto-curate: %v\n", err)
-				} else {
-					fmt.Fprintf(os.Stderr, "Auto-curated scratchpad for %s\n", taskID)
-				}
-			}
-
-			// 3. Remove task workspace directory.
+			// 2. Remove task workspace directory.
 			if err := workspace.Remove(cfg.Home, taskID); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: remove workspace: %v\n", err)
 			} else {
 				fmt.Fprintf(os.Stderr, "Removed workspace for %s\n", taskID)
 			}
 
-			// 4. Close the gig task.
+			// 3. Close the gig task.
 			if err := store.CloseTask(taskID, reason, "jeff"); err != nil {
 				return fmt.Errorf("close task: %w", err)
 			}
 			fmt.Fprintf(os.Stderr, "Closed %s\n", taskID)
 
-			// 5. Run crew cleanup to reconcile tmux windows and worktrees.
+			// 4. Run crew cleanup to reconcile tmux windows and worktrees.
 			if cs, err := crew.Open(cfg.Home); err == nil {
 				defer cs.Close()
 				if result, err := crew.Cleanup(cs, cfg.Home, false); err == nil && !result.IsClean() {

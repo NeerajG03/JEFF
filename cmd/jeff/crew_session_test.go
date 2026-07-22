@@ -68,6 +68,9 @@ func TestResolveCrewListOrchestratorFilter(t *testing.T) {
 // unscoped active set rather than failing.
 func TestResolveCrewListOrchestratorFilter_NoIdentity(t *testing.T) {
 	// A home with no ancestor relation to cwd + no files → clean not-found.
+	// Use t.Chdir so identity.Detect walks a temp dir's parents, not the real CWD.
+	workDir := t.TempDir()
+	t.Chdir(workDir)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(identity.EnvVar, "")
 	t.Setenv(identity.EnvVarLegacy, "")

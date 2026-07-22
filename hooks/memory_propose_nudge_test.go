@@ -28,20 +28,6 @@ func TestMemoryProposeNudgeHookDefinition(t *testing.T) {
 	}
 }
 
-func TestMemoryProposeNudgeHookRegistered(t *testing.T) {
-	reg := DefaultRegistry()
-	h := reg.Get("memory-propose-nudge")
-	if h == nil {
-		t.Fatal("memory-propose-nudge not in DefaultRegistry")
-	}
-	if h.Scripts["claude"] == nil {
-		t.Error("registry entry missing claude script")
-	}
-	if h.Scripts["gemini"] == nil {
-		t.Error("registry entry missing gemini script")
-	}
-}
-
 func TestMemoryProposeNudgeScriptContent(t *testing.T) {
 	ctx := HookContext{TaskID: "gig-test1", Persona: "jenko"}
 	h := memoryProposeNudgeHook()

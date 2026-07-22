@@ -69,9 +69,24 @@ func sessionStartMemoryHook() *Hook {
 		Timeout: 15,
 		Scripts: map[string]func(ctx HookContext) string{
 			"claude": buildSessionStartMemoryScript,
+			"opencode": buildOpenCodeSessionStartMemorySnippet,
 			"gemini": buildSessionStartMemoryScript,
 		},
 	}
+}
+
+func buildOpenCodeSessionStartMemorySnippet(ctx HookContext) string {
+	if ctx.TaskID == "" {
+		return ""
+	}
+	repos := strings.Join(ctx.Repos, ",")
+	return jsExecFileSnippet("memory-session-start", "jeff",
+		"memory", "session-start",
+		"--task-dir", ".",
+		"--persona", ctx.Persona,
+		"--task-id", ctx.TaskID,
+		"--repos", repos,
+		"--agent", "opencode")
 }
 
 func buildSessionStartMemoryScript(ctx HookContext) string {

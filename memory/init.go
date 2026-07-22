@@ -5,7 +5,6 @@ package memory
 import (
 	"bytes"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -29,9 +28,6 @@ func Initialize(home string) error {
 	}
 	if err := skill.SeedCuration(home); err != nil {
 		return fmt.Errorf("seed curation skill: %w", err)
-	}
-	if err := installSlashCommands(home, false); err != nil {
-		return fmt.Errorf("install slash commands: %w", err)
 	}
 	return ensureMemoryConfig(home)
 }
@@ -82,14 +78,6 @@ func Update(home string) (UpdateReport, error) {
 	} else {
 		r.Skipped = append(r.Skipped, skillPath)
 	}
-
-	// Slash commands — additive: install only missing ones.
-	created, skipped, err := syncSlashCommands(home)
-	if err != nil {
-		return r, fmt.Errorf("sync slash commands: %w", err)
-	}
-	r.Created = append(r.Created, created...)
-	r.Skipped = append(r.Skipped, skipped...)
 
 	// Old layout detection — emit hints but do not migrate automatically.
 	r.Migrations = detectOldLayout(home)
@@ -174,68 +162,6 @@ func installMarloweGoal(home string) error {
 	return os.WriteFile(path, []byte(jeffembed.MarloweGoalMD), 0o644)
 }
 
-// installSlashCommands copies embedded slash-commands/*.md to <home>/.claude/commands/.
-// If skipExisting=true, files that already exist are not overwritten.
-func installSlashCommands(home string, skipExisting bool) error {
-	destDir := filepath.Join(home, ".claude", "commands")
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return fmt.Errorf("create commands dir: %w", err)
-	}
-
-	return fs.WalkDir(jeffembed.SlashCommandsFS, "slash-commands", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(d.Name(), ".md") {
-			return nil
-		}
-		dest := filepath.Join(destDir, d.Name())
-		if skipExisting && exists(dest) {
-			return nil
-		}
-		data, err := jeffembed.SlashCommandsFS.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("read embedded %s: %w", path, err)
-		}
-		return os.WriteFile(dest, data, 0o644)
-	})
-}
-
-// syncSlashCommands installs missing slash commands and reports what was created/skipped.
-func syncSlashCommands(home string) (created, skipped []string, err error) {
-	destDir := filepath.Join(home, ".claude", "commands")
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return nil, nil, fmt.Errorf("create commands dir: %w", err)
-	}
-
-	walkErr := fs.WalkDir(jeffembed.SlashCommandsFS, "slash-commands", func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() || !strings.HasSuffix(d.Name(), ".md") {
-			return nil
-		}
-		dest := filepath.Join(destDir, d.Name())
-		if exists(dest) {
-			skipped = append(skipped, dest)
-			return nil
-		}
-		data, readErr := jeffembed.SlashCommandsFS.ReadFile(path)
-		if readErr != nil {
-			return fmt.Errorf("read embedded %s: %w", path, readErr)
-		}
-		if writeErr := os.WriteFile(dest, data, 0o644); writeErr != nil {
-			return writeErr
-		}
-		created = append(created, dest)
-		return nil
-	})
-	return created, skipped, walkErr
-}
-
 // ensureMemoryConfig ensures jeff.json has a memory section (if not explicitly disabled).
 // Does not overwrite an existing memory.disabled=true setting.
 func ensureMemoryConfig(home string) error {
@@ -264,7 +190,7 @@ func detectOldLayout(home string) []string {
 			}
 			memFile := filepath.Join(personasDir, e.Name(), "memory", "MEMORY.md")
 			if exists(memFile) {
-				hints = append(hints, fmt.Sprintf("personas/%s/memory/ → memory/personas/%s/semantic/ (run `jeff memory migrate`)", e.Name(), e.Name()))
+				hints = append(hints, fmt.Sprintf("personas/%s/memory/ → memory/personas/%s/semantic/ (move manually)", e.Name(), e.Name()))
 			}
 		}
 	}
@@ -278,7 +204,7 @@ func detectOldLayout(home string) []string {
 			}
 			indexFile := filepath.Join(learningsDir, e.Name(), "INDEX.md")
 			if exists(indexFile) {
-				hints = append(hints, fmt.Sprintf("learnings/%s/ → memory/repos/%s/semantic/ (run `jeff memory migrate`)", e.Name(), e.Name()))
+				hints = append(hints, fmt.Sprintf("learnings/%s/ → memory/repos/%s/semantic/ (move manually)", e.Name(), e.Name()))
 			}
 		}
 	}

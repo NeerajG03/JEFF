@@ -47,7 +47,7 @@ func pickupCmd() *cobra.Command {
 			fmt.Fprintf(os.Stderr, "\nLaunching %s in %s...\n", agentTool, taskDir)
 			// Resolve persona model for foreground launch.
 			model := persona.RegisteredModel(cfg.Home, personaName)
-			return launchAgent(taskDir, agentTool, model)
+			return launchAgent(taskDir, agentTool, model, personaName)
 		},
 	}
 

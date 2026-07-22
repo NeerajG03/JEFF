@@ -18,6 +18,7 @@ const (
 // Returns "" if model is empty or does not belong to any known family.
 // claude family: sonnet, opus, haiku, claude-*
 // gemini family: pro, flash, flash-lite, auto, gemini-*
+// opencode family: provider/model
 func InferBackend(model string) AgentTool {
 	if model == "" {
 		return ""
@@ -27,6 +28,9 @@ func InferBackend(model string) AgentTool {
 	}
 	if isGeminiModel(model) {
 		return AgentGemini
+	}
+	if isOpenCodeModel(model) {
+		return AgentOpenCode
 	}
 	return ""
 }
@@ -38,6 +42,8 @@ func IsValidModel(agent AgentTool, model string) bool {
 		return isClaudeModel(model)
 	case AgentGemini:
 		return isGeminiModel(model)
+	case AgentOpenCode:
+		return isOpenCodeModel(model)
 	}
 	return false
 }
@@ -49,6 +55,8 @@ func ValidModelsForBackend(agent AgentTool) []string {
 		return []string{"sonnet", "opus", "haiku", "claude-<full-id>"}
 	case AgentGemini:
 		return []string{"pro", "flash", "flash-lite", "auto", "gemini-<full-id>"}
+	case AgentOpenCode:
+		return []string{"provider/model"}
 	}
 	return nil
 }
@@ -57,7 +65,8 @@ func ValidModelsForBackend(agent AgentTool) []string {
 func UnknownModelError(model string) string {
 	return "unknown model " + `"` + model + `"` +
 		"\nValid Claude models: " + strings.Join(ValidModelsForBackend(AgentClaudeCode), ", ") +
-		"\nValid Gemini models: " + strings.Join(ValidModelsForBackend(AgentGemini), ", ")
+		"\nValid Gemini models: " + strings.Join(ValidModelsForBackend(AgentGemini), ", ") +
+		"\nValid OpenCode models: " + strings.Join(ValidModelsForBackend(AgentOpenCode), ", ")
 }
 
 // IsValid returns true if t is a recognized agent tool (has a registered provider).

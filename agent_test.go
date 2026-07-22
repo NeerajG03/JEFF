@@ -126,21 +126,22 @@ func TestGeminiProviderArgs(t *testing.T) {
 func TestOpenCodeProviderArgs(t *testing.T) {
 	p := GetProvider(AgentOpenCode)
 
-	// No prompt = nil args.
+	// Default args: --auto only.
 	args := p.BuildLaunchArgs(LaunchOpts{})
-	if args != nil {
-		t.Errorf("basic launch args = %v, want nil", args)
+	if len(args) != 1 || args[0] != "--auto" {
+		t.Errorf("basic launch args = %v, want [--auto]", args)
 	}
 
 	// With prompt.
 	args = p.BuildLaunchArgs(LaunchOpts{Prompt: "hello"})
-	if len(args) != 2 || args[0] != "--prompt" || args[1] != "hello" {
-		t.Errorf("prompt args = %v", args)
+	if len(args) != 3 || args[0] != "--auto" || args[1] != "--prompt" || args[2] != "hello" {
+		t.Errorf("prompt args = %v, want [--auto --prompt hello]", args)
 	}
 
-	// Curate not supported.
-	if p.BuildCurateArgs("x") != nil {
-		t.Error("opencode should not support curate")
+	// Curate is supported via `run --auto`.
+	curate := p.BuildCurateArgs("test prompt")
+	if len(curate) != 3 || curate[0] != "run" || curate[1] != "--auto" || curate[2] != "test prompt" {
+		t.Errorf("curate args = %v, want [run --auto test prompt]", curate)
 	}
 }
 
@@ -153,7 +154,7 @@ func TestProviderLayout(t *testing.T) {
 		cmdExt     string
 	}{
 		{AgentClaudeCode, ".claude", "skills", "commands", "md"},
-		{AgentOpenCode, ".opencode", "", "", ""},
+		{AgentOpenCode, ".opencode", "skills", "commands", "md"},
 		{AgentGemini, ".gemini", "skills", "commands", "toml"},
 	}
 
@@ -196,10 +197,50 @@ func TestWriteHomeDefaults(t *testing.T) {
 		if err := p.WriteHomeDefaults(home); err != nil {
 			t.Errorf("%s WriteHomeDefaults: %v", agent, err)
 		}
-		settings := filepath.Join(home, p.ConfigDir(), "settings.json")
-		if _, err := os.Stat(settings); err != nil {
-			t.Errorf("%s settings.json not created: %v", agent, err)
+		cfgFile := "settings.json"
+		if agent == AgentOpenCode {
+			cfgFile = "opencode.json"
 		}
+		cfgPath := filepath.Join(home, p.ConfigDir(), cfgFile)
+		if _, err := os.Stat(cfgPath); err != nil {
+			t.Errorf("%s %s not created: %v", agent, cfgFile, err)
+		}
+	}
+}
+
+func TestWriteOpenCodeDefaults_RemovesStaleSettings(t *testing.T) {
+	home := t.TempDir()
+	p := GetProvider(AgentOpenCode)
+	_ = p.EnsureHomeDirs(home)
+
+	// Plant stale settings files (old format).
+	for _, name := range []string{"settings.json", "settings.local.json"} {
+		path := filepath.Join(home, ".opencode", name)
+		if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := p.WriteHomeDefaults(home); err != nil {
+		t.Fatalf("WriteHomeDefaults: %v", err)
+	}
+
+	// Stale files should be removed.
+	for _, name := range []string{"settings.json", "settings.local.json"} {
+		path := filepath.Join(home, ".opencode", name)
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("%s should be removed, err=%v", name, err)
+		}
+	}
+
+	// New config should exist.
+	if _, err := os.Stat(filepath.Join(home, ".opencode", "opencode.json")); err != nil {
+		t.Error("opencode.json should exist")
+	}
+
+	// Second call should be idempotent (no error when files already gone).
+	if err := p.WriteHomeDefaults(home); err != nil {
+		t.Errorf("second call: %v", err)
 	}
 }
 

@@ -44,10 +44,6 @@ func TestInitialize(t *testing.T) {
 	// Curation skill.
 	assertFile(t, home, ".skills/curation/SKILL.md")
 
-	// Slash commands.
-	assertFile(t, home, ".claude/commands/memory.md")
-	assertFile(t, home, ".claude/commands/memory-propose.md")
-
 	// jeff.json has memory section.
 	cfg, err := jeff.LoadConfig(home)
 	if err != nil {

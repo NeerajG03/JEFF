@@ -52,6 +52,21 @@ func TestEnvOverrides_MarloweGemini(t *testing.T) {
 	}
 }
 
+func TestEnvOverrides_OpenCode(t *testing.T) {
+	worker := EnvOverrides("jenko", "opencode")
+	if worker["JEFF_MEMORY_CAN_ADD"] != "" {
+		t.Error("non-marlowe OpenCode worker must not be allowed to add canonical memory")
+	}
+	if len(worker) != 1 {
+		t.Errorf("OpenCode should only need JEFF memory gating, got %v", worker)
+	}
+
+	curator := EnvOverrides("marlowe", "opencode")
+	if curator["JEFF_MEMORY_CAN_ADD"] != "1" {
+		t.Error("marlowe OpenCode worker should be allowed to add canonical memory")
+	}
+}
+
 func TestEnvOverrides_AllWorkersHaveCanAddKey(t *testing.T) {
 	personas := []string{"jenko", "schmidt", "eric", "hardy", "doug", "dickson"}
 	for _, p := range personas {

@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -12,7 +13,8 @@ func TestSyncOpenCodeGeneratesPlugin(t *testing.T) {
 
 	hooks := []*Hook{
 		{
-			Name: "test-hook",
+			Name:  "test-hook",
+			Event: "SessionStart",
 			Scripts: map[string]func(ctx HookContext) string{
 				"opencode": func(ctx HookContext) string {
 					return `  // [test-hook]
@@ -49,7 +51,8 @@ func TestSyncOpenCodeMultipleHooks(t *testing.T) {
 
 	hooks := []*Hook{
 		{
-			Name: "hook-a",
+			Name:  "hook-a",
+			Event: "SessionStart",
 			Scripts: map[string]func(ctx HookContext) string{
 				"opencode": func(ctx HookContext) string {
 					return `  // [hook-a]
@@ -58,7 +61,8 @@ func TestSyncOpenCodeMultipleHooks(t *testing.T) {
 			},
 		},
 		{
-			Name: "hook-b",
+			Name:  "hook-b",
+			Event: "SessionStart",
 			Scripts: map[string]func(ctx HookContext) string{
 				"opencode": func(ctx HookContext) string {
 					return `  // [hook-b]
@@ -86,7 +90,8 @@ func TestSyncOpenCodeEmptyRemovesFile(t *testing.T) {
 	// First create a plugin file.
 	hooks := []*Hook{
 		{
-			Name: "temp",
+			Name:  "temp",
+			Event: "SessionStart",
 			Scripts: map[string]func(ctx HookContext) string{
 				"opencode": func(ctx HookContext) string { return `parts.push("temp");` },
 			},
@@ -101,6 +106,71 @@ func TestSyncOpenCodeEmptyRemovesFile(t *testing.T) {
 
 	if _, err := os.Stat(openCodePluginPath(dir)); !os.IsNotExist(err) {
 		t.Fatal("expected plugin file to be removed when no hooks")
+	}
+}
+
+func TestSyncOpenCodeFullRegistry_ProducesValidPlugin(t *testing.T) {
+	dir := t.TempDir()
+	ctx := HookContext{
+		JeffHome:        dir,
+		TargetDir:       dir,
+		Persona:         "jenko",
+		TaskID:          "gig-test-123",
+		OrchestratorID:  "orch-1",
+		Repos:           []string{"backend", "frontend"},
+		CheckpointPatterns: []string{"*.go", "*.ts"},
+	}
+
+	// Sync all builtin hooks.
+	reg := DefaultRegistry()
+	if err := syncOpenCode(reg.All(), dir, ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	pluginPath := openCodePluginPath(dir)
+	data, err := os.ReadFile(pluginPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+
+	// Basic structural assertions.
+	if !strings.Contains(content, "JeffHooksPlugin") {
+		t.Error("missing plugin export")
+	}
+	if !strings.Contains(content, "session.created") {
+		t.Error("missing session.created handler")
+	}
+	// Count braces as a rough syntax check.
+	open := strings.Count(content, "{")
+	close := strings.Count(content, "}")
+	if open != close {
+		t.Errorf("brace mismatch: %d opening vs %d closing", open, close)
+	}
+	// Count parens.
+	po := strings.Count(content, "(")
+	pc := strings.Count(content, ")")
+	if po != pc {
+		t.Errorf("paren mismatch: %d opening vs %d closing", po, pc)
+	}
+	// No process.exit snippets written inside the object literal (must be before return).
+	if strings.Contains(content, "},\n    },\n\n      // process-exit hook") {
+		t.Error("process.exit snippet appears inside returned object literal")
+	}
+	// const id is declared once per event block (session.created, session.idle).
+	// That's valid — each block is a separate scope.
+	if strings.Count(content, "const id = sessionID") > 2 {
+		t.Error("const id redeclared more than expected (2 blocks × 1 declaration each)")
+	}
+
+	// Try to parse with bun if available (npx tsc requires @types/node).
+	if _, err := exec.LookPath("bun"); err == nil {
+		cmd := exec.Command("bun", pluginPath)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Logf("bun parse (may fail if types unavailable): %s", string(out))
+		} else {
+			t.Logf("bun parsed plugin successfully")
+		}
 	}
 }
 

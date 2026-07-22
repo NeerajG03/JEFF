@@ -179,6 +179,7 @@ func crewStartCmd() *cobra.Command {
 			if provider != nil && provider.SupportsInlinePrompt() {
 				launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{
 					Model:  model,
+					AgentName: personaName,
 					Prompt: prompt,
 				})
 				launchCmd = provider.Command()
@@ -320,6 +321,7 @@ func crewResumeCmd() *cobra.Command {
 				launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{
 					Model:           model,
 					ResumeSessionID: resumeSessionID,
+					AgentName:       personaName,
 				})
 				launchCmd = provider.Command()
 				for _, a := range launchArgs {
@@ -1235,20 +1237,6 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 	}
 	if err := hooks.RunSessionStart(cfg.Home, td.Path, personaName, taskID, allRepos, agentKind); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: memory session-start: %v\n", err)
-	}
-
-	// Install learn command for ALL agents that support custom commands.
-	if personaName != "" || len(allRepos) > 0 {
-		for _, agent := range jeff.RegisteredAgents() {
-			p := jeff.GetProvider(agent)
-			if p == nil || p.CommandsSubdir() == "" {
-				continue
-			}
-			if err := memory.InstallLearnCommandTo(td.Path, taskID, personaName, cfg.Home, allRepos,
-				p.ConfigDir(), p.CommandsSubdir(), p.CommandFileExt()); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: learn command (%s): %v\n", agent, err)
-			}
-		}
 	}
 
 	reg := hooks.DefaultRegistry()

@@ -2,7 +2,9 @@ package workspace
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -213,6 +215,96 @@ func TestReadonlyLink_NoTaskDir(t *testing.T) {
 	}
 	if target != repoDir {
 		t.Errorf("expected %s, got %s", repoDir, target)
+	}
+}
+
+// runGit runs a git command in dir, failing the test on error.
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test", "GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func TestEnsureExcluded_PlainRepo(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "-b", "main")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "init")
+
+	if err := ensureExcluded(dir, ".jeff-base"); err != nil {
+		t.Fatalf("ensureExcluded: %v", err)
+	}
+
+	excludePath := filepath.Join(dir, ".git", "info", "exclude")
+	data, err := os.ReadFile(excludePath)
+	if err != nil {
+		t.Fatalf("read exclude: %v", err)
+	}
+	if !strings.Contains(string(data), ".jeff-base") {
+		t.Errorf("expected .jeff-base in exclude file, got %q", data)
+	}
+
+	// Idempotent — running again should not duplicate the entry.
+	if err := ensureExcluded(dir, ".jeff-base"); err != nil {
+		t.Fatalf("second ensureExcluded: %v", err)
+	}
+	data, _ = os.ReadFile(excludePath)
+	if n := strings.Count(string(data), ".jeff-base"); n != 1 {
+		t.Errorf("expected .jeff-base once in exclude file, got %d times", n)
+	}
+
+	// A created .jeff-base file should no longer show up in git status.
+	os.WriteFile(filepath.Join(dir, ".jeff-base"), []byte("origin/main\n"), 0o644)
+	out, err := exec.Command("git", "-C", dir, "status", "--porcelain").Output()
+	if err != nil {
+		t.Fatalf("git status: %v", err)
+	}
+	if strings.TrimSpace(string(out)) != "" {
+		t.Errorf("expected clean git status, got %q", out)
+	}
+}
+
+func TestEnsureExcluded_LinkedWorktree(t *testing.T) {
+	mainDir := t.TempDir()
+	runGit(t, mainDir, "init", "-b", "main")
+	runGit(t, mainDir, "commit", "--allow-empty", "-m", "init")
+
+	wtDir := filepath.Join(t.TempDir(), "wt")
+	runGit(t, mainDir, "worktree", "add", wtDir, "-b", "feature")
+
+	if err := ensureExcluded(wtDir, ".jeff-base"); err != nil {
+		t.Fatalf("ensureExcluded: %v", err)
+	}
+
+	// info/exclude is resolved via `git rev-parse --git-path` rather than a
+	// hardcoded <wt>/.git/info/exclude, since .git inside a worktree is a
+	// file (gitdir pointer) — not a directory.
+	out, err := exec.Command("git", "-C", wtDir, "rev-parse", "--git-path", "info/exclude").Output()
+	if err != nil {
+		t.Fatalf("rev-parse --git-path: %v", err)
+	}
+	excludePath := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(excludePath) {
+		excludePath = filepath.Join(wtDir, excludePath)
+	}
+	data, err := os.ReadFile(excludePath)
+	if err != nil {
+		t.Fatalf("read exclude: %v", err)
+	}
+	if !strings.Contains(string(data), ".jeff-base") {
+		t.Errorf("expected .jeff-base in exclude file, got %q", data)
+	}
+
+	os.WriteFile(filepath.Join(wtDir, ".jeff-base"), []byte("origin/main\n"), 0o644)
+	statusOut, err := exec.Command("git", "-C", wtDir, "status", "--porcelain").Output()
+	if err != nil {
+		t.Fatalf("git status: %v", err)
+	}
+	if strings.TrimSpace(string(statusOut)) != "" {
+		t.Errorf("expected clean git status, got %q", statusOut)
 	}
 }
 

@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	jeff "github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/internal/gitutil"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/NeerajG03/gig"
@@ -34,6 +37,12 @@ func shipCmd() *cobra.Command {
 			}
 			if taskDir == "" {
 				return fmt.Errorf("no workspace found for %s", taskID)
+			}
+
+			if !dryRun {
+				if _, err := exec.LookPath("gh"); err != nil {
+					return fmt.Errorf("gh CLI not found — jeff ship needs it to create PRs.\nInstall: https://cli.github.com, then run 'gh auth login'.\n(Use --dry-run to preview without gh.)")
+				}
 			}
 
 			store, err := openGigStore()
@@ -68,9 +77,27 @@ func shipCmd() *cobra.Command {
 			}
 
 			// Ship each worktree.
-			var shipped, skipped int
+			var results []shipResult
 			for _, wt := range worktrees {
 				fmt.Fprintf(os.Stderr, "\n── %s (branch: %s → %s)\n", wt.repo, wt.branch, wt.base)
+
+				res := shipResult{repo: wt.repo}
+
+				if dirty, lines := countDirty(wt.wtDir); dirty > 0 {
+					res.dirty = dirty
+					fmt.Fprintf(os.Stderr, "  WARNING: %d uncommitted change(s) will NOT be shipped:\n", dirty)
+					for i, l := range lines {
+						if i == 5 {
+							fmt.Fprintf(os.Stderr, "    …and %d more\n", dirty-5)
+							break
+						}
+						fmt.Fprintf(os.Stderr, "    %s\n", l)
+					}
+				}
+
+				if tracked, err := jeffBaseTracked(wt.wtDir); err == nil && tracked {
+					fmt.Fprintf(os.Stderr, "  WARNING: .jeff-base is tracked in this repo — run 'git rm --cached .jeff-base' to stop shipping it in PRs.\n")
+				}
 
 				has, err := hasUnpushedCommits(wt.wtDir, wt.branch)
 				if err != nil {
@@ -84,30 +111,37 @@ func shipCmd() *cobra.Command {
 					url, _ := prExists(wt.wtDir, wt.branch)
 					if url != "" {
 						fmt.Fprintf(os.Stderr, "  PR exists: %s\n", url)
+						res.prURL = url
 					}
-					skipped++
+					res.skipped = true
+					results = append(results, res)
 					continue
 				}
 
 				if dryRun {
 					fmt.Fprintf(os.Stderr, "  [dry-run] Would push %s and create PR → %s\n", wt.branch, wt.base)
 					fmt.Fprintf(os.Stderr, "  [dry-run] Title: %s\n", title)
-					shipped++
+					res.pushed = true
+					results = append(results, res)
 					continue
 				}
 
 				// Push.
 				if err := pushBranch(wt.wtDir, wt.branch); err != nil {
 					fmt.Fprintf(os.Stderr, "  Push failed: %v\n", err)
+					res.err = fmt.Errorf("push failed: %w", err)
+					results = append(results, res)
 					continue
 				}
+				res.pushed = true
 				fmt.Fprintf(os.Stderr, "  Pushed %s\n", wt.branch)
 
 				// Check for existing PR.
 				url, _ := prExists(wt.wtDir, wt.branch)
 				if url != "" {
 					fmt.Fprintf(os.Stderr, "  PR exists: %s\n", url)
-					shipped++
+					res.prURL = url
+					results = append(results, res)
 					continue
 				}
 
@@ -115,14 +149,28 @@ func shipCmd() *cobra.Command {
 				prURL, err := createPR(wt.wtDir, wt.branch, wt.base, title, body, draft)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "  PR creation failed: %v\n", err)
+					res.err = fmt.Errorf("PR creation failed: %w", err)
+					results = append(results, res)
 					continue
 				}
 				fmt.Fprintf(os.Stderr, "  PR created: %s\n", prURL)
-				shipped++
+				res.prURL = prURL
+				res.newPR = true
+				results = append(results, res)
 			}
 
-			fmt.Fprintf(os.Stderr, "\nShipped %d, skipped %d\n", shipped, skipped)
-			return nil
+			summary, shipErr := summarizeShip(results)
+			fmt.Fprintf(os.Stderr, "\n%s\n", summary)
+
+			if dryRun {
+				return nil
+			}
+
+			if err := recordShipResults(store, taskID, results); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+			}
+
+			return shipErr
 		},
 	}
 
@@ -166,6 +214,10 @@ func discoverWorktrees(taskDir, repoFilter string) ([]shipWorktree, error) {
 		target, err := os.Readlink(fullPath)
 		if err != nil {
 			continue
+		}
+
+		if err := workspace.EnsureJeffBaseExcluded(target); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: exclude .jeff-base for %s: %v\n", e.Name(), err)
 		}
 
 		branch, err := currentBranch(target)
@@ -231,6 +283,108 @@ func buildPRBody(store *gig.Store, task *gig.Task) string {
 
 	sb.WriteString("---\nTask: " + task.ID)
 	return sb.String()
+}
+
+// shipResult records the outcome of shipping one worktree.
+type shipResult struct {
+	repo    string
+	prURL   string
+	err     error
+	dirty   int // count of uncommitted paths
+	pushed  bool
+	newPR   bool // a PR was created this run (vs. pre-existing)
+	skipped bool // nothing to push
+}
+
+// countDirty returns the number of uncommitted paths in a worktree and their
+// `git status --porcelain` lines, so ship can warn about work that won't ship.
+func countDirty(wtDir string) (int, []string) {
+	out, err := gitutil.Output(wtDir, "status", "--porcelain")
+	if err != nil || len(bytes.TrimSpace(out)) == 0 {
+		return 0, nil
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	return len(lines), lines
+}
+
+// jeffBaseTracked reports whether .jeff-base is committed to the repo. The
+// exclude file only hides untracked files — if .jeff-base was already
+// committed on an old branch, it still ships in the PR.
+func jeffBaseTracked(wtDir string) (bool, error) {
+	cmd := exec.Command("git", "ls-files", "--error-unmatch", ".jeff-base")
+	cmd.Dir = wtDir
+	if err := cmd.Run(); err != nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+// summarizeShip builds the "Shipped X, skipped Y, failed Z" summary line and
+// returns a non-nil error naming every failed repo when at least one exists.
+func summarizeShip(results []shipResult) (string, error) {
+	var shipped, skipped int
+	var failed []string
+	for _, r := range results {
+		switch {
+		case r.err != nil:
+			failed = append(failed, fmt.Sprintf("%s: %v", r.repo, r.err))
+		case r.skipped:
+			skipped++
+		default:
+			shipped++
+		}
+	}
+
+	summary := fmt.Sprintf("Shipped %d, skipped %d, failed %d", shipped, skipped, len(failed))
+	if len(failed) > 0 {
+		return summary, fmt.Errorf("ship incomplete:\n  %s", strings.Join(failed, "\n  "))
+	}
+	return summary, nil
+}
+
+// recordShipResults writes newly-created PR URLs back into gig: an attr
+// (repo -> PR URL) plus a comment, so stats/orchestrators can see ship status.
+// A comment is only posted when at least one PR is new this run, so re-running
+// `jeff ship` on an already-shipped task doesn't spam duplicate comments.
+func recordShipResults(store *gig.Store, taskID string, results []shipResult) error {
+	prURLs := map[string]string{}
+	hasNew := false
+	for _, r := range results {
+		if r.prURL != "" {
+			prURLs[r.repo] = r.prURL
+		}
+		if r.newPR {
+			hasNew = true
+		}
+	}
+	if len(prURLs) == 0 {
+		return nil
+	}
+
+	if err := jeff.EnsureAttrs(store); err != nil {
+		return fmt.Errorf("ensure attrs: %w", err)
+	}
+	data, err := json.Marshal(prURLs)
+	if err != nil {
+		return fmt.Errorf("marshal PR URLs: %w", err)
+	}
+	if err := store.SetAttr(taskID, jeff.AttrPRURLs, string(data)); err != nil {
+		return fmt.Errorf("record PR URLs: %w", err)
+	}
+
+	if !hasNew {
+		return nil
+	}
+
+	var lines []string
+	for repo, url := range prURLs {
+		lines = append(lines, fmt.Sprintf("%s: %s", repo, url))
+	}
+	sort.Strings(lines)
+	if _, err := store.AddComment(taskID, "jeff", "Shipped:\n"+strings.Join(lines, "\n")); err != nil {
+		return fmt.Errorf("record ship comment: %w", err)
+	}
+	return nil
 }
 
 // currentBranch returns the checked-out branch name for a worktree directory.

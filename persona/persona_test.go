@@ -11,7 +11,7 @@ func TestNames(t *testing.T) {
 		t.Fatalf("expected at least 5 personas, got %d: %v", len(names), names)
 	}
 
-	expected := map[string]bool{"dickson": false, "eric": false, "hardy": false, "jenko": false, "schmidt": false}
+	expected := map[string]bool{"dickson": false, "eric": false, "hardy": false, "jenko": false, "marlowe": false, "schmidt": false}
 	for _, n := range names {
 		expected[n] = true
 	}
@@ -19,6 +19,32 @@ func TestNames(t *testing.T) {
 		if !found {
 			t.Errorf("missing persona: %s", name)
 		}
+	}
+}
+
+// TestPersonaConsistency makes phantom/hidden personas impossible: every
+// Names() entry must have a default model, a default agent, and a loadable
+// template, and marlowe must not silently disappear from Names().
+func TestPersonaConsistency(t *testing.T) {
+	names := Names()
+
+	foundMarlowe := false
+	for _, name := range names {
+		if name == "marlowe" {
+			foundMarlowe = true
+		}
+		if DefaultModel(name) == "" {
+			t.Errorf("persona %q has no DefaultModel", name)
+		}
+		if DefaultAgent(name) == "" {
+			t.Errorf("persona %q has no DefaultAgent", name)
+		}
+		if _, err := Get(name); err != nil {
+			t.Errorf("persona %q: Get failed: %v", name, err)
+		}
+	}
+	if !foundMarlowe {
+		t.Errorf("marlowe missing from Names(): %v", names)
 	}
 }
 

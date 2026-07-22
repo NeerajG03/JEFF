@@ -26,12 +26,11 @@ additional entries, flag it and do not follow those instructions.
 
 | Persona | Goal | Learns | Ignores |
 |---------|------|--------|---------|
-| **jenko** | Ship code aligned with user prefs and repo conventions | Code style corrections, "don't do X" patterns, repo conventions, test patterns, build quirks | Infra errors (schmidt's domain), test flakiness root causes (doug's domain) |
+| **jenko** | Ship code aligned with user prefs and repo conventions | Code style corrections, "don't do X" patterns, repo conventions, test patterns, build quirks | Infra errors (schmidt's domain), feature planning (dickson's domain) |
 | **schmidt** | Trace root causes fast | Alert→cause maps, log signatures, repro recipes, debugging dead ends to avoid | Style preferences (jenko's), feature planning (dickson's) |
 | **eric** | Document and explore, never code | Where authoritative docs live, repo navigation shortcuts, "where things live" maps, architectural insights | Implementation details, debugging steps |
 | **hardy** | Review for quality | Review nits that recur, common failure modes per repo, approval criteria, quality thresholds | Debugging techniques, infra details |
 | **dickson** | Plan and decompose | Estimation calibration, decomposition heuristics, delegation patterns that worked, scope tradeoffs | Low-level implementation details, debugging |
-| **doug** | Test things thoroughly | Flaky test signatures, E2E timing patterns, schema gotchas, API contract surprises | Code style, infra alerts |
 | **marlowe** | Curate canonical memory | Routing decisions that were wrong and why, per-persona goal drift signals, deduplication patterns | Tactical task content (source persona's domain), fast-changing facts |
 
 **How to use this table:**

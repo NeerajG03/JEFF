@@ -700,6 +700,10 @@ If in doubt, it goes to repo learnings (broader audience).
 
 ## Open Questions
 
+### Doug Persona (Tester)
+
+`doug` was documented in several places (root `CLAUDE.md`, `memory/CLAUDE.md`, skill templates) as a tester persona — API testing, frontend E2E, MongoDB data verification — but was never shipped as a `persona/templates/` entry. Docs were fixed to match reality (code is truth); if a tester persona is wanted, it's a separate feature: add `persona/templates/doug.md`, register it in `persona/persona.go`'s model/agent maps, and re-add it to the docs removed here.
+
 ### Dickson Persona Direction
 
 Two paths:

@@ -180,7 +180,7 @@ func shipCmd() *cobra.Command {
 	cmd.Flags().StringVar(&prTitle, "title", "", "Override PR title")
 	cmd.Flags().StringVar(&prBody, "body", "", "Override PR body")
 	cmd.ValidArgsFunction = activeTaskCompletion
-	cmd.RegisterFlagCompletionFunc("repo", repoNameCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("repo", repoNameCompletion)
 
 	return cmd
 }

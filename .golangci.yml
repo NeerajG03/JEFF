@@ -1,0 +1,27 @@
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - unused
+    - ineffassign
+issues:
+  exclude-dirs:
+    - embed
+  exclude-rules:
+    # Test setup calls (symlinks, seeding fixtures) are best-effort; a failure
+    # surfaces immediately as a failing assertion later in the same test.
+    - path: _test\.go
+      linters:
+        - errcheck
+    # tui/ has speculative UI plumbing (color palette entries, an
+    # in-progress crew-input mode) not yet wired into the dashboard.
+    - path: tui/
+      linters:
+        - unused
+    - path: cmd/jeff/completion.go
+      linters:
+        - unused
+    - path: cmd/jeff/color.go
+      linters:
+        - unused

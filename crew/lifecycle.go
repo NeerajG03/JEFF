@@ -283,7 +283,7 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 		LastSeen:       now,
 	}
 	if err := store.PutSession(sess); err != nil {
-		KillWindow(target)
+		_ = KillWindow(target) // best-effort cleanup on error path
 		return nil, fmt.Errorf("record session: %w", err)
 	}
 
@@ -292,7 +292,7 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 
 	agentCmd := buildAgentCmd(opts.LaunchCmd, opts.Agent, opts.Model, opts.ResumeSessionID, opts.SkipPermissions)
 	if err := SendCommand(target, agentCmd); err != nil {
-		KillWindow(target)
+		_ = KillWindow(target) // best-effort cleanup on error path
 		return nil, fmt.Errorf("launch agent: %w", err)
 	}
 
@@ -305,7 +305,7 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 		}
 		time.Sleep(3 * time.Second)
 		if err := sendCommandForSession(target, prompt, opts.Agent); err != nil {
-			KillWindow(target)
+			_ = KillWindow(target) // best-effort cleanup on error path
 			return nil, fmt.Errorf("send initial prompt: %w", err)
 		}
 	}

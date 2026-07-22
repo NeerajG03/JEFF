@@ -130,7 +130,7 @@ func SyncRepo(cfg *Config, name string) (*SyncResult, error) {
 	// Check how many commits behind.
 	countOut, err := gitutil.Output(repoDir, "rev-list", "--count", "HEAD..origin/main")
 	if err == nil {
-		fmt.Sscanf(strings.TrimSpace(string(countOut)), "%d", &result.Behind)
+		_, _ = fmt.Sscanf(strings.TrimSpace(string(countOut)), "%d", &result.Behind)
 	}
 
 	if result.Behind == 0 {
@@ -138,7 +138,7 @@ func SyncRepo(cfg *Config, name string) (*SyncResult, error) {
 	}
 
 	// Checkout main and fast-forward.
-	gitutil.Run(repoDir, "checkout", "main") // ignore if already on main
+	_ = gitutil.Run(repoDir, "checkout", "main") // ignore if already on main
 
 	if _, err := gitutil.Output(repoDir, "pull", "origin", "main", "--ff-only"); err != nil {
 		return nil, fmt.Errorf("git pull %s: %w", name, err)

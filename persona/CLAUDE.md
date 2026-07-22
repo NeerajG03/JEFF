@@ -6,11 +6,12 @@ Embeds persona template markdown files in the binary (`go:embed`). On `jeff pick
 
 | Name | Role | Default model | Agent |
 |------|---|------|--------------|
-| dickson | Orchestrator — plans, delegates. Does NOT write code. | sonnet | claude |
+| dickson | Orchestrator — plans, delegates. Does NOT write code. | opus | claude |
 | eric | Researcher — explores, documents. Does NOT change code. | sonnet | claude |
 | hardy | Reviewer — reviews diffs, flags issues. | sonnet | claude |
 | jenko | Implementer — writes code, runs tests, ships. | opus | claude |
-| schmidt | Debugger — traces root causes, investigates. | sonnet | claude |
+| marlowe | Memory curator — curates proposals into canonical memory. | sonnet | claude |
+| schmidt | Debugger — traces root causes, investigates. | opus | claude |
 
 ## File roles
 

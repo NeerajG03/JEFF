@@ -92,13 +92,13 @@ func writeSettingsFile(path string, settings map[string]any) error {
 // addHookToSettings adds a hook entry to settings under the given event.
 // Idempotent: skips if the script is already present.
 func addHookToSettings(settings map[string]any, event, matcher, scriptPath string, timeout int) {
-	hooksRaw, _ := settings["hooks"]
+	hooksRaw := settings["hooks"]
 	hooksMap, _ := hooksRaw.(map[string]any)
 	if hooksMap == nil {
 		hooksMap = make(map[string]any)
 	}
 
-	eventRaw, _ := hooksMap[event]
+	eventRaw := hooksMap[event]
 	var eventBlocks []any
 	if arr, ok := eventRaw.([]any); ok {
 		eventBlocks = arr
@@ -127,7 +127,7 @@ func addHookToSettings(settings map[string]any, event, matcher, scriptPath strin
 
 // removeHookFromSettings removes entries matching scriptName from all events.
 func removeHookFromSettings(settings map[string]any, scriptName string) {
-	hooksRaw, _ := settings["hooks"]
+	hooksRaw := settings["hooks"]
 	hooksMap, _ := hooksRaw.(map[string]any)
 	if hooksMap == nil {
 		return

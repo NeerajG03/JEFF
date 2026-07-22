@@ -237,7 +237,7 @@ func parseAgentReport(output string) agentReport {
 		return r
 	}
 	raw := output[start : start+end+1]
-	json.Unmarshal([]byte(raw), &r) //nolint:errcheck — best-effort parse
+	json.Unmarshal([]byte(raw), &r) //nolint:errcheck // best-effort parse
 	return r
 }
 

@@ -237,12 +237,12 @@ func ensureDirs(home string) {
 		filepath.Join(home, ".personas"),
 	}
 	for _, d := range dirs {
-		os.MkdirAll(d, 0o755)
+		_ = os.MkdirAll(d, 0o755)
 	}
 	// Create agent-specific config dirs via providers.
 	for _, agent := range jeff.RegisteredAgents() {
 		if p := jeff.GetProvider(agent); p != nil {
-			p.EnsureHomeDirs(home)
+			_ = p.EnsureHomeDirs(home)
 		}
 	}
 }
@@ -254,7 +254,7 @@ func writeDefaults(home string) {
 	// Write agent-specific default files via providers.
 	for _, agent := range jeff.RegisteredAgents() {
 		if p := jeff.GetProvider(agent); p != nil {
-			p.WriteHomeDefaults(home)
+			_ = p.WriteHomeDefaults(home)
 		}
 	}
 }
@@ -264,7 +264,7 @@ func writeIfMissing(path, content string) {
 	if _, err := os.Stat(path); err == nil {
 		return
 	}
-	os.WriteFile(path, []byte(content), 0o644)
+	_ = os.WriteFile(path, []byte(content), 0o644)
 }
 
 // syncPersonaAgents installs provider-native persona definitions where the

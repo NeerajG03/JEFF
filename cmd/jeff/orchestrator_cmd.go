@@ -294,7 +294,7 @@ func orchestratorListCmd() *cobra.Command {
 			if gigStore != nil {
 				defer gigStore.Close()
 			}
-			crew.Refresh(cs, func(taskID string) bool {
+			_ = crew.Refresh(cs, func(taskID string) bool {
 				if gigStore == nil {
 					return false
 				}

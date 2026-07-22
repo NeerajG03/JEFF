@@ -52,12 +52,12 @@ func pickupCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&personaName, "persona", "", "Persona template to use (dickson, eric, hardy, jenko, schmidt)")
+	cmd.Flags().StringVar(&personaName, "persona", "", "Persona template to use ("+strings.Join(persona.Names(), ", ")+")")
 	cmd.Flags().StringSliceVar(&repos, "repos", nil, "Repos this task touches (creates worktrees)")
 	cmd.Flags().BoolVar(&safeFlag, "safe", false, `Launch the agent with its permission prompts enabled (pass "--safe" to override skip_permissions)`)
 	cmd.ValidArgsFunction = readyTaskCompletion
-	cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
-	cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)
 	return cmd
 }
 

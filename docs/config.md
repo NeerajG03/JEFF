@@ -174,19 +174,22 @@ Any executable works (bash, python, node) — just make sure it has a shebang an
 
 ### Post-Setup Script
 
-Runs after a worktree is created. Receives the source repo dir and worktree dir as arguments.
+Runs after a worktree is created. The script runs from the worktree directory
+and receives a JSON object on **stdin**:
+`{"src_dir": "<repo clone>", "dest_dir": "<worktree>", "repo": "<name>", "branch": "<branch>"}`
 
 ```bash
 jeff repo post-setup backend scripts/setup-backend.sh
 ```
 
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/setup-backend.sh
-SRC_DIR=$1
-DEST_DIR=$2
-cp "$SRC_DIR/.env.example" "$DEST_DIR/.env"
-cd "$DEST_DIR" && npm install
+payload=$(cat)
+src_dir=$(echo "$payload" | jq -r .src_dir)
+dest_dir=$(echo "$payload" | jq -r .dest_dir)
+cp "$src_dir/.env.example" "$dest_dir/.env"
+cd "$dest_dir" && npm install
 ```
 
 ## Hooks

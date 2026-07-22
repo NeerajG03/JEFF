@@ -114,7 +114,7 @@ func WorktreeAdd(opts WorktreeOpts) (string, error) {
 
 // writeBaseBranch records the base branch in a .jeff-base file inside the worktree.
 func writeBaseBranch(wtDir, baseBranch string) {
-	os.WriteFile(filepath.Join(wtDir, ".jeff-base"), []byte(baseBranch+"\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(wtDir, ".jeff-base"), []byte(baseBranch+"\n"), 0o644)
 }
 
 // ReadBaseBranch reads the base branch from a worktree's .jeff-base file.

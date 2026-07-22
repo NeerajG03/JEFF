@@ -14,7 +14,7 @@ JEFF/
 ├── embed/              # Embedded assets (CLAUDE.md template, claude-settings.json)
 ├── hooks/              # Hook system: registry, builtin hooks, claude/opencode delivery
 ├── memory/             # Persona memory + repo learnings management
-├── persona/            # Embedded persona templates (dickson, eric, hardy, jenko, schmidt)
+├── persona/            # Embedded persona templates (dickson, eric, hardy, jenko, marlowe, schmidt)
 ├── skill/              # Skill registry, matching, and injection (symlinks into task dirs)
 ├── tui/                # Bubbletea dashboard (jeff dashboard)
 ├── workspace/          # Task workspace + worktree management + branch naming
@@ -59,6 +59,9 @@ JEFF_HOME/
 ├── repos/              # registered codebases (git clones)
 ├── tasks/              # active task workspaces (ephemeral)
 ├── worktrees/          # centralized git worktrees (symlinked into tasks)
+├── projects/           # project workspaces (jeff project init|open|list)
+├── .skills/            # user-added skills (jeff skill add)
+├── .personas/          # user-added persona templates
 └── exports/            # generated artifacts
 ```
 
@@ -93,7 +96,7 @@ Each package has a `CLAUDE.md` with types, file roles, and extension patterns:
 | Package | Guide | What it covers |
 |---------|-------|---------------|
 | `crew/` | `crew/CLAUDE.md` | SQLite store, session lifecycle, tmux ops, message types |
-| `hooks/` | `hooks/CLAUDE.md` | 13 built-in hooks, static vs dynamic scripts, delivery |
+| `hooks/` | `hooks/CLAUDE.md` | 15 built-in hooks, static vs dynamic scripts, delivery |
 | `memory/` | `memory/CLAUDE.md` | Persona memory, repo learnings, /learn command |
 | `persona/` | `persona/CLAUDE.md` | Embedded templates, model defaults, adding personas |
 | `skill/` | `skill/CLAUDE.md` | Registry, matching logic, injection, embedded skills |
@@ -115,10 +118,10 @@ Embedded in binary via `persona/templates/`. Used via `--persona` flag on pickup
 | Persona | Role |
 |---------|------|
 | **dickson** | Orchestrator — plans, delegates, reviews. Does NOT write code. |
-| **doug** | Tester — API testing (mcquaid), frontend E2E via Chrome, MongoDB data verification. |
 | **eric** | Researcher — explores, documents, recommends. Does NOT change code. |
 | **hardy** | Reviewer — reviews diffs, checks quality, flags issues. |
 | **jenko** | Implementer — writes code, runs tests, ships. Default persona. |
+| **marlowe** | Memory curator — curates proposals into canonical memory. Used by `jeff memory curate`. |
 | **schmidt** | Debugger — investigates, traces root causes, finds the fix. |
 
 ## Further Reading

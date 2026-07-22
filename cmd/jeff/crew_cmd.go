@@ -65,7 +65,7 @@ func crewStartCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "start <gig-id> [prompt]",
+		Use:   "start <gig-id> <prompt>",
 		Short: "Claim a task and launch a worker agent in tmux",
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -161,19 +161,14 @@ func crewStartCmd() *cobra.Command {
 			}
 
 			var sess *crew.Session
-			// Build full launch command via provider (includes inline prompt).
-			prompt := promptOverride
-			if prompt == "" {
-				prompt = crew.DefaultPrompt
-			}
 
 			// Path A: if prompt is too long or contains metacharacters, write to file and substitute.
-			if len(prompt) > 500 || strings.ContainsAny(prompt, "\n\"'\\$") || strings.Contains(prompt, "\x60") {
+			if len(promptOverride) > 500 || strings.ContainsAny(promptOverride, "\n\"'\\$") || strings.Contains(promptOverride, "\x60") {
 				promptFile := filepath.Join(taskDir, "INITIAL-PROMPT.md")
-				if err := os.WriteFile(promptFile, []byte(prompt), 0644); err != nil {
+				if err := os.WriteFile(promptFile, []byte(promptOverride), 0644); err != nil {
 					return fmt.Errorf("write INITIAL-PROMPT.md: %w", err)
 				}
-				prompt = "Read INITIAL-PROMPT.md at task root and execute it end to end."
+				promptOverride = "Read INITIAL-PROMPT.md at task root and execute it end to end."
 			}
 			provider := jeff.GetProvider(agentTool)
 			var launchCmd string
@@ -181,7 +176,7 @@ func crewStartCmd() *cobra.Command {
 				launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{
 					Model:     model,
 					AgentName: personaName,
-					Prompt:    prompt,
+					Prompt:    promptOverride,
 				})
 				launchCmd = provider.Command()
 				for _, a := range launchArgs {

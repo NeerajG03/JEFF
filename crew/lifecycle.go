@@ -80,7 +80,7 @@ func PreflightResume(store *Store, taskID string) error {
 }
 
 // buildAgentCmd constructs the agent CLI command using the LaunchCmd if provided,
-// or falls back to the legacy "claude --dangerously-skip-permissions" pattern.
+// or falls back to provider-compatible defaults for older callers.
 func buildAgentCmd(launchCmd, agent, model, resumeSessionID string) string {
 	if launchCmd != "" {
 		return launchCmd
@@ -90,11 +90,18 @@ func buildAgentCmd(launchCmd, agent, model, resumeSessionID string) string {
 		agent = "claude"
 	}
 	cmd := agent + " --dangerously-skip-permissions"
+	if agent == "opencode" {
+		cmd = "opencode --auto"
+	}
 	if model != "" {
 		cmd += " --model " + model
 	}
 	if resumeSessionID != "" {
-		cmd += " --resume " + resumeSessionID
+		if agent == "opencode" {
+			cmd += " --session " + resumeSessionID
+		} else {
+			cmd += " --resume " + resumeSessionID
+		}
 	}
 	return cmd
 }
@@ -115,6 +122,13 @@ type StartOpts struct {
 // orchestrator agent in the first window. Records the orchestrator in the DB.
 // If name is non-empty, the session is named jeff-<name>; otherwise jeff-N is auto-assigned.
 func StartOrchestrator(store *Store, jeffHome string, agent string, name string) (*Orchestrator, error) {
+	return StartOrchestratorWithLaunchCmd(store, jeffHome, agent, name, "")
+}
+
+// StartOrchestratorWithLaunchCmd is the provider-aware orchestrator start path.
+// The legacy StartOrchestrator wrapper remains for SDK callers that only know
+// an agent command name.
+func StartOrchestratorWithLaunchCmd(store *Store, jeffHome string, agent string, name string, launchCmd string) (*Orchestrator, error) {
 	if err := EnsureTmux(); err != nil {
 		return nil, err
 	}
@@ -158,7 +172,7 @@ func StartOrchestrator(store *Store, jeffHome string, agent string, name string)
 	exportWorkerEnv(target, "JEFF_ORCHESTRATOR_SESSION", id)
 
 	// Launch agent in the orchestrator window.
-	agentCmd := buildAgentCmd("", agent, "", "")
+	agentCmd := buildAgentCmd(launchCmd, agent, "", "")
 	if err := SendCommand(target, agentCmd); err != nil {
 		return nil, fmt.Errorf("launch orchestrator agent: %w", err)
 	}
@@ -232,6 +246,11 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 	// (e.g. "jeff memory propose") route to the correct persona dir.
 	exportWorkerEnv(target, "JEFF_PERSONA", opts.Persona)
 	exportWorkerEnv(target, "JEFF_TASK_ID", taskID)
+	memoryCanAdd := ""
+	if opts.Persona == "marlowe" {
+		memoryCanAdd = "1"
+	}
+	exportWorkerEnv(target, "JEFF_MEMORY_CAN_ADD", memoryCanAdd)
 
 	// Record session BEFORE launching agent so the SessionStart hook
 	// (which captures session_id) can find the row in the DB.
@@ -430,6 +449,9 @@ func interruptSettleDelay(agent string) time.Duration {
 func sendCommandForSession(target, command, agent string) error {
 	if agent == "gemini" || agent == "claude" {
 		return SendCommandViaBuffer(target, command)
+	}
+	if agent == "opencode" {
+		return SendCommand(target, command)
 	}
 	return SendCommand(target, command)
 }
@@ -639,9 +661,6 @@ func Ask(store *Store, taskID, content string) (*Message, error) {
 // subprocesses (e.g. "jeff memory propose") inherit the correct persona and
 // task context without requiring explicit flags.
 func exportWorkerEnv(target, key, value string) {
-	if value == "" {
-		return
-	}
 	safe := "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 	_ = SendCommand(target, "export "+key+"="+safe)
 }

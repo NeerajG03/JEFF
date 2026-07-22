@@ -2,7 +2,7 @@
 package embed
 
 import (
-	"embed"
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,10 +23,6 @@ var MemoryContextClaude string
 
 //go:embed memory-context-gemini.md
 var MemoryContextGemini string
-
-//go:embed slash-commands
-var SlashCommandsFS embed.FS
-
 
 // EnsureGeminiSkillsAlias creates dir/.gemini/skills as a symlink to the
 // sibling dir/.claude/skills directory. The link target is relative

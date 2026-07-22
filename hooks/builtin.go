@@ -1,5 +1,7 @@
 package hooks
 
+import "strconv"
+
 // builtinHooks returns all built-in hook definitions.
 func builtinHooks() []*Hook {
 	return []*Hook{
@@ -18,7 +20,7 @@ func builtinHooks() []*Hook {
 		workerHeartbeatHook(),
 		workerStopHook(),
 		sessionCaptureHook(),
-		// Memory hooks (Worker A).
+		// Memory hooks.
 		sessionStartMemoryHook(),
 		sessionEndMemoryHook(),
 		memoryProposeNudgeHook(),
@@ -160,16 +162,35 @@ jq -n \
 
 // jsStaticSnippet returns a JS snippet that contributes static text.
 func jsStaticSnippet(name, content string) string {
-	return `  // [` + name + `]
-  parts.push(` + "`" + content + "`" + `);`
+	return `        // [` + name + `]
+        parts.push(` + strconv.Quote(content) + `);`
 }
 
 // jsDynamicSnippet returns a JS snippet that runs a command and contributes the output.
 func jsDynamicSnippet(name, command string) string {
-	return `  // [` + name + `]
-  try {
-    parts.push(execSync("` + command + `", { encoding: "utf-8" }).trim());
-  } catch { /* skip if unavailable */ }`
+	return `        // [` + name + `]
+        { const value = run(` + strconv.Quote(command) + `); if (value) parts.push(value); }`
+}
+
+func jsToolDynamicSnippet(name, command string) string {
+	return `      // [` + name + `]
+      { const value = run(` + strconv.Quote(command) + `); if (value) parts.push(value); }`
+}
+
+func jsExecFileSnippet(name, file string, args ...string) string {
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = strconv.Quote(arg)
+	}
+	joined := ""
+	for i, arg := range quoted {
+		if i > 0 {
+			joined += ", "
+		}
+		joined += arg
+	}
+	return `        // [` + name + `]
+        runFile(` + strconv.Quote(file) + `, [` + joined + `]);`
 }
 
 const gigInstructionsContext = `## Gig Task Management
@@ -278,6 +299,9 @@ func checkpointNudgeHook() *Hook {
 		Scripts: map[string]func(ctx HookContext) string{
 			"claude": func(ctx HookContext) string {
 				return buildCheckpointNudgeScript(ctx.CheckpointPatterns)
+			},
+			"opencode": func(ctx HookContext) string {
+				return buildOpenCodeCheckpointNudgeSnippet(ctx.CheckpointPatterns)
 			},
 			// Gemini maps PostToolUse → AfterTool; same bash script works.
 			"gemini": func(ctx HookContext) string {
@@ -388,6 +412,9 @@ func inboxCheckHook() *Hook {
 			"claude": func(ctx HookContext) string {
 				return buildInboxCheckScript(ctx.TaskID)
 			},
+			"opencode": func(ctx HookContext) string {
+				return buildOpenCodeInboxCheckSnippet(ctx.TaskID)
+			},
 			"gemini": func(ctx HookContext) string {
 				return buildInboxCheckScript(ctx.TaskID)
 			},
@@ -444,6 +471,12 @@ func workerHeartbeatHook() *Hook {
 			"claude": func(ctx HookContext) string {
 				return buildWorkerHeartbeatScript(ctx.TaskID)
 			},
+			"opencode": func(ctx HookContext) string {
+				if ctx.TaskID == "" {
+					return ""
+				}
+				return jsToolDynamicSnippet("worker-heartbeat", "jeff crew touch "+ctx.TaskID+" 2>/dev/null")
+			},
 			"gemini": func(ctx HookContext) string {
 				return buildWorkerHeartbeatScript(ctx.TaskID)
 			},
@@ -487,6 +520,9 @@ func workerStopHook() *Hook {
 			"claude": func(ctx HookContext) string {
 				return buildWorkerStopScript(ctx.TaskID, ctx.OrchestratorID)
 			},
+			"opencode": func(ctx HookContext) string {
+				return buildOpenCodeWorkerStopSnippet(ctx.TaskID, ctx.OrchestratorID)
+			},
 			"gemini": func(ctx HookContext) string {
 				return buildWorkerStopScript(ctx.TaskID, ctx.OrchestratorID)
 			},
@@ -507,6 +543,14 @@ func sessionCaptureHook() *Hook {
 		Scripts: map[string]func(ctx HookContext) string{
 			"claude": func(ctx HookContext) string {
 				return buildSessionCaptureScript(ctx.TaskID)
+			},
+			"opencode": func(ctx HookContext) string {
+				if ctx.TaskID == "" {
+					return ""
+				}
+				return `        // [session-capture]
+        const id = sessionID(event);
+        if (id) runFile("jeff", ["crew", "session-id", ` + strconv.Quote(ctx.TaskID) + `, id]);`
 			},
 			"gemini": func(ctx HookContext) string {
 				return buildSessionCaptureScript(ctx.TaskID)
@@ -584,6 +628,9 @@ func orchestratorInboxHook() *Hook {
 			"claude": func(ctx HookContext) string {
 				return buildOrchestratorInboxScript(ctx.OrchestratorID)
 			},
+			"opencode": func(ctx HookContext) string {
+				return buildOpenCodeOrchestratorInboxSnippet(ctx.OrchestratorID)
+			},
 			"gemini": func(ctx HookContext) string {
 				return buildOrchestratorInboxScript(ctx.OrchestratorID)
 			},
@@ -631,4 +678,64 @@ jq -n \
     }
   }'
 `
+}
+
+func buildOpenCodeCheckpointNudgeSnippet(patterns []string) string {
+	if len(patterns) == 0 {
+		return ""
+	}
+	combined := "(" + patterns[0]
+	for _, pattern := range patterns[1:] {
+		combined += "|" + pattern
+	}
+	combined += ")"
+	bt := "`"
+	return `      // [checkpoint-nudge]
+      const command = input.tool === "bash" ? (input.args?.command ?? "") : "";
+      if (command && new RegExp(` + strconv.Quote(combined) + `).test(command)) {
+        parts.push("You just completed a significant action. Consider running ` + bt + `jeff checkpoint --done ... --next ...` + bt + ` to save a progress snapshot for the user.");
+      }`
+}
+
+func buildOpenCodeInboxCheckSnippet(taskID string) string {
+	if taskID == "" {
+		return ""
+	}
+	return `      // [inbox-check]
+      { const count = run(` + strconv.Quote("jeff crew inbox "+taskID+" --count 2>/dev/null") + `);
+        if (count && count !== "0") {
+          const messages = run(` + strconv.Quote("jeff crew inbox "+taskID+" --format agent 2>/dev/null") + `);
+          if (messages) parts.push(messages);
+        }
+      }`
+}
+
+func buildOpenCodeWorkerStopSnippet(taskID, orchestratorID string) string {
+	if taskID == "" || orchestratorID == "" {
+		return ""
+	}
+	target := orchestratorID + ":orchestrator"
+	message := "[Worker " + taskID + " stopped]: Agent has stopped working — the tmux session is still active."
+	return jsExecFileSnippet("worker-stop", "tmux", "send-keys", "-t", target, "-l", message) + "\n" +
+		jsExecFileSnippet("worker-stop-enter", "tmux", "send-keys", "-t", target, "Enter")
+}
+
+func buildOpenCodeOrchestratorInboxSnippet(orchestratorID string) string {
+	commandID := orchestratorID
+	if commandID == "" {
+		commandID = "${JEFF_ORCHESTRATOR_SESSION:-}"
+	}
+	if commandID == "" {
+		return ""
+	}
+	return `      // [orchestrator-inbox]
+      { const id = ` + strconv.Quote(commandID) + `;
+        if (id) {
+          const count = run("jeff crew orchestrator-inbox " + id + " --count 2>/dev/null");
+          if (count && count !== "0") {
+            const messages = run("jeff crew orchestrator-inbox " + id + " --format agent 2>/dev/null");
+            if (messages) parts.push(messages);
+          }
+        }
+      }`
 }

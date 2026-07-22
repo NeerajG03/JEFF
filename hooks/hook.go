@@ -19,6 +19,8 @@ type Hook struct {
 	Event   string // agent event: "SessionStart", "PreCompact", "PostToolUse", "Stop"
 	Matcher string // event matcher: "*", "Bash"
 	Timeout int    // seconds; 0 defaults to 10
+	// OpenCodeEvent optionally overrides the event mapping for OpenCode.
+	OpenCodeEvent string
 
 	// Scripts maps delivery keys to script generators.
 	// Key = Delivery.ScriptKey() (e.g. "claude", "opencode", "gemini").

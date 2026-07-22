@@ -12,7 +12,8 @@ func TestSyncOpenCodeGeneratesPlugin(t *testing.T) {
 
 	hooks := []*Hook{
 		{
-			Name: "test-hook",
+			Name:  "test-hook",
+			Event: "SessionStart",
 			Scripts: map[string]func(ctx HookContext) string{
 				"opencode": func(ctx HookContext) string {
 					return `  // [test-hook]
@@ -49,7 +50,8 @@ func TestSyncOpenCodeMultipleHooks(t *testing.T) {
 
 	hooks := []*Hook{
 		{
-			Name: "hook-a",
+			Name:  "hook-a",
+			Event: "SessionStart",
 			Scripts: map[string]func(ctx HookContext) string{
 				"opencode": func(ctx HookContext) string {
 					return `  // [hook-a]
@@ -58,7 +60,8 @@ func TestSyncOpenCodeMultipleHooks(t *testing.T) {
 			},
 		},
 		{
-			Name: "hook-b",
+			Name:  "hook-b",
+			Event: "SessionStart",
 			Scripts: map[string]func(ctx HookContext) string{
 				"opencode": func(ctx HookContext) string {
 					return `  // [hook-b]
@@ -86,7 +89,8 @@ func TestSyncOpenCodeEmptyRemovesFile(t *testing.T) {
 	// First create a plugin file.
 	hooks := []*Hook{
 		{
-			Name: "temp",
+			Name:  "temp",
+			Event: "SessionStart",
 			Scripts: map[string]func(ctx HookContext) string{
 				"opencode": func(ctx HookContext) string { return `parts.push("temp");` },
 			},

@@ -124,9 +124,23 @@ func sessionEndMemoryHook() *Hook {
 		Timeout: 15,
 		Scripts: map[string]func(ctx HookContext) string{
 			"claude": buildSessionEndMemoryScript,
+			"opencode": buildOpenCodeSessionEndMemorySnippet,
 			"gemini": buildSessionEndMemoryScript,
 		},
 	}
+}
+
+func buildOpenCodeSessionEndMemorySnippet(ctx HookContext) string {
+	if ctx.TaskID == "" {
+		return ""
+	}
+	return jsExecFileSnippet("memory-session-end", "jeff",
+		"memory", "session-end",
+		"--task", ctx.TaskID,
+		"--persona", ctx.Persona,
+		"--repos", strings.Join(ctx.Repos, ","),
+		"--reason", "opencode process exit",
+		"--agent", "opencode")
 }
 
 func buildSessionEndMemoryScript(ctx HookContext) string {

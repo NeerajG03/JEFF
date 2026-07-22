@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	jeff "github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/crew"
 	"github.com/NeerajG03/JEFF/identity"
 	"github.com/spf13/cobra"
@@ -215,7 +216,16 @@ func orchestratorStartCmd() *cobra.Command {
 			}
 			defer cs.Close()
 
-			orch, err := crew.StartOrchestrator(cs, cfg.Home, string(cfg.Agent), name)
+			provider := jeff.GetProvider(cfg.Agent)
+			if provider == nil {
+				return fmt.Errorf("no provider registered for agent %q", cfg.Agent)
+			}
+			launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{})
+			launchCmd := provider.Command()
+			for _, arg := range launchArgs {
+				launchCmd += " " + shellQuote(arg)
+			}
+			orch, err := crew.StartOrchestratorWithLaunchCmd(cs, cfg.Home, string(cfg.Agent), name, launchCmd)
 			if err != nil {
 				return err
 			}

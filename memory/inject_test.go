@@ -139,6 +139,21 @@ func TestApplyToTask_GeminiUsesGeminiFile(t *testing.T) {
 	}
 }
 
+func TestApplyToTask_OpenCodeUsesClaudeCompatibleFile(t *testing.T) {
+	home := t.TempDir()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "CLAUDE.md")
+	os.WriteFile(path, []byte("# OpenCode context\n"), 0o644)
+
+	if err := ApplyToTask(home, dir, "jenko", "gig-oc1", nil, "opencode"); err != nil {
+		t.Fatalf("ApplyToTask for opencode: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), addendumStartSentinel) {
+		t.Error("OpenCode should receive the shared CLAUDE.md memory addendum")
+	}
+}
+
 func TestRenderAddendum_Substitutions(t *testing.T) {
 	tmpl := "persona={{persona}} task={{task_id}} repos={{repos}} index={{memory_index}}"
 	got := renderAddendum(tmpl, "jenko", "gig-x1", []string{"jeff", "gig"}, "IDX\n")

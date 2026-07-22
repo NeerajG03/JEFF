@@ -23,7 +23,7 @@ func syncOpenCode(enabledHooks []*Hook, targetDir string, ctx HookContext) error
 		}
 		snippet := gen(ctx)
 		if snippet != "" {
-			snippets = append(snippets, openCodeSnippet{event: openCodeEventName(h), code: snippet})
+			snippets = append(snippets, openCodeSnippet{name: h.Name, event: openCodeEventName(h), code: snippet})
 		}
 	}
 
@@ -43,6 +43,7 @@ func syncOpenCode(enabledHooks []*Hook, targetDir string, ctx HookContext) error
 }
 
 type openCodeSnippet struct {
+	name  string
 	event string
 	code  string
 }
@@ -133,6 +134,10 @@ export const JeffHooksPlugin = async ({ client }) => {
 		sb.WriteString("      process.once(\"exit\", () => { for (const handler of exitHandlers) handler(); });\n")
 	}
 
+	if hasSnippetName(snippets, "worker-stop") {
+		sb.WriteString("\n  let stopSignalled = false;\n")
+	}
+
 	sb.WriteString(`
   return {
     event: async ({ event }) => {
@@ -158,8 +163,15 @@ export const JeffHooksPlugin = async ({ client }) => {
 
 	for _, s := range snippets {
 		if s.event == "session.idle" {
-			sb.WriteString(s.code)
-			sb.WriteString("\n")
+			if s.name == "worker-stop" {
+				sb.WriteString("        if (!stopSignalled) {\n")
+				sb.WriteString(s.code)
+				sb.WriteString("          stopSignalled = true;\n")
+				sb.WriteString("        }\n")
+			} else {
+				sb.WriteString(s.code)
+				sb.WriteString("\n")
+			}
 		}
 	}
 
@@ -175,6 +187,9 @@ export const JeffHooksPlugin = async ({ client }) => {
     "tool.execute.after": async (input: any, output: any) => {
       const parts: string[] = [];
 `)
+	if hasSnippetName(snippets, "worker-stop") {
+		sb.WriteString("      stopSignalled = false;\n")
+	}
 
 	for _, s := range snippets {
 		if s.event == "tool.execute.after" {
@@ -194,6 +209,15 @@ export const JeffHooksPlugin = async ({ client }) => {
 func hasOpenCodeEvent(snippets []openCodeSnippet, event string) bool {
 	for _, s := range snippets {
 		if s.event == event {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSnippetName(snippets []openCodeSnippet, name string) bool {
+	for _, s := range snippets {
+		if s.name == name {
 			return true
 		}
 	}

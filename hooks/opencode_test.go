@@ -191,3 +191,97 @@ func TestSyncOpenCodeSkipsNilSnippets(t *testing.T) {
 		t.Fatal("expected no plugin file for hook without opencode script")
 	}
 }
+
+// TestWorkerStopDebounceGuard asserts the generated plugin contains the
+// stopSignalled debounce pattern: closure-level guard variable, session.idle
+// wrappper, and tool.execute.after reset (gig-2d6a).
+func TestWorkerStopDebounceGuard(t *testing.T) {
+	dir := t.TempDir()
+	ctx := HookContext{
+		JeffHome:       dir,
+		TargetDir:      dir,
+		TaskID:         "gig-debounce-1",
+		OrchestratorID: "orch-99",
+	}
+
+	// Sync with just the worker-stop hook.
+	reg := DefaultRegistry()
+	h := reg.Get("worker-stop")
+	if h == nil {
+		t.Fatal("worker-stop hook not found in registry")
+	}
+	if err := syncOpenCode([]*Hook{h}, dir, ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(openCodePluginPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+
+	// 1. Closure-level guard variable.
+	if !strings.Contains(content, "let stopSignalled = false;") {
+		t.Error("generated plugin missing 'let stopSignalled = false;'")
+	}
+
+	// 2. session.idle block guards the worker-stop send.
+	if !strings.Contains(content, "if (!stopSignalled) {") {
+		t.Error("session.idle block missing 'if (!stopSignalled)' guard")
+	}
+	if !strings.Contains(content, "stopSignalled = true;") {
+		t.Error("session.idle block missing 'stopSignalled = true;' after worker-stop ping")
+	}
+
+	// 3. tool.execute.after resets the guard.
+	if !strings.Contains(content, "stopSignalled = false;") {
+		t.Error("tool.execute.after missing 'stopSignalled = false;' reset")
+	}
+
+	// 4. The closure variable appears before the return (not inside the object literal).
+	retIdx := strings.Index(content, "return {")
+	stopIdx := strings.Index(content, "let stopSignalled")
+	if stopIdx < 0 || retIdx < 0 {
+		t.Fatal("could not find expected markers")
+	}
+	if stopIdx > retIdx {
+		t.Error("stopSignalled declaration appears after 'return {'; must be in closure scope")
+	}
+}
+
+// TestWorkerStopDebounceGuardFullRegistry asserts that the debounce pattern
+// survives when all builtin hooks are combined (the full registry test already
+// validates brace/paren balance; this one checks the guard specifically).
+func TestWorkerStopDebounceGuardFullRegistry(t *testing.T) {
+	dir := t.TempDir()
+	ctx := HookContext{
+		JeffHome:           dir,
+		TargetDir:          dir,
+		Persona:            "jenko",
+		TaskID:             "gig-test-123",
+		OrchestratorID:     "orch-1",
+		Repos:              []string{"backend", "frontend"},
+		CheckpointPatterns: []string{"*.go", "*.ts"},
+	}
+
+	reg := DefaultRegistry()
+	if err := syncOpenCode(reg.All(), dir, ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(openCodePluginPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "let stopSignalled = false;") {
+		t.Error("full registry: missing 'let stopSignalled = false;'")
+	}
+	if !strings.Contains(content, "if (!stopSignalled) {") {
+		t.Error("full registry: session.idle missing 'if (!stopSignalled)' guard")
+	}
+	if !strings.Contains(content, "stopSignalled = true;") {
+		t.Error("full registry: missing 'stopSignalled = true;'")
+	}
+}

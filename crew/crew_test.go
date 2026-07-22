@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"sync"
 	"time"
 )
 
@@ -660,5 +661,47 @@ func TestSendWithInterrupt(t *testing.T) {
 	}
 	if msgs[0].Content != "urgent redirect" {
 		t.Errorf("content = %q, want %q", msgs[0].Content, "urgent redirect")
+	}
+}
+
+func TestConcurrentWrites(t *testing.T) {
+	store := tempStore(t)
+	defer store.Close()
+
+	// Seed a session
+	sess := &Session{
+		TaskID:      "gig-concurrent",
+		TmuxSession: "jeff",
+		WindowName:  "gig-concurrent",
+		TaskDir:     "/tmp",
+		Status:      "running",
+	}
+	if err := store.PutSession(sess); err != nil {
+		t.Fatalf("put session: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 8*25*2)
+
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 25; j++ {
+				if err := store.UpdateStatus("gig-concurrent", "running"); err != nil {
+					errs <- err
+				}
+				if err := store.TouchSession("gig-concurrent"); err != nil {
+					errs <- err
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		t.Errorf("concurrent write failed: %v", err)
 	}
 }

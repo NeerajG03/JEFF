@@ -4,6 +4,7 @@
 package crew
 
 import (
+	"strings"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -84,23 +85,13 @@ func Open(jeffHome string) (*Store, error) {
 		return nil, fmt.Errorf("create db directory: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	// Apply pragmas via DSN so they stick to every pooled connection.
+	dsn := "file:" + dbPath + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open crew database: %w", err)
 	}
-
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("enable WAL: %w", err)
-	}
-	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("set busy timeout: %w", err)
-	}
-	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("enable foreign keys: %w", err)
-	}
+	db.SetMaxOpenConns(1)
 
 	if err := migrate(db); err != nil {
 		db.Close()
@@ -121,6 +112,26 @@ func (s *Store) DB() *sql.DB {
 }
 
 func migrate(db *sql.DB) error {
+	var v int
+	if err := db.QueryRow("PRAGMA user_version").Scan(&v); err != nil {
+		return fmt.Errorf("read schema version: %w", err)
+	}
+	steps := []func(*sql.DB) error{
+		migrateV1,
+		migrateV2,
+	}
+	for i := v; i < len(steps); i++ {
+		if err := steps[i](db); err != nil {
+			return fmt.Errorf("migration to v%d: %w", i+1, err)
+		}
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", i+1)); err != nil {
+			return fmt.Errorf("bump schema version: %w", err)
+		}
+	}
+	return nil
+}
+
+func migrateV1(db *sql.DB) error {
 	schema := `
 CREATE TABLE IF NOT EXISTS orchestrators (
     id           TEXT PRIMARY KEY,
@@ -167,10 +178,10 @@ CREATE INDEX IF NOT EXISTS idx_messages_task
     ON messages(task_id, created_at);
 `
 	_, err := db.Exec(schema)
-	if err != nil {
-		return err
-	}
+	return err
+}
 
+func migrateV2(db *sql.DB) error {
 	// Additive migrations for existing databases.
 	addCol := []string{
 		"ALTER TABLE sessions ADD COLUMN orchestrator_id TEXT DEFAULT ''",
@@ -182,7 +193,10 @@ CREATE INDEX IF NOT EXISTS idx_messages_task
 		"ALTER TABLE orchestrators ADD COLUMN model TEXT DEFAULT ''",
 	}
 	for _, stmt := range addCol {
-		_, _ = db.Exec(stmt) // ignore "duplicate column" errors
+		_, err := db.Exec(stmt)
+		if err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return err
+		}
 	}
 
 	// One-time cleanup (gig-be5c §5 / gig-9c92 Option D): older rows stored an
@@ -247,9 +261,15 @@ func (s *Store) PutSession(sess *Session) error {
 
 // AppendSessionID appends a Claude session ID to the session_ids array for a task.
 func (s *Store) AppendSessionID(taskID, sessionID string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
 	// Read existing array, append, write back atomically.
 	var raw string
-	err := s.db.QueryRow(`SELECT COALESCE(session_ids, '[]') FROM sessions WHERE task_id = ?`, taskID).Scan(&raw)
+	err = tx.QueryRow(`SELECT COALESCE(session_ids, '[]') FROM sessions WHERE task_id = ?`, taskID).Scan(&raw)
 	if err != nil {
 		return fmt.Errorf("get session_ids for %s: %w", taskID, err)
 	}
@@ -265,14 +285,16 @@ func (s *Store) AppendSessionID(taskID, sessionID string) error {
 		return fmt.Errorf("marshal session_ids: %w", err)
 	}
 
-	_, err = s.db.Exec(`UPDATE sessions SET session_ids = ? WHERE task_id = ?`, string(updated), taskID)
-	return err
+	if _, err = tx.Exec(`UPDATE sessions SET session_ids = ? WHERE task_id = ?`, string(updated), taskID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // GetSession retrieves a session by task ID.
 func (s *Store) GetSession(taskID string) (*Session, error) {
 	row := s.db.QueryRow(`
-		SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, COALESCE(agent, ''), model, repos,
+		SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, COALESCE(agent, ''), COALESCE(model, ''), repos,
 		       orchestrator_id, pid, status, started_at, stopped_at, last_seen,
 		       COALESCE(session_ids, '[]')
 		FROM sessions WHERE task_id = ?`, taskID)
@@ -283,7 +305,7 @@ func (s *Store) GetSession(taskID string) (*Session, error) {
 // If activeOnly is true, excludes terminal statuses (done, failed, stopped).
 // If orchestratorID is non-empty, only sessions belonging to that orchestrator are returned.
 func (s *Store) ListSessions(activeOnly bool, orchestratorID string) ([]*Session, error) {
-	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, COALESCE(agent, ''), model, repos,
+	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, COALESCE(agent, ''), COALESCE(model, ''), repos,
 	                 orchestrator_id, pid, status, started_at, stopped_at, last_seen,
 	                 COALESCE(session_ids, '[]')
 	          FROM sessions`
@@ -320,12 +342,19 @@ func (s *Store) ListSessions(activeOnly bool, orchestratorID string) ([]*Session
 
 // RemoveSession deletes a session and its messages.
 func (s *Store) RemoveSession(taskID string) error {
-	_, err := s.db.Exec(`DELETE FROM messages WHERE task_id = ?`, taskID)
+	tx, err := s.db.Begin()
 	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM messages WHERE task_id = ?`, taskID); err != nil {
 		return fmt.Errorf("delete messages: %w", err)
 	}
-	_, err = s.db.Exec(`DELETE FROM sessions WHERE task_id = ?`, taskID)
-	return err
+	if _, err = tx.Exec(`DELETE FROM sessions WHERE task_id = ?`, taskID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // UpdateStatus updates a session's status and optionally sets stopped_at.
@@ -457,7 +486,7 @@ func (s *Store) UpdateOrchestratorStatus(id, status string) error {
 
 // WorkersForOrchestrator returns sessions belonging to an orchestrator.
 func (s *Store) WorkersForOrchestrator(orchestratorID string) ([]*Session, error) {
-	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, COALESCE(agent, ''), model, repos,
+	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, COALESCE(agent, ''), COALESCE(model, ''), repos,
 	                 orchestrator_id, pid, status, started_at, stopped_at, last_seen,
 	                 COALESCE(session_ids, '[]')
 	          FROM sessions WHERE orchestrator_id = ? ORDER BY started_at DESC`

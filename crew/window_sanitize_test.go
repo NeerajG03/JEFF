@@ -5,6 +5,8 @@ package crew
 
 import (
 	"strings"
+	"database/sql"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -63,43 +65,42 @@ func TestStartSanitizesWindowName(t *testing.T) {
 // safe on rows that were already clean.
 func TestMigrationSanitizesDottedWindowNames(t *testing.T) {
 	dir := t.TempDir()
-	store, err := Open(dir)
+	dbPath := filepath.Join(dir, "jeff.db")
+
+	// Pre-create the database with v1 schema and user_version = 0 (or 1)
+	db, err := sql.Open("sqlite", "file:"+dbPath+"?_pragma=journal_mode(WAL)")
 	if err != nil {
-		t.Fatalf("open: %v", err)
+		t.Fatalf("create db: %v", err)
+	}
+	defer db.Close()
+
+	if err := migrateV1(db); err != nil {
+		t.Fatalf("migrate v1: %v", err)
+	}
+	// explicitly set user_version to 1 so V2 runs
+	if _, err := db.Exec("PRAGMA user_version = 1"); err != nil {
+		t.Fatalf("set user_version: %v", err)
 	}
 
-	// Insert a legacy dotted row directly (simulating a pre-fix write).
-	now := time.Now().UTC()
-	dotted := &Session{
-		TaskID:      "gig-e117.2.1",
-		TmuxSession: "jeff",
-		WindowName:  "gig-e117.2.1", // unsanitized, as older code stored it
-		TaskDir:     "/tmp",
-		Status:      "running",
-		StartedAt:   now,
-		LastSeen:    now,
+	now := time.Now().UTC().Format(timeLayout)
+	_, err = db.Exec(`INSERT INTO sessions (task_id, tmux_session, window_name, tmux_pane, task_dir, status, started_at, last_seen)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"gig-e117.2.1", "jeff", "gig-e117.2.1", "", "/tmp", "running", now, now)
+	if err != nil {
+		t.Fatalf("insert dotted session: %v", err)
 	}
-	if err := store.PutSession(dotted); err != nil {
-		t.Fatalf("put dotted session: %v", err)
-	}
-	// A clean row must survive untouched.
-	clean := &Session{
-		TaskID:      "gig-abcd",
-		TmuxSession: "jeff",
-		WindowName:  "gig-abcd",
-		TaskDir:     "/tmp",
-		Status:      "running",
-		StartedAt:   now,
-		LastSeen:    now,
-	}
-	if err := store.PutSession(clean); err != nil {
-		t.Fatalf("put clean session: %v", err)
-	}
-	store.Close()
 
-	// Reopen twice: the first migrate() should sanitize; the second is a no-op.
+	_, err = db.Exec(`INSERT INTO sessions (task_id, tmux_session, window_name, tmux_pane, task_dir, status, started_at, last_seen)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"gig-abcd", "jeff", "gig-abcd", "", "/tmp", "running", now, now)
+	if err != nil {
+		t.Fatalf("insert clean session: %v", err)
+	}
+	db.Close()
+
+	// Reopen twice: the first Open() runs migrateV2 and sanitizes; the second is a no-op.
 	for i := 0; i < 2; i++ {
-		store, err = Open(dir)
+		store, err := Open(dir)
 		if err != nil {
 			t.Fatalf("reopen %d: %v", i, err)
 		}

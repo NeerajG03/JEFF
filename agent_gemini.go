@@ -12,8 +12,8 @@ func init() {
 	RegisterProvider(&geminiProvider{})
 }
 
-func (g *geminiProvider) Name() AgentTool    { return AgentGemini }
-func (g *geminiProvider) Command() string    { return "gemini" }
+func (g *geminiProvider) Name() AgentTool { return AgentGemini }
+func (g *geminiProvider) Command() string { return "gemini" }
 
 // isGeminiModel returns true if the model name is valid for Gemini CLI.
 // Accepts aliases (auto, pro, flash, flash-lite) and full IDs (gemini-*).
@@ -59,10 +59,10 @@ func (g *geminiProvider) BuildCurateArgs(prompt string, opts LaunchOpts) []strin
 }
 
 func (g *geminiProvider) SupportsInlinePrompt() bool { return true }
-func (g *geminiProvider) ConfigDir() string           { return ".gemini" }
-func (g *geminiProvider) SkillsSubdir() string        { return "skills" }
-func (g *geminiProvider) CommandsSubdir() string      { return "commands" }
-func (g *geminiProvider) CommandFileExt() string      { return "toml" }
+func (g *geminiProvider) ConfigDir() string          { return ".gemini" }
+func (g *geminiProvider) SkillsSubdir() string       { return "skills" }
+func (g *geminiProvider) CommandsSubdir() string     { return "commands" }
+func (g *geminiProvider) CommandFileExt() string     { return "toml" }
 
 func (g *geminiProvider) ContextFileAliases() []string {
 	return []string{"GEMINI.md"}

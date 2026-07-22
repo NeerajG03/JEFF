@@ -22,8 +22,8 @@ func init() {
 	RegisterProvider(&claudeProvider{})
 }
 
-func (c *claudeProvider) Name() AgentTool    { return AgentClaudeCode }
-func (c *claudeProvider) Command() string    { return "claude" }
+func (c *claudeProvider) Name() AgentTool { return AgentClaudeCode }
+func (c *claudeProvider) Command() string { return "claude" }
 
 func (c *claudeProvider) BuildLaunchArgs(opts LaunchOpts) []string {
 	args := []string{}
@@ -48,11 +48,11 @@ func (c *claudeProvider) BuildCurateArgs(prompt string, opts LaunchOpts) []strin
 	return []string{"--dangerously-skip-permissions", "-p", prompt}
 }
 
-func (c *claudeProvider) SupportsInlinePrompt() bool { return true }
-func (c *claudeProvider) ConfigDir() string           { return ".claude" }
-func (c *claudeProvider) SkillsSubdir() string        { return "skills" }
-func (c *claudeProvider) CommandsSubdir() string      { return "commands" }
-func (c *claudeProvider) CommandFileExt() string      { return "md" }
+func (c *claudeProvider) SupportsInlinePrompt() bool   { return true }
+func (c *claudeProvider) ConfigDir() string            { return ".claude" }
+func (c *claudeProvider) SkillsSubdir() string         { return "skills" }
+func (c *claudeProvider) CommandsSubdir() string       { return "commands" }
+func (c *claudeProvider) CommandFileExt() string       { return "md" }
 func (c *claudeProvider) ContextFileAliases() []string { return nil }
 
 func (c *claudeProvider) EnsureHomeDirs(home string) error {

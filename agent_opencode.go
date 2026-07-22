@@ -15,8 +15,8 @@ func init() {
 	RegisterProvider(&opencodeProvider{})
 }
 
-func (o *opencodeProvider) Name() AgentTool    { return AgentOpenCode }
-func (o *opencodeProvider) Command() string    { return "opencode" }
+func (o *opencodeProvider) Name() AgentTool { return AgentOpenCode }
+func (o *opencodeProvider) Command() string { return "opencode" }
 
 func (o *opencodeProvider) BuildLaunchArgs(opts LaunchOpts) []string {
 	// --auto is OpenCode's permission-skip equivalent (auto-accepts edits
@@ -47,11 +47,11 @@ func (o *opencodeProvider) BuildCurateArgs(prompt string, opts LaunchOpts) []str
 	return []string{"run", "--auto", prompt}
 }
 
-func (o *opencodeProvider) SupportsInlinePrompt() bool { return true }
-func (o *opencodeProvider) ConfigDir() string           { return ".opencode" }
-func (o *opencodeProvider) SkillsSubdir() string        { return "skills" }
-func (o *opencodeProvider) CommandsSubdir() string      { return "commands" }
-func (o *opencodeProvider) CommandFileExt() string      { return "md" }
+func (o *opencodeProvider) SupportsInlinePrompt() bool   { return true }
+func (o *opencodeProvider) ConfigDir() string            { return ".opencode" }
+func (o *opencodeProvider) SkillsSubdir() string         { return "skills" }
+func (o *opencodeProvider) CommandsSubdir() string       { return "commands" }
+func (o *opencodeProvider) CommandFileExt() string       { return "md" }
 func (o *opencodeProvider) ContextFileAliases() []string { return []string{"AGENTS.md"} }
 
 func (o *opencodeProvider) EnsureHomeDirs(home string) error {

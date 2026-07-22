@@ -515,6 +515,12 @@ func workerStopHook() *Hook {
 		Event:   "Stop",
 		Matcher: "*",
 		Timeout: 5,
+		// OpenCode: "Stop" maps to process.exit by default, which only fires
+		// when the whole process ends — so an idle worker never pings the
+		// orchestrator. session.idle is OpenCode's turn-end signal and matches
+		// Claude's Stop-on-every-turn behavior, so the orchestrator is pinged
+		// each time the agent finishes working.
+		OpenCodeEvent: "session.idle",
 		Scripts: map[string]func(ctx HookContext) string{
 			"claude": func(ctx HookContext) string {
 				return buildWorkerStopScript(ctx.TaskID, ctx.OrchestratorID)

@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,34 @@ import (
 
 	"github.com/NeerajG03/JEFF/internal/testutil"
 )
+
+// setupGitRepo creates a minimal real git repo with one commit under
+// jeffHome/repos/<repoName>, so tests can exercise real `git worktree` /
+// `git status` behavior. BaseBranch "main" (no remote prefix) avoids the
+// `git fetch` step WorktreeAdd runs for remote-qualified base branches.
+func setupGitRepo(t *testing.T, jeffHome, repoName string) string {
+	t.Helper()
+	repoDir := filepath.Join(jeffHome, "repos", repoName)
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-b", "main")
+	run("config", "user.email", "test@example.com")
+	run("config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(repoDir, "README.md"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("write README: %v", err)
+	}
+	run("add", ".")
+	run("commit", "-m", "initial")
+	return repoDir
+}
 
 func TestSymlinkIntoTask(t *testing.T) {
 	home := testutil.TempHome(t, "tasks")
@@ -97,6 +126,69 @@ func TestReadBaseBranch_Empty(t *testing.T) {
 	got := ReadBaseBranch(dir)
 	if got != defaultBaseBranch {
 		t.Errorf("expected default for empty file, got %q", got)
+	}
+}
+
+func TestWorktreeRemoveDirty(t *testing.T) {
+	home := testutil.TempHome(t)
+	setupGitRepo(t, home, "backend")
+
+	wtDir, err := WorktreeAdd(WorktreeOpts{JeffHome: home, RepoName: "backend", Branch: "gig-dirty", BaseBranch: "main"})
+	if err != nil {
+		t.Fatalf("worktree add: %v", err)
+	}
+
+	// Dirty the worktree with an untracked file.
+	if err := os.WriteFile(filepath.Join(wtDir, "scratch.txt"), []byte("wip\n"), 0o644); err != nil {
+		t.Fatalf("write scratch file: %v", err)
+	}
+
+	// Without force: refuse with ErrWorktreeDirty, worktree untouched.
+	err = WorktreeRemove(home, "backend", "gig-dirty", false)
+	if !errors.Is(err, ErrWorktreeDirty) {
+		t.Fatalf("expected ErrWorktreeDirty, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "scratch.txt") {
+		t.Errorf("error should list dirty paths, got: %v", err)
+	}
+	if _, statErr := os.Stat(wtDir); statErr != nil {
+		t.Errorf("worktree should still exist after refused removal: %v", statErr)
+	}
+
+	// With force: succeeds.
+	if err := WorktreeRemove(home, "backend", "gig-dirty", true); err != nil {
+		t.Fatalf("force remove: %v", err)
+	}
+	if _, statErr := os.Stat(wtDir); !os.IsNotExist(statErr) {
+		t.Errorf("worktree dir should be gone after force removal")
+	}
+
+	// git worktree list in the repo should no longer show it (prune ran).
+	repoDir := filepath.Join(home, "repos", "backend")
+	out, err := exec.Command("git", "-C", repoDir, "worktree", "list").CombinedOutput()
+	if err != nil {
+		t.Fatalf("git worktree list: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "gig-dirty") {
+		t.Errorf("expected worktree pruned from git metadata, still present:\n%s", out)
+	}
+}
+
+func TestWorktreeRemoveClean(t *testing.T) {
+	home := testutil.TempHome(t)
+	setupGitRepo(t, home, "backend")
+
+	wtDir, err := WorktreeAdd(WorktreeOpts{JeffHome: home, RepoName: "backend", Branch: "gig-clean", BaseBranch: "main"})
+	if err != nil {
+		t.Fatalf("worktree add: %v", err)
+	}
+
+	// No changes — removal without force should succeed.
+	if err := WorktreeRemove(home, "backend", "gig-clean", false); err != nil {
+		t.Fatalf("clean remove without force: %v", err)
+	}
+	if _, statErr := os.Stat(wtDir); !os.IsNotExist(statErr) {
+		t.Errorf("worktree dir should be gone after clean removal")
 	}
 }
 

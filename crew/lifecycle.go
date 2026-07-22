@@ -81,7 +81,7 @@ func PreflightResume(store *Store, taskID string) error {
 
 // buildAgentCmd constructs the agent CLI command using the LaunchCmd if provided,
 // or falls back to provider-compatible defaults for older callers.
-func buildAgentCmd(launchCmd, agent, model, resumeSessionID string) string {
+func buildAgentCmd(launchCmd, agent, model, resumeSessionID string, skipPermissions bool) string {
 	if launchCmd != "" {
 		return launchCmd
 	}
@@ -89,9 +89,13 @@ func buildAgentCmd(launchCmd, agent, model, resumeSessionID string) string {
 	if agent == "" {
 		agent = "claude"
 	}
-	cmd := agent + " --dangerously-skip-permissions"
-	if agent == "opencode" {
-		cmd = "opencode --auto"
+	cmd := agent
+	if skipPermissions {
+		if agent == "opencode" {
+			cmd += " --auto"
+		} else {
+			cmd += " --dangerously-skip-permissions"
+		}
 	}
 	if model != "" {
 		cmd += " --model " + model
@@ -116,6 +120,10 @@ type StartOpts struct {
 	ResumeSessionID string // session ID to resume via --resume
 	Prompt          string // custom initial prompt (overrides DefaultPrompt; empty = default; ignored on resume)
 	LaunchCmd       string // full CLI command (built by provider); if set, overrides Agent/Model/ResumeSessionID
+	// SkipPermissions is only consulted by the legacy buildAgentCmd fallback
+	// (LaunchCmd == ""). It is resolved at launch time by the caller (current
+	// config/flag), never persisted — a resumed worker re-resolves fresh.
+	SkipPermissions bool
 }
 
 // StartOrchestrator creates a new tmux session (jeff-N or jeff-<name>) and launches the
@@ -171,8 +179,11 @@ func StartOrchestratorWithLaunchCmd(store *Store, jeffHome string, agent string,
 	// durable fallback for shell/Claude-Code restarts within this same pane.
 	exportWorkerEnv(target, "JEFF_ORCHESTRATOR_SESSION", id)
 
-	// Launch agent in the orchestrator window.
-	agentCmd := buildAgentCmd(launchCmd, agent, model, "")
+	// Launch agent in the orchestrator window. The legacy fallback (launchCmd
+	// == "") defaults to skip=true here since this path has no --safe/config
+	// plumbed through it; callers building launchCmd via the provider control
+	// SkipPermissions themselves.
+	agentCmd := buildAgentCmd(launchCmd, agent, model, "", true)
 	if err := SendCommand(target, agentCmd); err != nil {
 		return nil, fmt.Errorf("launch orchestrator agent: %w", err)
 	}
@@ -279,7 +290,7 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 	// Ensure the self-updating claude install wins over any system install.
 	prependLocalBin(target)
 
-	agentCmd := buildAgentCmd(opts.LaunchCmd, opts.Agent, opts.Model, opts.ResumeSessionID)
+	agentCmd := buildAgentCmd(opts.LaunchCmd, opts.Agent, opts.Model, opts.ResumeSessionID, opts.SkipPermissions)
 	if err := SendCommand(target, agentCmd); err != nil {
 		KillWindow(target)
 		return nil, fmt.Errorf("launch agent: %w", err)

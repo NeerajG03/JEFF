@@ -31,7 +31,8 @@ JEFF is configured via `jeff.json` in your JEFF_HOME directory. Editors get auto
     "task-commands": true,
     "checkpoint-nudge": true
   },
-  "checkpoint_patterns": ["git commit", "go test.*PASS", "npm test"]
+  "checkpoint_patterns": ["git commit", "go test.*PASS", "npm test"],
+  "skip_permissions": true
 }
 ```
 
@@ -58,6 +59,30 @@ jeff config ide vscode       # VS Code
 jeff config ide windsurf     # Windsurf
 jeff config ide nvim         # Neovim
 ```
+
+## Permissions
+
+By default, every agent JEFF launches (`jeff pickup`, `jeff work`, `jeff crew start`) runs with its native permission prompts disabled (Claude's `--dangerously-skip-permissions`, Gemini's `--approval-mode=yolo`, OpenCode's `--auto`) — this is the current, unchanged default.
+
+Set `skip_permissions: false` in `jeff.json` to keep permission prompts enabled instead:
+
+```json
+{
+  "skip_permissions": false
+}
+```
+
+Or override per invocation with `--safe`, regardless of the config value:
+
+```bash
+jeff pickup gig-42 --safe
+jeff work gig-42 --safe
+jeff crew start gig-42 "..." --safe
+```
+
+Precedence: `--safe` > `jeff.json` `skip_permissions` > default (`true`).
+
+Non-interactive/piped runs (curation, `jeff memory curate`) always skip permissions regardless of this setting — a headless run cannot answer a prompt. A `jeff crew start --safe` worker pauses on the first permission prompt until someone attaches with `jeff crew attach <id>`.
 
 ## Repos
 
@@ -90,6 +115,17 @@ Or override per-worktree:
 ```bash
 jeff worktree add backend gig-ab12 --base origin/staging
 ```
+
+### Removal Safety
+
+`jeff done` and `jeff worktree rm` refuse to remove a worktree that has uncommitted changes (`git status --porcelain` is non-empty) — they print the dirty paths and abort instead of silently discarding work. Pass `--force` to discard anyway:
+
+```bash
+jeff done gig-ab12 --force
+jeff worktree rm backend gig-ab12 --force
+```
+
+`jeff done` checks every repo attached to the task before removing any of them, so a dirty repo never leaves the task half-torn-down. After any removal, `git worktree prune` runs in the repo so a future `jeff worktree add` at the same path doesn't fail with "already registered".
 
 ### Branch Naming
 

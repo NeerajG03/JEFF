@@ -10,6 +10,8 @@ import (
 )
 
 func workCmd() *cobra.Command {
+	var safeFlag bool
+
 	cmd := &cobra.Command{
 		Use:   "work [gig-id]",
 		Short: "Resume work on an existing task — launch agent in task dir",
@@ -45,9 +47,10 @@ func workCmd() *cobra.Command {
 			model := persona.RegisteredModel(cfg.Home, personaName)
 
 			fmt.Fprintf(os.Stderr, "Resuming %s in %s...\n", taskID, taskDir)
-			return launchAgent(taskDir, agentTool, model, personaName)
+			return launchAgent(taskDir, agentTool, model, personaName, effectiveSkipPermissions(cfg, safeFlag))
 		},
 	}
+	cmd.Flags().BoolVar(&safeFlag, "safe", false, `Launch the agent with its permission prompts enabled (pass "--safe" to override skip_permissions)`)
 	cmd.ValidArgsFunction = activeTaskCompletion
 	return cmd
 }

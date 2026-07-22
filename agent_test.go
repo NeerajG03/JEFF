@@ -36,33 +36,45 @@ func TestRegisteredAgents(t *testing.T) {
 func TestClaudeProviderArgs(t *testing.T) {
 	p := GetProvider(AgentClaudeCode)
 
-	// Basic launch (no options).
+	// Basic launch (no options): SkipPermissions defaults false at this layer.
 	args := p.BuildLaunchArgs(LaunchOpts{})
+	if len(args) != 0 {
+		t.Errorf("basic launch args = %v, want []", args)
+	}
+
+	// SkipPermissions true adds the flag.
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true})
 	if len(args) != 1 || args[0] != "--dangerously-skip-permissions" {
-		t.Errorf("basic launch args = %v", args)
+		t.Errorf("skip-permissions args = %v", args)
+	}
+
+	// SkipPermissions false must never include the flag.
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: false, Model: "opus"})
+	if slices.Contains(args, "--dangerously-skip-permissions") {
+		t.Errorf("args with SkipPermissions:false must not contain --dangerously-skip-permissions, got %v", args)
 	}
 
 	// Launch with model.
-	args = p.BuildLaunchArgs(LaunchOpts{Model: "opus"})
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true, Model: "opus"})
 	if !slices.Contains(args, "--model") || !slices.Contains(args, "opus") {
 		t.Errorf("model args = %v", args)
 	}
 
 	// Launch with resume.
-	args = p.BuildLaunchArgs(LaunchOpts{ResumeSessionID: "abc-123"})
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true, ResumeSessionID: "abc-123"})
 	if !slices.Contains(args, "--resume") || !slices.Contains(args, "abc-123") {
 		t.Errorf("resume args = %v", args)
 	}
 
 	// Launch with inline prompt.
-	args = p.BuildLaunchArgs(LaunchOpts{Prompt: "do the thing"})
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true, Prompt: "do the thing"})
 	if args[len(args)-1] != "do the thing" {
 		t.Errorf("prompt args = %v", args)
 	}
 
-	// Curate args.
-	curate := p.BuildCurateArgs("curate this")
-	if len(curate) != 3 || curate[1] != "-p" || curate[2] != "curate this" {
+	// Curate args always include the skip flag regardless of opts.
+	curate := p.BuildCurateArgs("curate this", LaunchOpts{SkipPermissions: false})
+	if len(curate) != 3 || curate[0] != "--dangerously-skip-permissions" || curate[1] != "-p" || curate[2] != "curate this" {
 		t.Errorf("curate args = %v", curate)
 	}
 }
@@ -70,20 +82,32 @@ func TestClaudeProviderArgs(t *testing.T) {
 func TestGeminiProviderArgs(t *testing.T) {
 	p := GetProvider(AgentGemini)
 
-	// Basic launch.
+	// Basic launch: SkipPermissions defaults false at this layer.
 	args := p.BuildLaunchArgs(LaunchOpts{})
+	if len(args) != 0 {
+		t.Errorf("basic launch args = %v, want []", args)
+	}
+
+	// SkipPermissions true adds the flag.
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true})
 	if len(args) != 1 || args[0] != "--approval-mode=yolo" {
-		t.Errorf("basic launch args = %v", args)
+		t.Errorf("skip-permissions args = %v", args)
+	}
+
+	// SkipPermissions false must never include the flag.
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: false, Model: "gemini-pro"})
+	if slices.Contains(args, "--approval-mode=yolo") {
+		t.Errorf("args with SkipPermissions:false must not contain --approval-mode=yolo, got %v", args)
 	}
 
 	// Launch with model.
-	args = p.BuildLaunchArgs(LaunchOpts{Model: "gemini-pro"})
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true, Model: "gemini-pro"})
 	if !slices.Contains(args, "-m") || !slices.Contains(args, "gemini-pro") {
 		t.Errorf("model args = %v", args)
 	}
 
 	// "flash" alias pins to gemini-3.5-flash.
-	args = p.BuildLaunchArgs(LaunchOpts{Model: "flash"})
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true, Model: "flash"})
 	if !slices.Contains(args, "-m") || !slices.Contains(args, "gemini-3.5-flash") {
 		t.Errorf("flash alias should resolve to gemini-3.5-flash, args = %v", args)
 	}
@@ -93,20 +117,20 @@ func TestGeminiProviderArgs(t *testing.T) {
 
 	// Other aliases pass through unchanged.
 	for _, alias := range []string{"pro", "flash-lite", "auto"} {
-		args = p.BuildLaunchArgs(LaunchOpts{Model: alias})
+		args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true, Model: alias})
 		if !slices.Contains(args, "-m") || !slices.Contains(args, alias) {
 			t.Errorf("alias %q should pass through, args = %v", alias, args)
 		}
 	}
 
 	// Resume uses "latest".
-	args = p.BuildLaunchArgs(LaunchOpts{ResumeSessionID: "anything"})
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true, ResumeSessionID: "anything"})
 	if !slices.Contains(args, "--resume") || !slices.Contains(args, "latest") {
 		t.Errorf("resume args = %v", args)
 	}
 
-	// Curate args (must include --approval-mode=yolo).
-	curate := p.BuildCurateArgs("curate this")
+	// Curate args always include --approval-mode=yolo regardless of opts.
+	curate := p.BuildCurateArgs("curate this", LaunchOpts{SkipPermissions: false})
 	if len(curate) != 3 || curate[0] != "--approval-mode=yolo" || curate[1] != "-p" || curate[2] != "curate this" {
 		t.Errorf("curate args = %v", curate)
 	}
@@ -126,14 +150,20 @@ func TestGeminiProviderArgs(t *testing.T) {
 func TestOpenCodeProviderArgs(t *testing.T) {
 	p := GetProvider(AgentOpenCode)
 
-	// Default args: --auto only.
+	// Default args: SkipPermissions false at this layer means no --auto.
 	args := p.BuildLaunchArgs(LaunchOpts{})
+	if len(args) != 0 {
+		t.Errorf("basic launch args = %v, want []", args)
+	}
+
+	// SkipPermissions true adds --auto.
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true})
 	if len(args) != 1 || args[0] != "--auto" {
-		t.Errorf("basic launch args = %v, want [--auto]", args)
+		t.Errorf("skip-permissions args = %v, want [--auto]", args)
 	}
 
 	// With prompt.
-	args = p.BuildLaunchArgs(LaunchOpts{Prompt: "hello"})
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true, Prompt: "hello"})
 	if len(args) != 3 || args[0] != "--auto" || args[1] != "--prompt" || args[2] != "hello" {
 		t.Errorf("prompt args = %v, want [--auto --prompt hello]", args)
 	}
@@ -141,13 +171,13 @@ func TestOpenCodeProviderArgs(t *testing.T) {
 	// AgentName must NOT become --agent: JEFF personas are not OpenCode agents,
 	// and OpenCode would resolve --agent against .opencode/agents/ (unpopulated
 	// in task dirs), selecting a nonexistent agent.
-	args = p.BuildLaunchArgs(LaunchOpts{AgentName: "jenko"})
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true, AgentName: "jenko"})
 	if slices.Contains(args, "--agent") {
 		t.Errorf("opencode args must not contain --agent, got %v", args)
 	}
 
-	// Curate is supported via `run --auto`.
-	curate := p.BuildCurateArgs("test prompt")
+	// Curate is supported via `run --auto`, always, regardless of opts.
+	curate := p.BuildCurateArgs("test prompt", LaunchOpts{SkipPermissions: false})
 	if len(curate) != 3 || curate[0] != "run" || curate[1] != "--auto" || curate[2] != "test prompt" {
 		t.Errorf("curate args = %v, want [run --auto test prompt]", curate)
 	}

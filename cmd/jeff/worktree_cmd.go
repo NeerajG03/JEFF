@@ -78,7 +78,9 @@ func worktreeAddCmd() *cobra.Command {
 }
 
 func worktreeRmCmd() *cobra.Command {
-	return &cobra.Command{
+	var force bool
+
+	cmd := &cobra.Command{
 		Use:   "rm <repo> <branch>",
 		Short: "Remove a git worktree",
 		Args:  cobra.ExactArgs(2),
@@ -89,13 +91,15 @@ func worktreeRmCmd() *cobra.Command {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := workspace.WorktreeRemove(cfg.Home, args[0], args[1]); err != nil {
+			if err := workspace.WorktreeRemove(cfg.Home, args[0], args[1], force); err != nil {
 				return err
 			}
 			fmt.Printf("Removed worktree %s/%s\n", args[0], args[1])
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&force, "force", false, "Remove even if the worktree has uncommitted changes")
+	return cmd
 }
 
 func worktreeListCmd() *cobra.Command {

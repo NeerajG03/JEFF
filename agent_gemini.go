@@ -12,8 +12,8 @@ func init() {
 	RegisterProvider(&geminiProvider{})
 }
 
-func (g *geminiProvider) Name() AgentTool    { return AgentGemini }
-func (g *geminiProvider) Command() string    { return "gemini" }
+func (g *geminiProvider) Name() AgentTool { return AgentGemini }
+func (g *geminiProvider) Command() string { return "gemini" }
 
 // isGeminiModel returns true if the model name is valid for Gemini CLI.
 // Accepts aliases (auto, pro, flash, flash-lite) and full IDs (gemini-*).
@@ -36,7 +36,10 @@ func resolveGeminiModel(m string) string {
 }
 
 func (g *geminiProvider) BuildLaunchArgs(opts LaunchOpts) []string {
-	args := []string{"--approval-mode=yolo"}
+	args := []string{}
+	if opts.SkipPermissions {
+		args = append(args, "--approval-mode=yolo")
+	}
 	if opts.Model != "" && isGeminiModel(opts.Model) {
 		args = append(args, "-m", resolveGeminiModel(opts.Model))
 	}
@@ -49,15 +52,17 @@ func (g *geminiProvider) BuildLaunchArgs(opts LaunchOpts) []string {
 	return args
 }
 
-func (g *geminiProvider) BuildCurateArgs(prompt string) []string {
+// BuildCurateArgs ignores opts.SkipPermissions: curate is a piped,
+// non-interactive run, so permissions are always skipped regardless of config.
+func (g *geminiProvider) BuildCurateArgs(prompt string, opts LaunchOpts) []string {
 	return []string{"--approval-mode=yolo", "-p", prompt}
 }
 
 func (g *geminiProvider) SupportsInlinePrompt() bool { return true }
-func (g *geminiProvider) ConfigDir() string           { return ".gemini" }
-func (g *geminiProvider) SkillsSubdir() string        { return "skills" }
-func (g *geminiProvider) CommandsSubdir() string      { return "commands" }
-func (g *geminiProvider) CommandFileExt() string      { return "toml" }
+func (g *geminiProvider) ConfigDir() string          { return ".gemini" }
+func (g *geminiProvider) SkillsSubdir() string       { return "skills" }
+func (g *geminiProvider) CommandsSubdir() string     { return "commands" }
+func (g *geminiProvider) CommandFileExt() string     { return "toml" }
 
 func (g *geminiProvider) ContextFileAliases() []string {
 	return []string{"GEMINI.md"}

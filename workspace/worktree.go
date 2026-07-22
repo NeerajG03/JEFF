@@ -3,6 +3,7 @@ package workspace
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +13,25 @@ import (
 
 	"github.com/NeerajG03/JEFF/internal/gitutil"
 )
+
+// ErrWorktreeDirty is returned when a worktree removal is refused because it
+// has uncommitted changes and force was not requested.
+var ErrWorktreeDirty = errors.New("worktree has uncommitted changes")
+
+// DirtyPaths returns up to max uncommitted paths in the worktree ("" clean).
+// Exported so callers (e.g. `jeff done`) can preflight-check multiple
+// worktrees for dirtiness before removing any of them.
+func DirtyPaths(wtDir string, max int) []string {
+	out, err := gitutil.Output(wtDir, "status", "--porcelain")
+	if err != nil || len(bytes.TrimSpace(out)) == 0 {
+		return nil
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) > max {
+		lines = lines[:max]
+	}
+	return lines
+}
 
 // WorktreeOpts holds options for creating a worktree.
 type WorktreeOpts struct {
@@ -173,25 +193,39 @@ func runPostSetup(script string, ctx PostSetupContext) error {
 }
 
 // WorktreeRemove removes a git worktree by reconstructing its path from
-// jeffHome/worktrees/<repoName>/<branch>.
-func WorktreeRemove(jeffHome, repoName, branch string) error {
+// jeffHome/worktrees/<repoName>/<branch>. Refuses on uncommitted changes
+// unless force is true.
+func WorktreeRemove(jeffHome, repoName, branch string, force bool) error {
 	wtDir := filepath.Join(jeffHome, "worktrees", repoName, branch)
-	return worktreeRemoveDir(jeffHome, repoName, wtDir)
+	return worktreeRemoveDir(jeffHome, repoName, wtDir, force)
 }
 
 // WorktreeRemoveByPath removes a git worktree at the given absolute path.
 // Use this when the worktree path is already known (e.g. resolved from a
-// task dir symlink) instead of reconstructing from a branch name.
-func WorktreeRemoveByPath(jeffHome, repoName, wtDir string) error {
-	return worktreeRemoveDir(jeffHome, repoName, wtDir)
+// task dir symlink) instead of reconstructing from a branch name. Refuses on
+// uncommitted changes unless force is true.
+func WorktreeRemoveByPath(jeffHome, repoName, wtDir string, force bool) error {
+	return worktreeRemoveDir(jeffHome, repoName, wtDir, force)
 }
 
-func worktreeRemoveDir(jeffHome, repoName, wtDir string) error {
+func worktreeRemoveDir(jeffHome, repoName, wtDir string, force bool) error {
 	repoDir := filepath.Join(jeffHome, "repos", repoName)
+
+	if !force {
+		if paths := DirtyPaths(wtDir, 20); len(paths) > 0 {
+			return fmt.Errorf("%w:\n  %s\n(commit/ship first, or pass --force to discard)", ErrWorktreeDirty, strings.Join(paths, "\n  "))
+		}
+	}
+
 	if err := gitutil.Run(repoDir, "worktree", "remove", wtDir); err != nil {
 		// Fallback: force remove if dirty.
 		os.RemoveAll(wtDir)
 	}
+
+	// Clean up dangling .git/worktrees/<name> metadata left by the RemoveAll
+	// fallback above, so a future WorktreeAdd at this path doesn't fail with
+	// "already registered".
+	_ = gitutil.Run(repoDir, "worktree", "prune")
 
 	// Clean up empty parent dirs up to the worktrees/<repoName> level.
 	parent := filepath.Dir(wtDir)

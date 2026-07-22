@@ -11,6 +11,10 @@ type LaunchOpts struct {
 	ResumeSessionID string
 	Prompt          string
 	AgentName       string
+	// SkipPermissions launches the agent with its native permission prompts
+	// disabled (e.g. --dangerously-skip-permissions). Defaults to true at
+	// resolution time (cmd/jeff/launch.go) to preserve current behavior.
+	SkipPermissions bool
 }
 
 // AgentProvider abstracts all agent-specific CLI behavior so adding
@@ -26,8 +30,10 @@ type AgentProvider interface {
 	BuildLaunchArgs(opts LaunchOpts) []string
 
 	// BuildCurateArgs returns CLI args for a non-interactive (piped prompt) session.
-	// Returns nil if the agent doesn't support non-interactive mode.
-	BuildCurateArgs(prompt string) []string
+	// Returns nil if the agent doesn't support non-interactive mode. Curate call
+	// sites must always pass SkipPermissions: true — a headless curator cannot
+	// answer permission prompts.
+	BuildCurateArgs(prompt string, opts LaunchOpts) []string
 
 	// SupportsInlinePrompt reports whether the agent accepts a prompt
 	// as a trailing positional arg in interactive mode.

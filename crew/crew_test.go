@@ -321,10 +321,20 @@ func TestBuildAgentCmd(t *testing.T) {
 		{"claude", "sonnet", "abc123", "claude --dangerously-skip-permissions --model sonnet --resume abc123"},
 	}
 	for _, tc := range tests {
-		got := buildAgentCmd("", tc.agent, tc.model, tc.resumeID)
+		got := buildAgentCmd("", tc.agent, tc.model, tc.resumeID, true)
 		if got != tc.want {
-			t.Errorf("buildAgentCmd(\"\", %q, %q, %q) = %q, want %q", tc.agent, tc.model, tc.resumeID, got, tc.want)
+			t.Errorf("buildAgentCmd(\"\", %q, %q, %q, true) = %q, want %q", tc.agent, tc.model, tc.resumeID, got, tc.want)
 		}
+	}
+
+	// SkipPermissions false must produce no permission flag at all.
+	got := buildAgentCmd("", "claude", "", "", false)
+	if got != "claude" {
+		t.Errorf("buildAgentCmd with skip=false = %q, want %q", got, "claude")
+	}
+	got = buildAgentCmd("", "opencode", "", "", false)
+	if got != "opencode" {
+		t.Errorf("buildAgentCmd with skip=false = %q, want %q", got, "opencode")
 	}
 }
 

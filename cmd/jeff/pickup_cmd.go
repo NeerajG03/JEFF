@@ -131,7 +131,7 @@ func writeTaskClaudeMD(taskDir, jeffHome string, store *gig.Store, task *gig.Tas
 	}
 
 	// Persona memory.
-	if personaName != "" {
+	if !memory.Disabled(jeffHome) && personaName != "" {
 		content, err := memory.LoadPersonaMemory(jeffHome, personaName)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: load persona memory: %v\n", err)
@@ -145,17 +145,19 @@ func writeTaskClaudeMD(taskDir, jeffHome string, store *gig.Store, task *gig.Tas
 	}
 
 	// Repo learnings.
-	for _, repoName := range repos {
-		content, err := memory.LoadRepoLearnings(jeffHome, repoName)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: load repo learnings for %s: %v\n", repoName, err)
-			continue
-		}
-		if content != "" {
-			fmt.Fprintf(&sb, "## Repo Learnings: %s\n\n", repoName)
-			sb.WriteString(content)
-			sb.WriteString("\n\n")
-			fmt.Fprintf(&sb, "Detail files: `%s`\n\n", memory.RepoLearningsDir(jeffHome, repoName))
+	if !memory.Disabled(jeffHome) {
+		for _, repoName := range repos {
+			content, err := memory.LoadRepoLearnings(jeffHome, repoName)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: load repo learnings for %s: %v\n", repoName, err)
+				continue
+			}
+			if content != "" {
+				fmt.Fprintf(&sb, "## Repo Learnings: %s\n\n", repoName)
+				sb.WriteString(content)
+				sb.WriteString("\n\n")
+				fmt.Fprintf(&sb, "Detail files: `%s`\n\n", memory.RepoLearningsDir(jeffHome, repoName))
+			}
 		}
 	}
 
@@ -171,7 +173,7 @@ func writeTaskClaudeMD(taskDir, jeffHome string, store *gig.Store, task *gig.Tas
 	sb.WriteString("\n")
 
 	// Scratchpad & memory guide.
-	if personaName != "" || len(repos) > 0 {
+	if !memory.Disabled(jeffHome) && (personaName != "" || len(repos) > 0) {
 		writeScratchpadGuide(&sb, taskDir, jeffHome, personaName, repos)
 	}
 

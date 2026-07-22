@@ -24,8 +24,11 @@ type SessionQueueEntry struct {
 	EndedAt        time.Time `json:"ended_at"`
 }
 
-// WriteQueueEntry writes e to queue/sessions/<task>-<unix>.json and returns
-// the resulting absolute path.
+// WriteQueueEntry writes e to queue/sessions/<task>-<transcript>.json and returns
+// the resulting absolute path. When a transcript is available the key includes
+// the transcript filename base so the same (task, transcript) pair overwrites
+// (idempotent) instead of creating duplicate entries. Falls back to nanosecond
+// granularity when transcript is empty.
 func WriteQueueEntry(jeffHome string, e SessionQueueEntry) (string, error) {
 	if e.Task == "" {
 		return "", fmt.Errorf("WriteQueueEntry: task is required")
@@ -37,7 +40,13 @@ func WriteQueueEntry(jeffHome string, e SessionQueueEntry) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("WriteQueueEntry: mkdir: %w", err)
 	}
-	name := fmt.Sprintf("%s-%d.json", sanitizeTaskID(e.Task), e.EndedAt.UnixNano())
+	var name string
+	if e.TranscriptPath != "" {
+		base := strings.TrimSuffix(filepath.Base(e.TranscriptPath), filepath.Ext(e.TranscriptPath))
+		name = fmt.Sprintf("%s-%s.json", sanitizeTaskID(e.Task), sanitizeTaskID(base))
+	} else {
+		name = fmt.Sprintf("%s-%d.json", sanitizeTaskID(e.Task), e.EndedAt.UnixNano())
+	}
 	path := filepath.Join(dir, name)
 
 	data, err := json.MarshalIndent(e, "", "  ")

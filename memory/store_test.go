@@ -129,3 +129,44 @@ func TestListEntries_EmptyHome(t *testing.T) {
 		t.Fatalf("want 0, got %d", len(out))
 	}
 }
+
+func TestListEntries_SkipsCorruptEntry(t *testing.T) {
+	home := t.TempDir()
+	if err := EnsureLayout(home); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write one valid entry.
+	now := time.Date(2026, 5, 5, 0, 0, 0, 0, time.UTC)
+	fm := CanonicalFrontmatter{
+		Frontmatter: Frontmatter{Name: "valid", Description: "d", Type: TypeFeedback},
+		Status:      "accepted", Scope: "persona:jenko", ValidFrom: now,
+		Source: Source{Persona: "jenko", Task: "t", Trigger: "self-noted"},
+	}
+	if _, err := WriteCanonical(home, "persona:jenko", string(BucketProcedural), fm, "body\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a corrupt file (no frontmatter fence).
+	corruptDir := BucketPath(PersonaScopePath(home, "jenko"), BucketProcedural)
+	corruptPath := filepath.Join(corruptDir, "corrupt.md")
+	os.WriteFile(corruptPath, []byte("not valid frontmatter\n"), 0o644)
+
+	// ListEntries must skip the corrupt file and return the valid one.
+	entries, err := ListEntries(home, EntryFilter{})
+	if err != nil {
+		t.Fatalf("ListEntries should not error on corrupt file: %v", err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.Slug == "valid" {
+			found = true
+		}
+		if e.Slug == "corrupt" {
+			t.Error("corrupt entry should not appear in results")
+		}
+	}
+	if !found {
+		t.Error("valid entry should still be returned despite corrupt file")
+	}
+}

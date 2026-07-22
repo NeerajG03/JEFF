@@ -115,6 +115,56 @@ func TestWriteCanonical_UnknownScope(t *testing.T) {
 	}
 }
 
+func TestWriteCanonical_DuplicateRefused(t *testing.T) {
+	home := t.TempDir()
+	if err := EnsureLayout(home); err != nil {
+		t.Fatal(err)
+	}
+
+	fm := CanonicalFrontmatter{
+		Frontmatter: Frontmatter{Name: "dup-test", Description: "duplicate test", Type: TypeFeedback},
+		Status:      "accepted",
+		Scope:       "persona:jenko",
+		ValidFrom:   time.Now().UTC(),
+		Source:      Source{Persona: "jenko", Task: "t", Trigger: "self-noted"},
+	}
+
+	// First write must succeed.
+	_, err := WriteCanonical(home, "persona:jenko", "procedural", fm, "first body\n")
+	if err != nil {
+		t.Fatalf("first WriteCanonical: %v", err)
+	}
+
+	// Second write with same name must fail.
+	_, err = WriteCanonical(home, "persona:jenko", "procedural", fm, "second body\n")
+	if err == nil {
+		t.Fatal("expected error on duplicate write")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("error should mention 'already exists', got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "--supersede") {
+		t.Errorf("error should mention --supersede, got: %v", err)
+	}
+
+	// Core bucket should still allow overwrite.
+	fm.Name = "core"
+	coreFM := CanonicalFrontmatter{
+		Frontmatter: Frontmatter{Name: "core", Description: "core overwrite test", Type: TypeProject},
+		Status:      "accepted",
+		Scope:       "persona:jenko",
+		ValidFrom:   time.Now().UTC(),
+		Source:      Source{Persona: "jenko", Task: "t", Trigger: "self-noted"},
+	}
+	if _, err := WriteCanonical(home, "persona:jenko", "core", coreFM, "core body\n"); err != nil {
+		t.Fatalf("core bucket overwrite should work: %v", err)
+	}
+	// Second core write should also work (overwrite).
+	if _, err := WriteCanonical(home, "persona:jenko", "core", coreFM, "core body updated\n"); err != nil {
+		t.Fatalf("second core bucket overwrite should work: %v", err)
+	}
+}
+
 func TestInvalidate_SetsValidTo(t *testing.T) {
 	home := t.TempDir()
 	if err := EnsureLayout(home); err != nil {

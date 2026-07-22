@@ -8,6 +8,34 @@ import (
 	"testing"
 )
 
+func TestRunSessionStart_DisableGateSkipsAll(t *testing.T) {
+	jeffHome := t.TempDir()
+	taskDir := t.TempDir()
+	t.Setenv("JEFF_MEMORY_DISABLE", "1")
+
+	os.WriteFile(filepath.Join(taskDir, "CLAUDE.md"), []byte("# Task\n"), 0o644)
+
+	if err := RunSessionStart(jeffHome, taskDir, "jenko", "gig-ds1", []string{"jeff"}, "claude"); err != nil {
+		t.Fatalf("RunSessionStart with disabled memory: %v", err)
+	}
+
+	// Addendum must NOT be present.
+	data, _ := os.ReadFile(filepath.Join(taskDir, "CLAUDE.md"))
+	if strings.Contains(string(data), "<!-- jeff-memory-addendum -->") {
+		t.Error("addendum should not be injected when memory is disabled")
+	}
+
+	// .claude/settings.json must NOT be created.
+	if _, err := os.Stat(filepath.Join(taskDir, ".claude", "settings.json")); err == nil {
+		t.Error(".claude/settings.json should not be written when memory is disabled")
+	}
+
+	// Start log must NOT be created (queue/sessions dir shouldn't exist).
+	if _, err := os.Stat(filepath.Join(jeffHome, "queue", "sessions")); err == nil {
+		t.Error("queue/sessions directory should not be created when memory is disabled")
+	}
+}
+
 func TestRunSessionStart_FullFlow(t *testing.T) {
 	jeffHome := t.TempDir()
 	taskDir := t.TempDir()

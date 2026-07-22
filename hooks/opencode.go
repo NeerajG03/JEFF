@@ -89,6 +89,15 @@ export const JeffHooksPlugin = async ({ client }) => {
     }
   };
 
+  const ok = (command: string): boolean => {
+    try {
+      execSync(command, { stdio: "ignore" });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const sessionID = (event: any): string =>
     event.properties?.info?.id ?? event.properties?.sessionID ?? event.properties?.session?.id ?? "";
 
@@ -108,7 +117,23 @@ export const JeffHooksPlugin = async ({ client }) => {
   };
 
   const exitHandlers: Array<() => void> = [];
+`)
 
+	// Emit process.exit hooks BEFORE the return statement — they register Node
+	// exit handlers and cannot appear inside the returned object literal.
+	for _, s := range snippets {
+		if s.event == "process.exit" {
+			sb.WriteString("      // process-exit hook\n")
+			sb.WriteString("      exitHandlers.push(() => {\n")
+			sb.WriteString(s.code)
+			sb.WriteString("\n      });\n")
+		}
+	}
+	if hasOpenCodeEvent(snippets, "process.exit") {
+		sb.WriteString("      process.once(\"exit\", () => { for (const handler of exitHandlers) handler(); });\n")
+	}
+
+	sb.WriteString(`
   return {
     event: async ({ event }) => {
       if (event.type === "session.created") {
@@ -123,7 +148,7 @@ export const JeffHooksPlugin = async ({ client }) => {
 		}
 	}
 
-	sb.WriteString(`        await inject(id, parts.filter(Boolean).join("\\n\\n"));
+	sb.WriteString(`        await inject(id, parts.filter(Boolean).join("\n\n"));
       }
 
       if (event.type === "session.idle") {
@@ -138,7 +163,7 @@ export const JeffHooksPlugin = async ({ client }) => {
 		}
 	}
 
-	sb.WriteString(`        await inject(id, parts.filter(Boolean).join("\\n\\n"));
+	sb.WriteString(`        await inject(id, parts.filter(Boolean).join("\n\n"));
       }
 
       if (event.type === "session.deleted") {
@@ -158,22 +183,11 @@ export const JeffHooksPlugin = async ({ client }) => {
 		}
 	}
 
-	sb.WriteString(`      await inject(input.sessionID ?? "", parts.filter(Boolean).join("\\n\\n"));
+	sb.WriteString(`      await inject(input.sessionID ?? "", parts.filter(Boolean).join("\n\n"));
     },
+  };
+};
 `)
-
-	for _, s := range snippets {
-		if s.event == "process.exit" {
-			sb.WriteString("      // process-exit hook\n")
-			sb.WriteString("      exitHandlers.push(() => {\n")
-			sb.WriteString(s.code)
-			sb.WriteString("\n      });\n")
-		}
-	}
-	if hasOpenCodeEvent(snippets, "process.exit") {
-		sb.WriteString("      process.once(\"exit\", () => { for (const handler of exitHandlers) handler(); });\n")
-	}
-	sb.WriteString("  };\n};\n")
 	return sb.String()
 }
 

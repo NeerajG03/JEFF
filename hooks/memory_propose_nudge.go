@@ -24,9 +24,9 @@ func memoryProposeNudgeHook() *Hook {
 
 func buildOpenCodeMemoryProposeNudgeSnippet(_ HookContext) string {
 	return `        // [memory-propose-nudge]
-        if (!run("test -f .nudged")) {
-          run("touch .nudged");
-          parts.push("Before exiting: did anything surface this session worth remembering? If yes, run: jeff memory propose --name <slug> --type <user|feedback|project|reference> --description \\\"<one-liner>\\\" --body \\\"<details>\\\". Otherwise just continue.");
+        if (!ok("test -f .nudged")) {
+          execSync("touch .nudged", { stdio: "ignore" });
+          parts.push("Before exiting: did anything surface this session worth remembering? If yes, tell the user. Otherwise just continue.");
         }`
 }
 

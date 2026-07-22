@@ -23,7 +23,6 @@ func builtinHooks() []*Hook {
 		// Memory hooks.
 		sessionStartMemoryHook(),
 		sessionEndMemoryHook(),
-		memoryProposeNudgeHook(),
 	}
 }
 
@@ -549,7 +548,6 @@ func sessionCaptureHook() *Hook {
 					return ""
 				}
 				return `        // [session-capture]
-        const id = sessionID(event);
         if (id) runFile("jeff", ["crew", "session-id", ` + strconv.Quote(ctx.TaskID) + `, id]);`
 			},
 			"gemini": func(ctx HookContext) string {

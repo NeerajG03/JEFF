@@ -126,21 +126,22 @@ func TestGeminiProviderArgs(t *testing.T) {
 func TestOpenCodeProviderArgs(t *testing.T) {
 	p := GetProvider(AgentOpenCode)
 
-	// No prompt = nil args.
+	// Default args: --auto only.
 	args := p.BuildLaunchArgs(LaunchOpts{})
-	if args != nil {
-		t.Errorf("basic launch args = %v, want nil", args)
+	if len(args) != 1 || args[0] != "--auto" {
+		t.Errorf("basic launch args = %v, want [--auto]", args)
 	}
 
 	// With prompt.
 	args = p.BuildLaunchArgs(LaunchOpts{Prompt: "hello"})
-	if len(args) != 2 || args[0] != "--prompt" || args[1] != "hello" {
-		t.Errorf("prompt args = %v", args)
+	if len(args) != 3 || args[0] != "--auto" || args[1] != "--prompt" || args[2] != "hello" {
+		t.Errorf("prompt args = %v, want [--auto --prompt hello]", args)
 	}
 
-	// Curate not supported.
-	if p.BuildCurateArgs("x") != nil {
-		t.Error("opencode should not support curate")
+	// Curate is supported via `run --auto`.
+	curate := p.BuildCurateArgs("test prompt")
+	if len(curate) != 3 || curate[0] != "run" || curate[1] != "--auto" || curate[2] != "test prompt" {
+		t.Errorf("curate args = %v, want [run --auto test prompt]", curate)
 	}
 }
 
@@ -153,7 +154,7 @@ func TestProviderLayout(t *testing.T) {
 		cmdExt     string
 	}{
 		{AgentClaudeCode, ".claude", "skills", "commands", "md"},
-		{AgentOpenCode, ".opencode", "", "", ""},
+		{AgentOpenCode, ".opencode", "skills", "commands", "md"},
 		{AgentGemini, ".gemini", "skills", "commands", "toml"},
 	}
 
@@ -196,9 +197,13 @@ func TestWriteHomeDefaults(t *testing.T) {
 		if err := p.WriteHomeDefaults(home); err != nil {
 			t.Errorf("%s WriteHomeDefaults: %v", agent, err)
 		}
-		settings := filepath.Join(home, p.ConfigDir(), "settings.json")
-		if _, err := os.Stat(settings); err != nil {
-			t.Errorf("%s settings.json not created: %v", agent, err)
+		cfgFile := "settings.json"
+		if agent == AgentOpenCode {
+			cfgFile = "opencode.json"
+		}
+		cfgPath := filepath.Join(home, p.ConfigDir(), cfgFile)
+		if _, err := os.Stat(cfgPath); err != nil {
+			t.Errorf("%s %s not created: %v", agent, cfgFile, err)
 		}
 	}
 }

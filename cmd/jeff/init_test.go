@@ -72,8 +72,7 @@ func TestWriteDefaults_CreatesFiles(t *testing.T) {
 		filepath.Join(home, ".skills", "skills.json"),
 		filepath.Join(home, ".claude", "settings.json"),
 		filepath.Join(home, ".claude", "settings.local.json"),
-		filepath.Join(home, ".opencode", "settings.json"),
-		filepath.Join(home, ".opencode", "settings.local.json"),
+		filepath.Join(home, ".opencode", "opencode.json"),
 	}
 	for _, f := range files {
 		if _, err := os.Stat(f); err != nil {

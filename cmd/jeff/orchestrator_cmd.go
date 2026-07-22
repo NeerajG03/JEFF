@@ -17,9 +17,10 @@ import (
 
 func orchestratorCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "orchestrator",
-		Short: "Create and manage orchestrator sessions",
-		Long:  "Launch a new orchestrator tmux session (jeff-N) with Claude Code, then start workers as additional tabs.",
+		Use:     "orchestrator",
+		Aliases: []string{"orch"},
+		Short:   "Create and manage orchestrator sessions",
+		Long:    "Launch a new orchestrator tmux session (jeff-N) with Claude Code, then start workers as additional tabs.",
 	}
 
 	cmd.AddCommand(
@@ -204,7 +205,11 @@ func promptAdopt(cmd *cobra.Command, orchID string) bool {
 }
 
 func orchestratorStartCmd() *cobra.Command {
-	var name string
+	var (
+		name          string
+		agentOverride string
+		modelOverride string
+	)
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Launch a new orchestrator session",
@@ -216,21 +221,46 @@ func orchestratorStartCmd() *cobra.Command {
 			}
 			defer cs.Close()
 
-			provider := jeff.GetProvider(cfg.Agent)
-			if provider == nil {
-				return fmt.Errorf("no provider registered for agent %q", cfg.Agent)
+			// Resolve agent: --agent flag takes priority over global config.
+			agentTool := cfg.Agent
+			if agentOverride != "" {
+				agentTool = jeff.AgentTool(agentOverride)
+				if !agentTool.IsValid() {
+					return fmt.Errorf("unknown agent %q (valid: %s)", agentOverride, strings.Join(jeff.AgentTool("").ValidNames(), ", "))
+				}
 			}
-			launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{})
+
+			// Resolve model: --model flag.
+			model := modelOverride
+
+			// Auto-route backend from model name when --model is explicitly supplied.
+			if modelOverride != "" {
+				if inferred := jeff.InferBackend(modelOverride); inferred != "" {
+					agentTool = inferred
+				} else if !jeff.IsValidModel(agentTool, modelOverride) {
+					return fmt.Errorf("%s", jeff.UnknownModelError(modelOverride))
+				}
+			}
+
+			provider := jeff.GetProvider(agentTool)
+			if provider == nil {
+				return fmt.Errorf("no provider registered for agent %q", agentTool)
+			}
+			launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{Model: model})
 			launchCmd := provider.Command()
 			for _, arg := range launchArgs {
 				launchCmd += " " + shellQuote(arg)
 			}
-			orch, err := crew.StartOrchestratorWithLaunchCmd(cs, cfg.Home, string(cfg.Agent), name, launchCmd)
+			orch, err := crew.StartOrchestratorWithLaunchCmd(cs, cfg.Home, string(agentTool), model, name, launchCmd)
 			if err != nil {
 				return err
 			}
 
-			fmt.Fprintf(os.Stderr, "Orchestrator %s started (tmux session: %s)\n", orch.ID, orch.TmuxSession)
+			fmt.Fprintf(os.Stderr, "Orchestrator %s started (tmux session: %s, agent: %s", orch.ID, orch.TmuxSession, orch.Agent)
+			if orch.Model != "" {
+				fmt.Fprintf(os.Stderr, ", model: %s", orch.Model)
+			}
+			fmt.Fprintf(os.Stderr, ")\n")
 			fmt.Fprintf(os.Stderr, "Attach with: jeff orchestrator attach %s\n", orch.ID)
 			fmt.Fprintf(os.Stderr, "Start workers with: jeff crew start <task-id> \"Work on this task\" --orchestrator %s\n", orch.ID)
 
@@ -240,6 +270,8 @@ func orchestratorStartCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "custom name suffix for the session (e.g. --name work → jeff-work)")
+	cmd.Flags().StringVar(&agentOverride, "agent", "", "Agent backend (claude, gemini, opencode; default: config agent)")
+	cmd.Flags().StringVar(&modelOverride, "model", "", "Model name; auto-routes backend (sonnet/opus/haiku/claude-* → claude, pro/flash/flash-lite/auto/gemini-* → gemini, provider/model → opencode)")
 	return cmd
 }
 
@@ -278,10 +310,18 @@ func orchestratorListCmd() *cobra.Command {
 				return nil
 			}
 
-			fmt.Fprintf(os.Stdout, "%-12s %-12s %-10s %s\n", "ID", "SESSION", "STATUS", "STARTED")
+			fmt.Fprintf(os.Stdout, "%-12s %-12s %-10s %-10s %-24s %s\n", "ID", "SESSION", "STATUS", "AGENT", "MODEL", "STARTED")
 			for _, o := range orchs {
 				started := relativeTime(o.StartedAt)
-				fmt.Fprintf(os.Stdout, "%-12s %-12s %-10s %s\n", o.ID, o.TmuxSession, o.Status, started)
+				agent := o.Agent
+				if agent == "" {
+					agent = "-"
+				}
+				model := o.Model
+				if model == "" {
+					model = "-"
+				}
+				fmt.Fprintf(os.Stdout, "%-12s %-12s %-10s %-10s %-24s %s\n", o.ID, o.TmuxSession, o.Status, agent, model, started)
 			}
 			return nil
 		},
@@ -320,8 +360,16 @@ func orchestratorInfoCmd() *cobra.Command {
 				return fmt.Errorf("orchestrator not found: %w", err)
 			}
 
-			fmt.Fprintf(os.Stdout, "Orchestrator: %s (session: %s, status: %s, started: %s)\n\n",
-				orch.ID, orch.TmuxSession, orch.Status, relativeTime(orch.StartedAt))
+			agent := orch.Agent
+			if agent == "" {
+				agent = "-"
+			}
+			model := orch.Model
+			if model == "" {
+				model = "-"
+			}
+			fmt.Fprintf(os.Stdout, "Orchestrator: %s (session: %s, status: %s, agent: %s, model: %s, started: %s)\n\n",
+				orch.ID, orch.TmuxSession, orch.Status, agent, model, relativeTime(orch.StartedAt))
 
 			gigStore, _ := openGigStore()
 			if gigStore != nil {

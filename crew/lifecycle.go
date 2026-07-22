@@ -122,13 +122,13 @@ type StartOpts struct {
 // orchestrator agent in the first window. Records the orchestrator in the DB.
 // If name is non-empty, the session is named jeff-<name>; otherwise jeff-N is auto-assigned.
 func StartOrchestrator(store *Store, jeffHome string, agent string, name string) (*Orchestrator, error) {
-	return StartOrchestratorWithLaunchCmd(store, jeffHome, agent, name, "")
+	return StartOrchestratorWithLaunchCmd(store, jeffHome, agent, "", name, "")
 }
 
 // StartOrchestratorWithLaunchCmd is the provider-aware orchestrator start path.
 // The legacy StartOrchestrator wrapper remains for SDK callers that only know
 // an agent command name.
-func StartOrchestratorWithLaunchCmd(store *Store, jeffHome string, agent string, name string, launchCmd string) (*Orchestrator, error) {
+func StartOrchestratorWithLaunchCmd(store *Store, jeffHome string, agent string, model string, name string, launchCmd string) (*Orchestrator, error) {
 	if err := EnsureTmux(); err != nil {
 		return nil, err
 	}
@@ -172,7 +172,7 @@ func StartOrchestratorWithLaunchCmd(store *Store, jeffHome string, agent string,
 	exportWorkerEnv(target, "JEFF_ORCHESTRATOR_SESSION", id)
 
 	// Launch agent in the orchestrator window.
-	agentCmd := buildAgentCmd(launchCmd, agent, "", "")
+	agentCmd := buildAgentCmd(launchCmd, agent, model, "")
 	if err := SendCommand(target, agentCmd); err != nil {
 		return nil, fmt.Errorf("launch orchestrator agent: %w", err)
 	}
@@ -187,6 +187,8 @@ func StartOrchestratorWithLaunchCmd(store *Store, jeffHome string, agent string,
 		TmuxPane:    paneID,
 		StartedAt:   now,
 		Status:      "running",
+		Agent:       agent,
+		Model:       model,
 	}
 
 	if err := store.PutOrchestrator(orch); err != nil {

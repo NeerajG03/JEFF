@@ -456,8 +456,9 @@ func sendCommandForSession(target, command, agent string) error {
 	return SendCommand(target, command)
 }
 
-// Send delivers a message to a worker based on its type.
-func Send(store *Store, taskID string, msgType MessageType, content string) (*Message, error) {
+// Send stores the message in the inbox and delivers it to the worker's pane.
+// If interrupt is true, the agent is interrupted (Ctrl-C) before delivery.
+func Send(store *Store, taskID, content string, interrupt bool) (*Message, error) {
 	sess, err := store.GetSession(taskID)
 	if err != nil {
 		return nil, fmt.Errorf("get session: %w", err)
@@ -469,54 +470,24 @@ func Send(store *Store, taskID string, msgType MessageType, content string) (*Me
 		ID:        generateMsgID(),
 		TaskID:    taskID,
 		Direction: "to_worker",
-		Type:      msgType,
+		Type:      "message",
 		Content:   content,
 		CreatedAt: time.Now().UTC(),
 	}
 
-	switch msgType {
-	case MsgNudge:
-		// Store and send to pane, same as normal message.
-		if err := store.SendMessage(msg); err != nil {
-			return nil, fmt.Errorf("store nudge: %w", err)
-		}
-		if err := sendCommandForSession(target, content, sess.Agent); err != nil {
-			return nil, fmt.Errorf("send nudge: %w", err)
-		}
+	if err := store.SendMessage(msg); err != nil {
+		return nil, fmt.Errorf("store message: %w", err)
+	}
 
-	case MsgStatus:
-		// Send /btw via tmux pane (sidechain, no context pollution).
-		if err := store.SendMessage(msg); err != nil {
-			return nil, fmt.Errorf("store status msg: %w", err)
-		}
-		if err := sendCommandForSession(target, "/btw "+content, sess.Agent); err != nil {
-			return nil, fmt.Errorf("send /btw: %w", err)
-		}
-
-	case MsgDivert:
-		// Interrupt, then send as fresh input.
-		if err := store.SendMessage(msg); err != nil {
-			return nil, fmt.Errorf("store divert msg: %w", err)
-		}
+	if interrupt {
 		if err := SendInterrupt(target); err != nil {
 			return nil, fmt.Errorf("interrupt: %w", err)
 		}
 		time.Sleep(interruptSettleDelay(sess.Agent))
-		if err := sendCommandForSession(target, content, sess.Agent); err != nil {
-			return nil, fmt.Errorf("send divert message: %w", err)
-		}
+	}
 
-	case MsgNormal:
-		// Send directly to agent input.
-		if err := store.SendMessage(msg); err != nil {
-			return nil, fmt.Errorf("store normal msg: %w", err)
-		}
-		if err := sendCommandForSession(target, content, sess.Agent); err != nil {
-			return nil, fmt.Errorf("send message: %w", err)
-		}
-
-	default:
-		return nil, fmt.Errorf("unknown message type: %s", msgType)
+	if err := sendCommandForSession(target, content, sess.Agent); err != nil {
+		return nil, fmt.Errorf("send message: %w", err)
 	}
 
 	return msg, nil
@@ -630,7 +601,7 @@ func Ask(store *Store, taskID, content string) (*Message, error) {
 		ID:        generateMsgID(),
 		TaskID:    taskID,
 		Direction: "to_orchestrator",
-		Type:      MsgNormal,
+		Type:      "message",
 		Content:   content,
 		CreatedAt: time.Now().UTC(),
 	}

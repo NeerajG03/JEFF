@@ -222,7 +222,7 @@ const jeffInstructionsContext = `## JEFF Commands
 - ` + "`jeff crew resume <id>`" + `                               — resume a worker in tmux
 - ` + "`jeff crew list`" + `                                      — show active workers
 - ` + "`jeff crew status <id>`" + `                               — worker detail + pane output
-- ` + "`jeff crew send <id> \"msg\" [--type nudge|status|divert|normal]`" + ` — message a worker
+- ` + "`jeff crew send <id> \"msg\" [--interrupt]`" + ` — message a worker
 - ` + "`jeff crew events [--since 5m]`" + `                       — recent gig activity across workers
 - ` + "`jeff crew stop <id>`" + `                                 — stop a worker
 - ` + "`jeff crew ack <msg-id> [\"response\"]`" + `                — acknowledge an orchestrator message

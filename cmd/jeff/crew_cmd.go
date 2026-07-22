@@ -580,17 +580,16 @@ func crewStatusCmd() *cobra.Command {
 }
 
 func crewSendCmd() *cobra.Command {
-	var msgType string
+	var interrupt bool
 
 	cmd := &cobra.Command{
 		Use:   "send <gig-id> <message>",
 		Short: "Send a message to a worker agent",
-		Long: `Send a message to a worker agent. Message types:
+		Long: `Send a message to a worker agent. The message is stored in the inbox
+and delivered directly into the agent's tmux pane.
 
-  nudge   — one-way instruction via hook (low context pollution)
-  status  — asks via /btw (sidechain, reads response from pane)
-  divert  — interrupts agent, then sends message (heavy)
-  normal  — types directly into agent input (full context impact)`,
+Use --interrupt to Ctrl-C the agent first, then send the message
+(useful when the agent is mid-turn and you need to redirect it).`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			taskID, content := args[0], args[1]
@@ -601,36 +600,21 @@ func crewSendCmd() *cobra.Command {
 			}
 			defer cs.Close()
 
-			mt := crew.MessageType(msgType)
-			msg, err := crew.Send(cs, taskID, mt, content)
+			msg, err := crew.Send(cs, taskID, content, interrupt)
 			if err != nil {
 				return err
 			}
 
-			switch mt {
-			case crew.MsgNudge:
-				fmt.Fprintf(os.Stderr, "Sent nudge %s to %s (will appear at next tool use)\n", msg.ID, taskID)
-			case crew.MsgStatus:
-				fmt.Fprintf(os.Stderr, "Sent /btw to %s tmux pane. Capturing response in 10s...\n", taskID)
-				time.Sleep(10 * time.Second)
-				sess, _ := cs.GetSession(taskID)
-				if sess != nil && crew.HasWindow(sess.WindowName) {
-					target := crew.SessionTarget(sess.TmuxSession, sess.WindowName)
-					if pane, err := crew.CapturePane(target, 15); err == nil {
-						fmt.Fprintf(os.Stdout, "Response:\n%s\n", pane)
-					}
-				}
-			case crew.MsgDivert:
-				fmt.Fprintf(os.Stderr, "Diverted %s: %q\n", taskID, content)
-			case crew.MsgNormal:
-				fmt.Fprintf(os.Stderr, "Sent message to %s\n", taskID)
+			if interrupt {
+				fmt.Fprintf(os.Stderr, "Interrupted and sent message %s to %s\n", msg.ID, taskID)
+			} else {
+				fmt.Fprintf(os.Stderr, "Sent message %s to %s\n", msg.ID, taskID)
 			}
-
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&msgType, "type", "nudge", "Message type: nudge, status, divert, normal")
+	cmd.Flags().BoolVar(&interrupt, "interrupt", false, "Interrupt (Ctrl-C) the agent before sending")
 	return cmd
 }
 

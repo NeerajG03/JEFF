@@ -6,11 +6,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 )
 
-var msgTypes = []string{"nudge", "status", "divert", "normal"}
-
 type inputModel struct {
 	input    textinput.Model
-	typeIdx  int
 	active   bool
 	targetID string
 	crewMode bool // when true, input is for persona name (not message)
@@ -30,7 +27,6 @@ func (m *inputModel) open(targetID string) {
 	m.input.SetValue("")
 	m.input.Placeholder = "Type message..."
 	m.input.Focus()
-	m.typeIdx = 0
 }
 
 func (m *inputModel) openForCrew(taskID string) {
@@ -48,17 +44,6 @@ func (m *inputModel) close() {
 	m.input.Blur()
 }
 
-func (m *inputModel) cycleType() {
-	if m.crewMode {
-		return
-	}
-	m.typeIdx = (m.typeIdx + 1) % len(msgTypes)
-}
-
-func (m *inputModel) msgType() string {
-	return msgTypes[m.typeIdx]
-}
-
 func (m *inputModel) value() string {
 	return m.input.Value()
 }
@@ -74,10 +59,7 @@ func renderInput(im inputModel, width int) string {
 		return panelStyle.Width(width).Render(content)
 	}
 
-	typeLabel := lipglossBlue.Bold(true).Render("[" + im.msgType() + "]")
-	header := fmt.Sprintf("Send to %s  %s  (Tab: cycle type, Enter: send, Esc: cancel)",
-		im.targetID, typeLabel)
-
+	header := fmt.Sprintf("Send to %s  (Enter: send, Esc: cancel)", im.targetID)
 	content := headerStyle.Render(header) + "\n" + im.input.View()
 	return panelStyle.Width(width).Render(content)
 }

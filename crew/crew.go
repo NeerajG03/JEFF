@@ -57,37 +57,16 @@ func (s *Session) LatestSessionID() string {
 	return s.SessionIDs[len(s.SessionIDs)-1]
 }
 
-// MessageType determines delivery mechanism and expected behavior.
-type MessageType string
-
-const (
-	// MsgNudge is a one-way instruction delivered via PostToolUse hook.
-	// Agent sees it in context, acks it, follows the instruction.
-	MsgNudge MessageType = "nudge"
-
-	// MsgStatus asks for status via /btw (sidechain, no context pollution).
-	// Delivered by typing "/btw <content>" into the tmux pane.
-	MsgStatus MessageType = "status"
-
-	// MsgDivert interrupts the agent (C-c), then sends a new message.
-	// Used to redirect focus. Heavy — stops current work.
-	MsgDivert MessageType = "divert"
-
-	// MsgNormal is a regular message typed into the agent's input.
-	// Full context impact.
-	MsgNormal MessageType = "normal"
-)
-
 // Message is a communication between orchestrator and worker.
 type Message struct {
-	ID        string      `json:"id"`
-	TaskID    string      `json:"task_id"`
-	Direction string      `json:"direction"` // to_worker, to_orchestrator
-	Type      MessageType `json:"type"`
-	Content   string      `json:"content"`
-	Response  string      `json:"response,omitempty"`
-	CreatedAt time.Time   `json:"created_at"`
-	AckedAt   *time.Time  `json:"acked_at,omitempty"`
+	ID        string     `json:"id"`
+	TaskID    string     `json:"task_id"`
+	Direction string     `json:"direction"` // to_worker, to_orchestrator
+	Type      string     `json:"type"`
+	Content   string     `json:"content"`
+	Response  string     `json:"response,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	AckedAt   *time.Time `json:"acked_at,omitempty"`
 }
 
 // Store manages crew state in a SQLite database.
@@ -626,7 +605,7 @@ func scanMessages(rows *sql.Rows) ([]*Message, error) {
 			return nil, fmt.Errorf("scan message: %w", err)
 		}
 
-		msg.Type = MessageType(msgType)
+		msg.Type = msgType
 		msg.CreatedAt = parseTime(createdAt)
 		if ackedAt != nil {
 			t := parseTime(*ackedAt)

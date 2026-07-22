@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -140,6 +141,59 @@ func TestBuildPRBody_Empty(t *testing.T) {
 
 	if !strings.Contains(body, "Task: "+task.ID) {
 		t.Error("missing task footer")
+	}
+}
+
+func TestCountDirty_Clean(t *testing.T) {
+	dir := t.TempDir()
+	initGitBranch(t, dir, "main")
+
+	n, lines := countDirty(dir)
+	if n != 0 {
+		t.Errorf("expected 0 dirty paths, got %d (%v)", n, lines)
+	}
+}
+
+func TestCountDirty_Uncommitted(t *testing.T) {
+	dir := t.TempDir()
+	initGitBranch(t, dir, "main")
+
+	os.WriteFile(filepath.Join(dir, "scratch.txt"), []byte("wip"), 0o644)
+
+	n, lines := countDirty(dir)
+	if n != 1 {
+		t.Fatalf("expected 1 dirty path, got %d (%v)", n, lines)
+	}
+	if !strings.Contains(lines[0], "scratch.txt") {
+		t.Errorf("expected line to mention scratch.txt, got %q", lines[0])
+	}
+}
+
+func TestSummarizeShip_AllOK(t *testing.T) {
+	results := []shipResult{
+		{repo: "frontend", pushed: true, newPR: true, prURL: "https://github.com/x/y/pull/1"},
+		{repo: "backend", skipped: true},
+	}
+	summary, err := summarizeShip(results)
+	if err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+	if !strings.Contains(summary, "Shipped 1, skipped 1, failed 0") {
+		t.Errorf("unexpected summary: %q", summary)
+	}
+}
+
+func TestSummarizeShip_OneFailed(t *testing.T) {
+	results := []shipResult{
+		{repo: "frontend", pushed: true, newPR: true},
+		{repo: "backend", err: fmt.Errorf("push failed: boom")},
+	}
+	_, err := summarizeShip(results)
+	if err == nil {
+		t.Fatal("expected non-nil error")
+	}
+	if !strings.Contains(err.Error(), "backend") {
+		t.Errorf("expected error to mention failed repo, got %v", err)
 	}
 }
 

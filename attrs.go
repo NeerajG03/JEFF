@@ -14,6 +14,8 @@ const (
 	AttrTeamSize       = "team_size"       // string: "1" for solo
 	AttrOutcome        = "outcome"         // string: close reason ("done", "abandoned", ...)
 	AttrRejectionCount = "rejection_count" // string: times a PR was sent back (not yet written)
+
+	AttrPRURLs = "pr_urls" // JSON object mapping repo name -> PR URL
 )
 
 // EnsureAttrs defines the custom attributes JEFF needs in gig.
@@ -32,6 +34,7 @@ func EnsureAttrs(store *gig.Store) error {
 		{AttrTeamSize, gig.AttrString, "Number of agents on this task (1 = solo)"},
 		{AttrOutcome, gig.AttrString, "Task outcome recorded at close"},
 		{AttrRejectionCount, gig.AttrString, "How many times the task's PR was rejected"},
+		{AttrPRURLs, gig.AttrObject, "JSON object mapping repo name to PR URL"},
 	}
 
 	for _, a := range attrs {

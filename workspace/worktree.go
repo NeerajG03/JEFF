@@ -70,6 +70,9 @@ func WorktreeAdd(opts WorktreeOpts) (string, error) {
 
 	// Record the base branch so jeff ship knows the PR target.
 	writeBaseBranch(wtDir, baseBranch)
+	if err := ensureExcluded(wtDir, ".jeff-base"); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: exclude .jeff-base: %v\n", err)
+	}
 
 	// Run post-setup script if configured.
 	if opts.PostSetup != "" {
@@ -106,6 +109,44 @@ func ReadBaseBranch(wtDir string) string {
 		return defaultBaseBranch
 	}
 	return s
+}
+
+// ensureExcluded appends pattern to the worktree's local git exclude file if absent.
+// Worktrees have their own info/exclude under the worktree gitdir, resolved via
+// `git rev-parse --git-path` — for linked worktrees the gitdir lives under the
+// main repo's .git/worktrees/<name>/, and a hardcoded <wt>/.git/info/exclude
+// path is wrong since .git in a worktree is a file, not a directory.
+func ensureExcluded(wtDir, pattern string) error {
+	out, err := gitutil.Output(wtDir, "rev-parse", "--git-path", "info/exclude")
+	if err != nil {
+		return err
+	}
+	excludePath := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(excludePath) {
+		excludePath = filepath.Join(wtDir, excludePath)
+	}
+	data, _ := os.ReadFile(excludePath)
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) == pattern {
+			return nil
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(excludePath), 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(excludePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(pattern + "\n")
+	return err
+}
+
+// EnsureJeffBaseExcluded self-heals worktrees created by older jeff binaries
+// that predate the .jeff-base exclude, so it stops appearing in `git status`.
+func EnsureJeffBaseExcluded(wtDir string) error {
+	return ensureExcluded(wtDir, ".jeff-base")
 }
 
 // PostSetupContext is the JSON payload sent to post-setup scripts on stdin.

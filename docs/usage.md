@@ -51,7 +51,25 @@ jeff ship --repo backend     # only one repo
 jeff ship --draft            # create draft PRs
 jeff ship --dry-run          # show what would happen
 jeff ship --title "Custom"   # override PR title
+jeff ship --body "Custom"    # override PR body
 ```
+
+Requires `gh` (the GitHub CLI) on `PATH`, unless `--dry-run` is set — `jeff ship`
+fails fast at startup rather than surfacing a cryptic per-repo error later.
+
+Each worktree is checked for uncommitted changes before pushing; any found are
+printed as a warning (they are **not** shipped) so nothing is silently left behind.
+
+`jeff ship` exits non-zero if any worktree fails to push or create a PR, and
+prints a `Shipped X, skipped Y, failed Z` summary line. A pre-existing PR for
+an already-pushed branch counts as shipped, not failed — re-running `jeff ship`
+after a partial failure converges to success. `--dry-run` always exits 0 and
+does not record anything back into gig.
+
+On success, PR URLs are recorded on the task: a `pr_urls` attribute
+(repo → PR URL JSON) plus a `Shipped: ...` comment the first time a PR is
+created for each repo (re-running ship on an already-shipped task doesn't
+spam duplicate comments).
 
 ### Complete
 

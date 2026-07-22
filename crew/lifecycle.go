@@ -1,6 +1,7 @@
 package crew
 
 import (
+	"errors"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -362,29 +363,53 @@ func StopAll(store *Store) error {
 // or "done" if the window is gone and the task is closed in gig.
 // Marks orchestrators as "stopped" if their tmux session is gone.
 func Refresh(store *Store, isTaskClosed func(taskID string) bool) error {
+	var errs []error
+	
 	sessions, err := store.ListSessions(true, "")
 	if err != nil {
 		return err
 	}
 
+	// Batch tmux lookups by session.
+	sessionWindows := make(map[string]map[string]bool)
 	for _, sess := range sessions {
-		if HasWindowInSession(sess.TmuxSession, sess.WindowName) {
-			_ = store.TouchSession(sess.TaskID)
+		if _, ok := sessionWindows[sess.TmuxSession]; !ok {
+			sessionWindows[sess.TmuxSession] = make(map[string]bool)
+			windows, err := ListWindowsInSession(sess.TmuxSession)
+			if err == nil {
+				for _, w := range windows {
+					sessionWindows[sess.TmuxSession][w] = true
+				}
+			}
+		}
+	}
+
+	for _, sess := range sessions {
+		windows := sessionWindows[sess.TmuxSession]
+		target := SanitizeWindowName(sess.WindowName)
+		if windows[target] || windows[sess.WindowName] {
+			if err := store.TouchSession(sess.TaskID); err != nil {
+				errs = append(errs, fmt.Errorf("touch %s: %w", sess.TaskID, err))
+			}
 			continue
 		}
 
 		// Window is gone — determine why.
 		if isTaskClosed != nil && isTaskClosed(sess.TaskID) {
-			_ = store.UpdateStatus(sess.TaskID, "done")
+			if err := store.UpdateStatus(sess.TaskID, "done"); err != nil {
+				errs = append(errs, fmt.Errorf("mark done %s: %w", sess.TaskID, err))
+			}
 		} else {
-			_ = store.UpdateStatus(sess.TaskID, "failed")
+			if err := store.UpdateStatus(sess.TaskID, "failed"); err != nil {
+				errs = append(errs, fmt.Errorf("mark failed %s: %w", sess.TaskID, err))
+			}
 		}
 	}
 
 	// Sync orchestrator state: mark stopped if tmux session is gone.
 	orchs, err := store.ListOrchestrators(true)
 	if err != nil {
-		return nil // non-fatal: worker refresh already succeeded
+		return errors.Join(errs...) // non-fatal: worker refresh already succeeded
 	}
 	for _, o := range orchs {
 		// A durable identity registered outside tmux has no session to probe;
@@ -393,11 +418,13 @@ func Refresh(store *Store, isTaskClosed func(taskID string) bool) error {
 			continue
 		}
 		if !HasSession(o.TmuxSession) {
-			_ = store.UpdateOrchestratorStatus(o.ID, "stopped")
+			if err := store.UpdateOrchestratorStatus(o.ID, "stopped"); err != nil {
+				errs = append(errs, fmt.Errorf("mark stopped orch %s: %w", o.ID, err))
+			}
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 // StopOrchestrator gracefully stops an orchestrator and all its workers.
@@ -645,9 +672,13 @@ func CheckStalls(store *Store, threshold time.Duration) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("query sessions: %w", err)
 	}
-	defer rows.Close()
 
-	signaled := 0
+	type stallInfo struct {
+		taskID string
+		idle   time.Duration
+	}
+	var stalls []stallInfo
+
 	now := time.Now().UTC()
 	for rows.Next() {
 		var taskID, lastSeenStr, orchID string
@@ -659,17 +690,25 @@ func CheckStalls(store *Store, threshold time.Duration) (int, error) {
 			continue
 		}
 		idle := now.Sub(lastSeen)
-		if idle < threshold {
-			continue
+		if idle >= threshold {
+			stalls = append(stalls, stallInfo{taskID: taskID, idle: idle})
 		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	rows.Close() // IMPORTANT: fully drain and close before nested queries
 
-		msg := fmt.Sprintf("stalled — no activity for %d minutes", int(idle.Minutes()))
-		if err := SignalOrchestrator(store, taskID, msg); err != nil {
+	signaled := 0
+	for _, stall := range stalls {
+		msg := fmt.Sprintf("stalled — no activity for %d minutes", int(stall.idle.Minutes()))
+		if err := SignalOrchestrator(store, stall.taskID, msg); err != nil {
 			continue
 		}
 		signaled++
 	}
-	return signaled, rows.Err()
+	return signaled, nil
 }
 
 // Ask sends a to_orchestrator message from a worker. It looks up the worker's

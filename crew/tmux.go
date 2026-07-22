@@ -1,6 +1,7 @@
 package crew
 
 import (
+	"runtime"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,7 +18,13 @@ const DashboardWindowName = "dashboard"
 // EnsureTmux checks that tmux is available in PATH.
 func EnsureTmux() error {
 	if _, err := exec.LookPath("tmux"); err != nil {
-		return fmt.Errorf("tmux not found in PATH — required for crew management (install: brew install tmux)")
+		hint := "install tmux"
+		if runtime.GOOS == "darwin" {
+			hint = "brew install tmux"
+		} else if runtime.GOOS == "linux" {
+			hint = "apt/dnf install tmux"
+		}
+		return fmt.Errorf("tmux not found in PATH — required for crew management (install: %s)", hint)
 	}
 	return nil
 }
@@ -88,22 +95,18 @@ func SendCommandWithDelay(target, command string, delay time.Duration) error {
 	return tmuxRun("send-keys", "-t", target, "Enter")
 }
 
-// SendCommandViaBuffer sends text to a tmux pane using the load-buffer +
-// paste-buffer path instead of send-keys -l. paste-buffer -p wraps the
-// content in bracketed-paste markers (\e[200~...\e[201~) when the
-// application has bracketed-paste mode enabled. Ink v5+ (Gemini CLI) enables
-// this mode, so the message arrives as an atomic block — Ink's usePaste hook
-// handles it without the character-stream race that affects send-keys -l.
-// After pasting, sleeps geminiSendDelay to let Ink flush, then sends Enter.
-// See gig-ca9f.
+// SendCommandViaBuffer writes the command to a temporary tmux buffer and pastes
+// it into the target pane using bracketed paste mode (-p). The buffer is deleted
+// (-d) immediately after pasting to prevent leaks and cross-worker race conditions.
 func SendCommandViaBuffer(target, command string) error {
-	cmd := exec.Command("tmux", "load-buffer", "-b", "jeff-send", "-")
+	bufName := fmt.Sprintf("jeff-send-%d", os.Getpid())
+	cmd := exec.Command("tmux", "load-buffer", "-b", bufName, "-")
 	cmd.Stdin = strings.NewReader(command)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("tmux load-buffer: %w (output: %s)", err, strings.TrimSpace(string(out)))
 	}
-	if err := tmuxRun("paste-buffer", "-b", "jeff-send", "-t", target, "-p", "-d"); err != nil {
+	if err := tmuxRun("paste-buffer", "-b", bufName, "-t", target, "-p", "-d"); err != nil {
 		return err
 	}
 	time.Sleep(geminiSendDelay)

@@ -67,7 +67,6 @@ type refreshedMsg struct {
 type sentMsg struct {
 	err    error
 	taskID string
-	typ    string
 }
 
 type taskCreatedMsg struct {
@@ -129,7 +128,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.status = fmt.Sprintf("Error: %v", msg.err)
 		} else {
-			m.status = fmt.Sprintf("Sent %s to %s", msg.typ, msg.taskID)
+			m.status = fmt.Sprintf("Sent message to %s", msg.taskID)
 		}
 		m.input.close()
 		return m, nil
@@ -278,9 +277,6 @@ func (m Model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.input.close()
 		return m, nil
-	case "tab":
-		m.input.cycleType()
-		return m, nil
 	case "enter":
 		content := m.input.value()
 		if content == "" {
@@ -289,10 +285,9 @@ func (m Model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		taskID := m.input.targetID
-		msgType := crew.MessageType(m.input.msgType())
 		return m, func() tea.Msg {
-			_, err := crew.Send(m.crewStore, taskID, msgType, content)
-			return sentMsg{err: err, taskID: taskID, typ: string(msgType)}
+			_, err := crew.Send(m.crewStore, taskID, content, false)
+			return sentMsg{err: err, taskID: taskID}
 		}
 	}
 
@@ -517,7 +512,7 @@ func (m Model) helpText() string {
 		return "Tab next field  Shift+Tab prev  Enter submit/next  Esc cancel"
 	}
 	if m.input.active {
-		return "Tab cycle type  Enter send  Esc cancel"
+		return "Enter send  Esc cancel"
 	}
 	base := "1 crew  2 gigs  r refresh  q quit"
 	switch m.tab {

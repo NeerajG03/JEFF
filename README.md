@@ -100,11 +100,10 @@ jeff crew status gig-ab12               # detailed worker status + pane output
 jeff crew events --since 5m             # recent activity across all workers
 jeff crew capture gig-ab12 --lines 30   # raw terminal output
 
-# Message workers (4 types, lightest to heaviest)
-jeff crew send gig-ab12 "add error handling" --type nudge     # low context impact
-jeff crew send gig-ab12 "what are you working on?" --type status  # sidechain, no pollution
-jeff crew send gig-ab12 "API spec changed" --type normal      # full conversation turn
-jeff crew send gig-ab12 "stop, focus on payments" --type divert  # interrupts agent
+# Message workers (stored in inbox + delivered to pane)
+jeff crew send gig-ab12 "add error handling"
+jeff crew send gig-ab12 "API spec changed"
+jeff crew send gig-ab12 "stop, focus on payments" --interrupt  # Ctrl-C first
 
 # Workers can ask the orchestrator questions
 jeff crew ask "should I use JWT or session tokens?"
@@ -151,7 +150,7 @@ jeff dashboard                          # interactive TUI (auto-refreshes every 
 | `jeff crew resume <id>` | Resume stopped worker (restores Claude session) |
 | `jeff crew list [--all]` | List workers (filtered to current orchestrator by default) |
 | `jeff crew status <id>` | Worker detail + checkpoint + pane output |
-| `jeff crew send <id> "msg" [--type]` | Message a worker (nudge/status/normal/divert) |
+| `jeff crew send <id> "msg" [--interrupt]` | Message a worker (stored + delivered to pane) |
 | `jeff crew ask "question"` | Worker asks orchestrator a question |
 | `jeff crew ack <msg-id> ["response"]` | Acknowledge worker question |
 | `jeff crew events [--since]` | Recent gig activity across workers |

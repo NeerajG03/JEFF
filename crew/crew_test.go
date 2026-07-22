@@ -171,12 +171,12 @@ func TestMessageLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Send a nudge.
+	// Send a message.
 	msg := &Message{
 		ID:        "msg-001",
 		TaskID:    "gig-ab12",
 		Direction: "to_worker",
-		Type:      MsgNudge,
+		Type:      "message",
 		Content:   "Focus on edge cases",
 		CreatedAt: now,
 	}
@@ -189,7 +189,7 @@ func TestMessageLifecycle(t *testing.T) {
 		ID:        "msg-002",
 		TaskID:    "gig-ab12",
 		Direction: "to_worker",
-		Type:      MsgNudge,
+		Type:      "message",
 		Content:   "Add table-driven tests",
 		CreatedAt: now.Add(time.Second),
 	}
@@ -274,7 +274,7 @@ func TestRemoveSessionCascadesMessages(t *testing.T) {
 
 	msg := &Message{
 		ID: "msg-rm1", TaskID: "gig-rm1", Direction: "to_worker",
-		Type: MsgNudge, Content: "test", CreatedAt: now,
+		Type: "message", Content: "test", CreatedAt: now,
 	}
 	store.SendMessage(msg)
 
@@ -506,13 +506,11 @@ func TestPutSessionPreservesSessionIDs(t *testing.T) {
 // --- Lifecycle send-path regression tests (gig-4040 / gig-33ab) ---
 //
 // Send() is the main entry point for delivering messages to worker panes.
-// Every message type (nudge, normal, status) must route through SendCommand,
-// which emits exactly two tmux send-keys calls: paste then Enter.
+// The unified send path emits exactly two tmux send-keys calls: paste then
+// Enter.  When interrupt=true, a C-c call precedes the two-call delivery.
 //
 // We use a fake tmux binary (withFakeTmux, defined in tmux_test.go) so these
-// tests run without a live tmux session.  MsgDivert is excluded here because
-// it contains a 2-second sleep; its underlying SendCommand call is covered by
-// TestSendCommandUsesTwoSeparateInvocations.
+// tests run without a live tmux session.
 
 func sessionForSendTest(t *testing.T, store *Store, taskID string) {
 	t.Helper()
@@ -531,66 +529,68 @@ func sessionForSendTest(t *testing.T, store *Store, taskID string) {
 	}
 }
 
-// TestSendNudgeUsesTwoSeparateTmuxCalls verifies that a nudge message
-// produces exactly two send-keys calls (paste + Enter) with no chaining.
-func TestSendNudgeUsesTwoSeparateTmuxCalls(t *testing.T) {
+// TestSendUsesTwoSeparateTmuxCalls verifies that a plain send produces exactly
+// two send-keys calls (paste + Enter) with no chaining.
+func TestSendUsesTwoSeparateTmuxCalls(t *testing.T) {
 	store := tempStore(t)
-	sessionForSendTest(t, store, "gig-nudge1")
+	sessionForSendTest(t, store, "gig-send1")
 	calls := withFakeTmux(t)
 
-	_, err := Send(store, "gig-nudge1", MsgNudge, "Focus on error handling")
+	_, err := Send(store, "gig-send1", "Focus on error handling", false)
 	if err != nil {
-		t.Fatalf("Send nudge: %v", err)
+		t.Fatalf("Send: %v", err)
 	}
 
 	got := sendKeysCalls(calls())
 	if len(got) != 2 {
-		t.Fatalf("nudge: want 2 send-keys calls, got %d: %v", len(got), got)
+		t.Fatalf("want 2 send-keys calls, got %d: %v", len(got), got)
 	}
 	assertNoSingleCallCombinesTextAndEnter(t, got)
 
-	// Verify the text was in the first call and Enter in the second.
 	if !strings.Contains(got[0], " -l ") {
-		t.Errorf("nudge first call missing -l flag: %q", got[0])
+		t.Errorf("first call missing -l flag: %q", got[0])
 	}
 	if !strings.Contains(got[1], "Enter") {
-		t.Errorf("nudge second call missing Enter: %q", got[1])
+		t.Errorf("second call missing Enter: %q", got[1])
 	}
 }
 
-// TestSendNormalMessageUsesTwoSeparateTmuxCalls verifies MsgNormal delivery.
-func TestSendNormalMessageUsesTwoSeparateTmuxCalls(t *testing.T) {
+// TestSendWithInterrupt verifies that interrupt=true triggers C-c before
+// the paste+Enter sequence, and stores a message in the DB.
+func TestSendWithInterrupt(t *testing.T) {
 	store := tempStore(t)
-	sessionForSendTest(t, store, "gig-norm1")
+	sessionForSendTest(t, store, "gig-int1")
 	calls := withFakeTmux(t)
 
-	_, err := Send(store, "gig-norm1", MsgNormal, "Here is your updated context")
+	msg, err := Send(store, "gig-int1", "urgent redirect", true)
 	if err != nil {
-		t.Fatalf("Send normal: %v", err)
+		t.Fatalf("Send with interrupt: %v", err)
+	}
+	if msg == nil {
+		t.Fatal("Send returned nil message")
 	}
 
-	got := sendKeysCalls(calls())
-	if len(got) != 2 {
-		t.Fatalf("normal: want 2 send-keys calls, got %d: %v", len(got), got)
+	all := calls()
+	sk := sendKeysCalls(all)
+
+	// Must have at least 3 send-keys: C-c, paste (-l), Enter.
+	if len(sk) < 3 {
+		t.Fatalf("want >=3 send-keys calls (C-c, paste, Enter), got %d: %v", len(sk), sk)
 	}
-	assertNoSingleCallCombinesTextAndEnter(t, got)
-}
+	if !strings.Contains(sk[0], "C-c") {
+		t.Errorf("first send-keys must be C-c interrupt, got: %q", sk[0])
+	}
+	assertNoSingleCallCombinesTextAndEnter(t, sk)
 
-// TestSendStatusMessageUsesTwoSeparateTmuxCalls verifies MsgStatus (/btw)
-// delivery: the /btw-prefixed message must also use the two-call pattern.
-func TestSendStatusMessageUsesTwoSeparateTmuxCalls(t *testing.T) {
-	store := tempStore(t)
-	sessionForSendTest(t, store, "gig-stat1")
-	calls := withFakeTmux(t)
-
-	_, err := Send(store, "gig-stat1", MsgStatus, "deployment blocked on infra")
+	// Message must be stored in DB.
+	msgs, err := store.PendingMessages("gig-int1", "to_worker")
 	if err != nil {
-		t.Fatalf("Send status: %v", err)
+		t.Fatal(err)
 	}
-
-	got := sendKeysCalls(calls())
-	if len(got) != 2 {
-		t.Fatalf("status: want 2 send-keys calls, got %d: %v", len(got), got)
+	if len(msgs) != 1 {
+		t.Fatalf("want 1 pending message, got %d", len(msgs))
 	}
-	assertNoSingleCallCombinesTextAndEnter(t, got)
+	if msgs[0].Content != "urgent redirect" {
+		t.Errorf("content = %q, want %q", msgs[0].Content, "urgent redirect")
+	}
 }

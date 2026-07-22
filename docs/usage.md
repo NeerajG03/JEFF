@@ -302,11 +302,10 @@ jeff crew status gig-ab12               # detailed worker status + pane output
 jeff crew events --since 5m             # recent activity across all workers
 jeff crew capture gig-ab12 --lines 30   # raw terminal output
 
-# Message workers (4 types, lightest to heaviest)
-jeff crew send gig-ab12 "add error handling" --type nudge     # low context impact
-jeff crew send gig-ab12 "what are you working on?" --type status  # sidechain, no pollution
-jeff crew send gig-ab12 "API spec changed" --type normal      # full conversation turn
-jeff crew send gig-ab12 "stop, focus on payments" --type divert  # interrupts agent
+# Message workers (stored in inbox + delivered to pane)
+jeff crew send gig-ab12 "add error handling"
+jeff crew send gig-ab12 "API spec changed"
+jeff crew send gig-ab12 "stop, focus on payments" --interrupt  # Ctrl-C first
 
 # Workers can ask the orchestrator questions
 jeff crew ask "should I use JWT or session tokens?"

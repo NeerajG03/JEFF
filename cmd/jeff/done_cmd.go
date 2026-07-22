@@ -84,6 +84,9 @@ func doneCmd() *cobra.Command {
 			}
 
 			// 3. Close the gig task.
+			if err := store.SetAttr(taskID, jeff.AttrOutcome, reason); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: set outcome attr: %v\n", err)
+			}
 			if err := store.CloseTask(taskID, reason, "jeff"); err != nil {
 				return fmt.Errorf("close task: %w", err)
 			}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -1152,6 +1153,14 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 			return "", fmt.Errorf("set repos attr: %w", err)
 		}
 	}
+	if personaName != "" {
+		if err := store.SetAttr(taskID, jeff.AttrPersona, personaName); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: set persona attr: %v\n", err)
+		}
+	}
+	if err := store.SetAttr(taskID, jeff.AttrTeamSize, "1"); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: set team_size attr: %v\n", err)
+	}
 
 	taskJSON := buildTaskJSON(store, task)
 	for _, repoName := range repos {
@@ -1201,8 +1210,27 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 		}
 	}
 
-	if err := writeTaskClaudeMD(td.Path, cfg.Home, task, personaName, allRepos); err != nil {
+	if err := writeTaskClaudeMD(td.Path, cfg.Home, store, task, personaName, allRepos); err != nil {
 		return "", fmt.Errorf("write task CLAUDE.md: %w", err)
+	}
+
+	var memScopes []string
+	if personaName != "" {
+		if content, _ := memory.LoadPersonaMemory(cfg.Home, personaName); content != "" {
+			memScopes = append(memScopes, "persona:"+personaName)
+		}
+	}
+	for _, r := range allRepos {
+		if content, _ := memory.LoadRepoLearnings(cfg.Home, r); content != "" {
+			memScopes = append(memScopes, "repo:"+r)
+		}
+	}
+	if len(memScopes) > 0 {
+		if data, err := json.Marshal(memScopes); err == nil {
+			if err := store.SetAttr(taskID, jeff.AttrMemoryLoaded, string(data)); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: set memory_loaded attr: %v\n", err)
+			}
+		}
 	}
 
 	// Append a readonly notice so the agent knows which repos it must not modify.
@@ -1264,6 +1292,7 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 		Labels:  task.Labels,
 	}
 	var injectedNames []string
+	injectedSet := make(map[string]bool)
 	for _, agent := range jeff.RegisteredAgents() {
 		p := jeff.GetProvider(agent)
 		if p == nil || p.SkillsSubdir() == "" {
@@ -1276,9 +1305,24 @@ func pickupTask(taskID, personaName string, repos, reposReadonly []string, orche
 		if len(injectedNames) == 0 {
 			injectedNames = names
 		}
+		for _, n := range names {
+			injectedSet[n] = true
+		}
 	}
 	if len(injectedNames) > 0 {
 		fmt.Fprintf(os.Stderr, "Skills: %s\n", strings.Join(injectedNames, ", "))
+	}
+	if len(injectedSet) > 0 {
+		names := make([]string, 0, len(injectedSet))
+		for n := range injectedSet {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		if data, err := json.Marshal(names); err == nil {
+			if err := store.SetAttr(taskID, jeff.AttrSkillsLoaded, string(data)); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: set skills_loaded attr: %v\n", err)
+			}
+		}
 	}
 
 	return td.Path, nil

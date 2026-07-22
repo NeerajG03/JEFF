@@ -24,7 +24,7 @@ func TestWriteTaskClaudeMD_NoPersona(t *testing.T) {
 		Priority: gig.P1,
 	}
 
-	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -57,7 +57,7 @@ func TestWriteTaskClaudeMD_WithPersona(t *testing.T) {
 		Priority: gig.P2,
 	}
 
-	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "jenko", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), nil, task, "jenko", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -82,7 +82,7 @@ func TestWriteTaskClaudeMD_InvalidPersonaSkipped(t *testing.T) {
 		Priority: gig.P1,
 	}
 
-	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "nonexistent", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), nil, task, "nonexistent", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -110,7 +110,7 @@ func TestWriteTaskClaudeMD_WithDescription(t *testing.T) {
 		ParentID:    "gig-parent",
 	}
 
-	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -133,7 +133,7 @@ func TestWriteTaskClaudeMD_NoDescriptionOmitted(t *testing.T) {
 		Priority: gig.P2,
 	}
 
-	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -157,7 +157,7 @@ func TestWriteTaskClaudeMD_NoWorktrees(t *testing.T) {
 		Type:     gig.TypeTask,
 	}
 
-	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -188,7 +188,7 @@ func TestWriteTaskClaudeMD_WithWorktrees(t *testing.T) {
 		Type:     gig.TypeFeature,
 	}
 
-	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -219,7 +219,7 @@ func TestWriteTaskClaudeMD_WorktreeAddedLater(t *testing.T) {
 	}
 
 	// First write — no worktrees.
-	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
@@ -233,7 +233,7 @@ func TestWriteTaskClaudeMD_WorktreeAddedLater(t *testing.T) {
 	os.Symlink(wtDir, filepath.Join(dir, "api"))
 
 	// Rewrite — should now include workspace.
-	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	data, _ = os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
@@ -250,6 +250,138 @@ func TestWriteTaskClaudeMD_WorktreeAddedLater(t *testing.T) {
 	}
 }
 
+func TestWriteTaskClaudeMD_CheckpointRendered(t *testing.T) {
+	dir := t.TempDir()
+	store, err := gig.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	task, err := store.Create(gig.CreateParams{Title: "Checkpoint task", Type: gig.TypeTask})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.AddCheckpoint(task.ID, "jenko", gig.CheckpointParams{
+		Done:      "Implemented attrs",
+		Decisions: "Used a map for dedup",
+		Next:      "Write tests",
+		Blockers:  "None",
+		Files:     []string{"attrs.go", "attrs_test.go"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writeTaskClaudeMD(dir, t.TempDir(), store, task, "", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	content := string(data)
+
+	if !strings.Contains(content, "## Resuming: Last Checkpoint") {
+		t.Error("missing checkpoint section")
+	}
+	for _, want := range []string{"Implemented attrs", "Used a map for dedup", "Write tests", "attrs.go, attrs_test.go"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("missing %q in checkpoint section", want)
+		}
+	}
+}
+
+func TestWriteTaskClaudeMD_NoCheckpointNoSection(t *testing.T) {
+	dir := t.TempDir()
+	store, err := gig.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	task, err := store.Create(gig.CreateParams{Title: "No checkpoint task", Type: gig.TypeTask})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writeTaskClaudeMD(dir, t.TempDir(), store, task, "", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if strings.Contains(string(data), "## Resuming: Last Checkpoint") {
+		t.Error("checkpoint section should not appear with no checkpoints")
+	}
+}
+
+func TestWriteTaskClaudeMD_NilStoreNoPanicNoSection(t *testing.T) {
+	dir := t.TempDir()
+	task := &gig.Task{ID: "gig-nn01", Title: "Nil store", Priority: gig.P1}
+
+	if err := writeTaskClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if strings.Contains(string(data), "## Resuming: Last Checkpoint") {
+		t.Error("checkpoint section should not appear when store is nil")
+	}
+}
+
+func TestResolveTaskPersona_PrefersAttrOverDetect(t *testing.T) {
+	store, err := gig.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := jeff.EnsureAttrs(store); err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := store.Create(gig.CreateParams{Title: "Persona attr task", Type: gig.TypeTask})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAttr(task.ID, jeff.AttrPersona, "jenko"); err != nil {
+		t.Fatal(err)
+	}
+
+	// CLAUDE.md on disk says "schmidt" — the attr must win.
+	dir := t.TempDir()
+	if err := writeTaskClaudeMD(dir, t.TempDir(), nil, task, "schmidt", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := resolveTaskPersona(store, task.ID, dir); got != "jenko" {
+		t.Errorf("expected attr persona jenko, got %q", got)
+	}
+}
+
+func TestResolveTaskPersona_FallsBackToDetect(t *testing.T) {
+	store, err := gig.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := jeff.EnsureAttrs(store); err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := store.Create(gig.CreateParams{Title: "Old workspace task", Type: gig.TypeTask})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No AttrPersona set — mimics a workspace created by an older binary.
+
+	dir := t.TempDir()
+	if err := writeTaskClaudeMD(dir, t.TempDir(), nil, task, "jenko", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := resolveTaskPersona(store, task.ID, dir); got != "jenko" {
+		t.Errorf("expected fallback detectPersona jenko, got %q", got)
+	}
+}
+
 func TestDetectPersona(t *testing.T) {
 	// No CLAUDE.md — should return "".
 	dir := t.TempDir()
@@ -259,7 +391,7 @@ func TestDetectPersona(t *testing.T) {
 
 	// Write with persona, then detect.
 	task := &gig.Task{ID: "gig-dd44", Title: "Detect test", Priority: gig.P2, Type: gig.TypeTask}
-	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "jenko", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), nil, task, "jenko", nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := detectPersona(dir); got != "jenko" {
@@ -268,7 +400,7 @@ func TestDetectPersona(t *testing.T) {
 
 	// Write without persona, should return "".
 	dir2 := t.TempDir()
-	if err := writeTaskClaudeMD(dir2, t.TempDir(), task, "", nil); err != nil {
+	if err := writeTaskClaudeMD(dir2, t.TempDir(), nil, task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := detectPersona(dir2); got != "" {
@@ -313,7 +445,7 @@ func TestWriteTaskClaudeMD_LabelsAndType(t *testing.T) {
 		ParentID: "gig-parent",
 	}
 
-	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -337,7 +469,7 @@ func TestWriteTaskClaudeMD_WithPersonaMemory(t *testing.T) {
 	os.WriteFile(filepath.Join(memory.PersonaMemoryDir(home, "jenko"), "MEMORY.md"), []byte(md), 0o644)
 
 	task := &gig.Task{ID: "gig-mm01", Title: "Memory test", Priority: gig.P1}
-	if err := writeTaskClaudeMD(dir, home, task, "jenko", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, home, nil, task, "jenko", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -363,7 +495,7 @@ func TestWriteTaskClaudeMD_EmptyPersonaMemory(t *testing.T) {
 	memory.EnsurePersonaDir(home, "jenko")
 
 	task := &gig.Task{ID: "gig-mm02", Title: "Empty memory", Priority: gig.P1}
-	if err := writeTaskClaudeMD(dir, home, task, "jenko", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, home, nil, task, "jenko", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -390,7 +522,7 @@ func TestWriteTaskClaudeMD_WithRepoLearnings(t *testing.T) {
 	os.WriteFile(filepath.Join(memory.RepoLearningsDir(home, "backend"), "INDEX.md"), []byte(md), 0o644)
 
 	task := &gig.Task{ID: "gig-mm03", Title: "Repo learnings test", Priority: gig.P2}
-	if err := writeTaskClaudeMD(dir, home, task, "", []string{"backend"}); err != nil {
+	if err := writeTaskClaudeMD(dir, home, nil, task, "", []string{"backend"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -409,7 +541,7 @@ func TestWriteTaskClaudeMD_NoPersonaNoRepos_NoScratchpad(t *testing.T) {
 	dir := t.TempDir()
 	task := &gig.Task{ID: "gig-mm04", Title: "Bare task", Priority: gig.P2}
 
-	if err := writeTaskClaudeMD(dir, t.TempDir(), task, "", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -429,7 +561,7 @@ func TestWriteTaskClaudeMD_ScratchpadHasCorrectPath(t *testing.T) {
 	home := t.TempDir()
 	task := &gig.Task{ID: "gig-mm05", Title: "Scratchpad path", Priority: gig.P1}
 
-	if err := writeTaskClaudeMD(dir, home, task, "jenko", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, home, nil, task, "jenko", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -448,7 +580,7 @@ func TestWriteTaskClaudeMD_PersonaSpecificHint(t *testing.T) {
 	task := &gig.Task{ID: "gig-mm06", Title: "Persona hint", Priority: gig.P1}
 
 	// Jenko should get implementer-specific hint.
-	if err := writeTaskClaudeMD(dir, home, task, "jenko", nil); err != nil {
+	if err := writeTaskClaudeMD(dir, home, nil, task, "jenko", nil); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
@@ -462,7 +594,7 @@ func TestWriteTaskClaudeMD_PersonaSpecificHint(t *testing.T) {
 
 	// Schmidt should get debugger-specific hint.
 	dir2 := t.TempDir()
-	if err := writeTaskClaudeMD(dir2, home, task, "schmidt", nil); err != nil {
+	if err := writeTaskClaudeMD(dir2, home, nil, task, "schmidt", nil); err != nil {
 		t.Fatal(err)
 	}
 	data, _ = os.ReadFile(filepath.Join(dir2, "CLAUDE.md"))
@@ -476,7 +608,7 @@ func TestWriteTaskClaudeMD_PersonaSpecificHint(t *testing.T) {
 
 	// No persona — no hint.
 	dir3 := t.TempDir()
-	if err := writeTaskClaudeMD(dir3, home, task, "", []string{"backend"}); err != nil {
+	if err := writeTaskClaudeMD(dir3, home, nil, task, "", []string{"backend"}); err != nil {
 		t.Fatal(err)
 	}
 	data, _ = os.ReadFile(filepath.Join(dir3, "CLAUDE.md"))

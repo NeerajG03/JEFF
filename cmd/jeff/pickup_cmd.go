@@ -110,7 +110,7 @@ func writeTaskClaudeMD(taskDir, jeffHome string, store *gig.Store, task *gig.Tas
 	if store != nil {
 		if cp, err := store.LatestCheckpoint(task.ID); err == nil && cp != nil {
 			sb.WriteString("## Resuming: Last Checkpoint\n\n")
-			sb.WriteString(fmt.Sprintf("_Recorded %s_\n\n", cp.CreatedAt.Format("2006-01-02 15:04")))
+			fmt.Fprintf(&sb, "_Recorded %s_\n\n", cp.CreatedAt.Format("2006-01-02 15:04"))
 			if cp.Done != "" {
 				sb.WriteString("- **Done:** " + cp.Done + "\n")
 			}

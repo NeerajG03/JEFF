@@ -59,6 +59,7 @@ func main() {
 		doneCmd(),
 		memorycmd.Cmd,
 		statusCmd(),
+		statsCmd(),
 		repoCmd(),
 		worktreeCmd(),
 		checkpointCmd(),

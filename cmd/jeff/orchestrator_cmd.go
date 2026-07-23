@@ -294,13 +294,15 @@ func orchestratorListCmd() *cobra.Command {
 			if gigStore != nil {
 				defer gigStore.Close()
 			}
-			_ = crew.Refresh(cs, func(taskID string) bool {
+			if err := crew.Refresh(cs, func(taskID string) bool {
 				if gigStore == nil {
 					return false
 				}
 				t, err := gigStore.Get(taskID)
 				return err == nil && t.Status.IsTerminal()
-			})
+			}); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: refresh crew state: %v\n", err)
+			}
 
 			orchs, err := cs.ListOrchestrators(false)
 			if err != nil {

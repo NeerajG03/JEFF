@@ -4,9 +4,9 @@ package crew
 // path + the one-time migration for pre-existing dotted rows.
 
 import (
-	"strings"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )

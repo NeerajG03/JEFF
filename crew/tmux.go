@@ -1,10 +1,10 @@
 package crew
 
 import (
-	"runtime"
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 )

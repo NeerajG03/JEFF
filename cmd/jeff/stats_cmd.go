@@ -32,6 +32,8 @@ func statsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
+			} else {
+				since = time.Now().Add(-30 * 24 * time.Hour)
 			}
 
 			store, err := openGigStore()

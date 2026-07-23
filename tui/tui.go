@@ -537,7 +537,9 @@ func (m Model) refreshCmd() tea.Cmd {
 				return err == nil && t.Status.IsTerminal()
 			}
 		}
-		_ = crew.Refresh(m.crewStore, isTaskClosed)
+		if err := crew.Refresh(m.crewStore, isTaskClosed); err != nil {
+			tea.Printf("Warning: crew refresh: %v", err)
+		}
 
 		sessions, _ := m.crewStore.ListSessions(false, "")
 

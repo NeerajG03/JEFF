@@ -1,9 +1,9 @@
 package crew
 
 import (
-	"errors"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/NeerajG03/JEFF"
 	"strings"
@@ -352,7 +352,7 @@ func StopAll(store *Store) error {
 // Marks orchestrators as "stopped" if their tmux session is gone.
 func Refresh(store *Store, isTaskClosed func(taskID string) bool) error {
 	var errs []error
-	
+
 	sessions, err := store.ListSessions(true, "")
 	if err != nil {
 		return err
@@ -637,7 +637,7 @@ func signalOrchestrator(store *Store, taskID, message, msgType string, dedupe bo
 
 	// Type the framed content into the orchestrator pane. On success, ack the row
 	// so it is not replayed; on failure leave it unacked for SessionStart recovery.
-	if err := SendCommand(target, FrameToOrchestrator(taskID, message)); err == nil {
+	if err := sendCommandForSession(target, FrameToOrchestrator(taskID, message), orch.Agent); err == nil {
 		_ = store.AckMessage(msg.ID, "")
 	}
 
@@ -747,7 +747,7 @@ func Ask(store *Store, taskID, content string) (*Message, error) {
 
 	// On successful live delivery, ack so the row is not replayed on the
 	// orchestrator's next SessionStart; on failure leave it unacked for recovery.
-	if err := SendCommand(target, FrameToOrchestrator(taskID, content)); err == nil {
+	if err := sendCommandForSession(target, FrameToOrchestrator(taskID, content), orch.Agent); err == nil {
 		_ = store.AckMessage(msg.ID, "")
 	}
 

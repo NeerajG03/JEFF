@@ -17,18 +17,18 @@ type Options struct {
 }
 
 type TaskStat struct {
-	ID           string             `json:"id"`
-	Title        string             `json:"title"`
-	Persona      string             `json:"persona,omitempty"`
-	Repos        []string           `json:"repos,omitempty"`
-	Outcome      string             `json:"outcome,omitempty"`
-	PRs          map[string]string  `json:"prs,omitempty"`
-	SkillsLoaded []string           `json:"skills_loaded,omitempty"`
-	MemoryLoaded []string           `json:"memory_loaded,omitempty"`
-	Checkpoints  int                `json:"checkpoints"`
-	ClaimedAt    *time.Time         `json:"claimed_at,omitempty"`
-	ClosedAt     *time.Time         `json:"closed_at,omitempty"`
-	CycleTime    time.Duration      `json:"cycle_time_ns,omitempty"`
+	ID           string            `json:"id"`
+	Title        string            `json:"title"`
+	Persona      string            `json:"persona,omitempty"`
+	Repos        []string          `json:"repos,omitempty"`
+	Outcome      string            `json:"outcome,omitempty"`
+	PRs          map[string]string `json:"prs,omitempty"`
+	SkillsLoaded []string          `json:"skills_loaded,omitempty"`
+	MemoryLoaded []string          `json:"memory_loaded,omitempty"`
+	Checkpoints  int               `json:"checkpoints"`
+	ClaimedAt    *time.Time        `json:"claimed_at,omitempty"`
+	ClosedAt     *time.Time        `json:"closed_at,omitempty"`
+	CycleTime    time.Duration     `json:"cycle_time_ns,omitempty"`
 }
 
 type Report struct {

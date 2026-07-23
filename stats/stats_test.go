@@ -2,8 +2,8 @@ package stats
 
 import (
 	"encoding/json"
-	"strings"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -673,5 +673,3 @@ func TestHumanOutputRendering(t *testing.T) {
 		t.Error("human output should show task count")
 	}
 }
-
-

@@ -392,6 +392,8 @@ func TestUnknownModelError(t *testing.T) {
 }
 
 func TestProviderNewMethods(t *testing.T) {
+	SetOpenCodeModelAliases(nil)
+	t.Cleanup(func() { SetOpenCodeModelAliases(nil) })
 	for _, agent := range RegisteredAgents() {
 		p := GetProvider(agent)
 		if p == nil {
@@ -419,7 +421,7 @@ func TestProviderNewMethods(t *testing.T) {
 
 		for range examples {
 			// Some examples like claude-<full-id> won't match exactly, but let's test the first one.
-			if p.Name() != AgentOpenCode && !p.OwnsModel(examples[0]) {
+			if !p.OwnsModel(examples[0]) {
 				t.Errorf("OwnsModel failed for its own example %s on agent %s", examples[0], agent)
 			}
 		}

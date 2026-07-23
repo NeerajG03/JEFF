@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -34,7 +35,80 @@ func configCmd() *cobra.Command {
 	cmd.AddCommand(configIDECmd())
 	cmd.AddCommand(configHooksCmd())
 	cmd.AddCommand(configResetClaudeMDCmd())
+	cmd.AddCommand(configOpenCodeCmd())
 	return cmd
+}
+
+func configOpenCodeCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "opencode",
+		Short: "Manage OpenCode --model aliases",
+		Long: "Manage OpenCode --model aliases.\n\n" +
+			"With no aliases registered, any \"provider/model\"-shaped --model value is\n" +
+			"recognized as OpenCode (e.g. opencode-go/kimi-k2.7-code). Once you register\n" +
+			"at least one alias, ONLY registered names or actual provider/model ids are\n" +
+			"recognized as OpenCode — this lets you catch typos, at the cost of needing\n" +
+			"to register every model you plan to use via --model.",
+	}
+	cmd.AddCommand(configOpenCodeAddCmd())
+	cmd.AddCommand(configOpenCodeListCmd())
+	cmd.AddCommand(configOpenCodeRemoveCmd())
+	return cmd
+}
+
+func configOpenCodeAddCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "add <name> <provider/model>",
+		Short: "Register a --model alias for an OpenCode provider/model id",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name, actual := args[0], args[1]
+			if err := jeff.AddOpenCodeModel(cfg, name, actual); err != nil {
+				return err
+			}
+			fmt.Printf("Registered opencode model %s -> %s\n", name, actual)
+			fmt.Println("Note: only registered opencode --model aliases/ids will be recognized from now on.")
+			return nil
+		},
+	}
+}
+
+func configOpenCodeListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List registered OpenCode --model aliases",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			models := jeff.ListOpenCodeModels(cfg)
+			if len(models) == 0 {
+				fmt.Println("No opencode models registered. Use: jeff config opencode add <name> <provider/model>")
+				return nil
+			}
+			names := make([]string, 0, len(models))
+			for name := range models {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			for _, name := range names {
+				fmt.Printf("%-20s %s\n", name, models[name])
+			}
+			return nil
+		},
+	}
+}
+
+func configOpenCodeRemoveCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "remove <name>",
+		Short: "Unregister an OpenCode --model alias",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := jeff.RemoveOpenCodeModel(cfg, args[0]); err != nil {
+				return err
+			}
+			fmt.Printf("Removed opencode model %s\n", args[0])
+			return nil
+		},
+	}
 }
 
 // configEnumCmd creates a get/set command for a string enum config field.

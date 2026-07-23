@@ -16,13 +16,4 @@ func init() {
 	// Worker A: hooks + injection + suppression.
 	Cmd.AddCommand(sessionStartCmd)
 	Cmd.AddCommand(sessionEndCmd)
-	// Worker B: propose + add.
-	Cmd.AddCommand(proposeCmd)
-	Cmd.AddCommand(addCmd)
-	// Worker C: curate.
-	Cmd.AddCommand(curateCmd)
-	// Worker D: introspect + management.
-	Cmd.AddCommand(statusCmd)
-	Cmd.AddCommand(disableCmd)
-	Cmd.AddCommand(enableCmd)
 }

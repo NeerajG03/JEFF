@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -13,6 +15,62 @@ type opencodeProvider struct{}
 
 func init() {
 	RegisterProvider(&opencodeProvider{})
+}
+
+var (
+	openCodeAliasesMu sync.RWMutex
+	openCodeAliases   map[string]string // name -> actualModel
+)
+
+// SetOpenCodeModelAliases installs the user's configured opencode model
+// registry (Config.OpenCodeModels). Called once at startup after config
+// load (cmd/jeff/main.go), and after any config mutation (opencode_models.go).
+func SetOpenCodeModelAliases(aliases map[string]string) {
+	openCodeAliasesMu.Lock()
+	defer openCodeAliasesMu.Unlock()
+	openCodeAliases = aliases
+}
+
+// resolveOpenCodeAlias returns the actual provider/model id for a registered
+// name, or ("", false) if model isn't a registered name.
+func resolveOpenCodeAlias(model string) (string, bool) {
+	openCodeAliasesMu.RLock()
+	defer openCodeAliasesMu.RUnlock()
+	actual, ok := openCodeAliases[model]
+	return actual, ok
+}
+
+// isOpenCodeConfiguredActual reports whether model equals a registered
+// actual provider/model id.
+func isOpenCodeConfiguredActual(model string) bool {
+	openCodeAliasesMu.RLock()
+	defer openCodeAliasesMu.RUnlock()
+	for _, actual := range openCodeAliases {
+		if actual == model {
+			return true
+		}
+	}
+	return false
+}
+
+// openCodeRegistryEmpty reports whether the user has registered any opencode
+// model aliases at all.
+func openCodeRegistryEmpty() bool {
+	openCodeAliasesMu.RLock()
+	defer openCodeAliasesMu.RUnlock()
+	return len(openCodeAliases) == 0
+}
+
+// openCodeRegisteredNames returns the sorted list of registered alias names.
+func openCodeRegisteredNames() []string {
+	openCodeAliasesMu.RLock()
+	defer openCodeAliasesMu.RUnlock()
+	names := make([]string, 0, len(openCodeAliases))
+	for name := range openCodeAliases {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func (o *opencodeProvider) Name() AgentTool { return AgentOpenCode }
@@ -25,8 +83,12 @@ func (o *opencodeProvider) BuildLaunchArgs(opts LaunchOpts) []string {
 	if opts.SkipPermissions {
 		args = append(args, "--auto")
 	}
-	if isOpenCodeModel(opts.Model) {
-		args = append(args, "--model", opts.Model)
+	resolvedModel := opts.Model
+	if actual, ok := resolveOpenCodeAlias(opts.Model); ok {
+		resolvedModel = actual
+	}
+	if isOpenCodeModel(resolvedModel) {
+		args = append(args, "--model", resolvedModel)
 	}
 	// Intentionally ignore opts.AgentName: JEFF personas are not OpenCode
 	// agents. OpenCode resolves --agent against .opencode/agents/, which JEFF
@@ -68,9 +130,28 @@ func (o *opencodeProvider) SendTiming() SendTiming {
 		UseBracketedPaste: false,
 	}
 }
-func (o *opencodeProvider) OwnsModel(model string) bool { return false }
+
+// OwnsModel recognizes a model as OpenCode's if it matches a registered
+// alias name or actual provider/model id. If no aliases are registered at
+// all, it falls back to the structural isOpenCodeModel check so opencode
+// remains usable with zero configuration. Once at least one alias is
+// registered, only registered names/actuals are recognized.
+func (o *opencodeProvider) OwnsModel(model string) bool {
+	if _, ok := resolveOpenCodeAlias(model); ok {
+		return true
+	}
+	if isOpenCodeConfiguredActual(model) {
+		return true
+	}
+	if openCodeRegistryEmpty() {
+		return isOpenCodeModel(model)
+	}
+	return false
+}
+
 func (o *opencodeProvider) ModelExamples() []string {
-	return []string{"provider/model"}
+	examples := []string{"provider/model"}
+	return append(examples, openCodeRegisteredNames()...)
 }
 func (o *opencodeProvider) DoctorDeps() []DoctorDep {
 	return []DoctorDep{{Name: "opencode", Required: false}}

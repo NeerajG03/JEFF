@@ -36,6 +36,9 @@ type Config struct {
 	Hooks              map[string]bool        `json:"hooks,omitempty" yaml:"hooks,omitempty"`
 	CheckpointPatterns []string               `json:"checkpoint_patterns,omitempty" yaml:"checkpoint_patterns,omitempty"`
 	Memory             *MemoryConfig          `json:"memory,omitempty" yaml:"memory,omitempty"`
+	// OpenCodeModels maps a user-chosen --model alias (name) to the real
+	// OpenCode provider/model id (actual). See opencode_models.go.
+	OpenCodeModels map[string]string `json:"opencode_models,omitempty" yaml:"-"`
 	// SkipPermissions controls whether agents launch with their native
 	// permission prompts disabled. Pointer so "unset" (nil → default true,
 	// current behavior) is distinguishable from an explicit false.

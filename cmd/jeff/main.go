@@ -36,6 +36,7 @@ func main() {
 				return fmt.Errorf("load config: %w", err)
 			}
 			cfg = c
+			jeff.SetOpenCodeModelAliases(cfg.OpenCodeModels)
 
 			// Self-heal: ensure the home pointer exists so it survives
 			// upgrades, cache clears, or accidental deletion.

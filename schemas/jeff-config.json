@@ -79,6 +79,13 @@
         "disabled": {"type": "boolean", "description": "Disable memory injection, capture, and proposals."}
       },
       "additionalProperties": false
+    },
+    "opencode_models": {
+      "type": "object",
+      "description": "OpenCode --model aliases. Keys are user-chosen names, values are the actual opencode provider/model id. Once any entry is registered, only registered names/ids are recognized as OpenCode (see 'jeff config opencode').",
+      "additionalProperties": {
+        "type": "string"
+      }
     }
   }
 }

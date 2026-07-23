@@ -43,7 +43,7 @@ Bucket:       core | procedural | semantic | episodic`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Permission check — enforced before any other work.
 			if os.Getenv("JEFF_MEMORY_CAN_ADD") != "1" {
-				return fmt.Errorf("error: jeff memory add is restricted to the marlowe curator session.\nUse 'jeff memory propose' instead.")
+				return fmt.Errorf("jeff memory add is restricted to the marlowe curator session; use 'jeff memory propose' instead")
 			}
 
 			persona := flagPersona

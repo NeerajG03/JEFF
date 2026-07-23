@@ -687,7 +687,7 @@ func withDeadPaneFakeTmux(t *testing.T, windowNames []string) func() []string {
 	sb.WriteString("case \"$1\" in\n")
 	sb.WriteString("  list-windows)\n")
 	for _, w := range windowNames {
-		sb.WriteString(fmt.Sprintf("    echo \"%s\"\n", w))
+		fmt.Fprintf(&sb, "    echo \"%s\"\n", w)
 	}
 	sb.WriteString("    ;;\n")
 	sb.WriteString("  display-message)\n")

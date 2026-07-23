@@ -19,9 +19,10 @@ const DashboardWindowName = "dashboard"
 func EnsureTmux() error {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		hint := "install tmux"
-		if runtime.GOOS == "darwin" {
+		switch runtime.GOOS {
+		case "darwin":
 			hint = "brew install tmux"
-		} else if runtime.GOOS == "linux" {
+		case "linux":
 			hint = "apt/dnf install tmux"
 		}
 		return fmt.Errorf("tmux not found in PATH — required for crew management (install: %s)", hint)
@@ -57,6 +58,7 @@ func CreateWindow(name, dir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("create tmux window %q: %w", name, err)
 	}
+	keepPaneOnExit(target)
 	return target, nil
 }
 
@@ -255,6 +257,7 @@ func CreateWindowInSession(sessionName, windowName, dir string) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("create tmux window %q in %q: %w", windowName, sessionName, err)
 	}
+	keepPaneOnExit(target)
 	return target, nil
 }
 
@@ -354,6 +357,16 @@ func KillSession(sessionName string) error {
 }
 
 // --- internal helpers ---
+
+// keepPaneOnExit sets the tmux `remain-on-exit` window option so the pane is
+// NOT destroyed when its foreground process (the agent CLI) exits — whether the
+// agent finishes its turn, crashes, or is interrupted on worker-stop. The pane
+// stays in a "dead" state showing its final output so it can be inspected
+// instead of silently vanishing. Best-effort: a failure here must not abort
+// window creation, so the error is intentionally ignored.
+func keepPaneOnExit(target string) {
+	_ = tmuxRun("set-option", "-w", "-t", target, "remain-on-exit", "on")
+}
 
 func hasSession(name string) bool {
 	out, err := tmuxOutput("list-sessions", "-F", "#{session_name}")

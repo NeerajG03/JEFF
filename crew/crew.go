@@ -265,7 +265,7 @@ func (s *Store) AppendSessionID(taskID, sessionID string) error {
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Read existing array, append, write back atomically.
 	var raw string
@@ -346,7 +346,7 @@ func (s *Store) RemoveSession(taskID string) error {
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.Exec(`DELETE FROM messages WHERE task_id = ?`, taskID); err != nil {
 		return fmt.Errorf("delete messages: %w", err)

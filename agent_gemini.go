@@ -59,7 +59,10 @@ func (g *geminiProvider) BuildCurateArgs(prompt string, opts LaunchOpts) []strin
 	return []string{"--approval-mode=yolo", "-p", prompt}
 }
 
-func (g *geminiProvider) SupportsInlinePrompt() bool { return true }
+// SupportsInlinePrompt is false: workers must always run in the interactive TUI
+// rather than being launched with a baked-in prompt arg. jeff pastes the initial
+// prompt after launch (via the Ink-aware bracketed-paste path in lifecycle.go).
+func (g *geminiProvider) SupportsInlinePrompt() bool { return false }
 func (g *geminiProvider) ConfigDir() string          { return ".gemini" }
 func (g *geminiProvider) SkillsSubdir() string       { return "skills" }
 func (g *geminiProvider) CommandsSubdir() string     { return "commands" }

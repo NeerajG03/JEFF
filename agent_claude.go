@@ -49,7 +49,11 @@ func (c *claudeProvider) BuildCurateArgs(prompt string, opts LaunchOpts) []strin
 	return []string{"--dangerously-skip-permissions", "-p", prompt}
 }
 
-func (c *claudeProvider) SupportsInlinePrompt() bool   { return true }
+// SupportsInlinePrompt is false: a trailing positional prompt (`claude "prompt"`)
+// forces Claude Code into non-interactive single-turn mode, so it runs one turn
+// and exits — tearing down the worker. Workers must always run in the interactive
+// TUI; jeff pastes the initial prompt after launch instead (see lifecycle.go).
+func (c *claudeProvider) SupportsInlinePrompt() bool   { return false }
 func (c *claudeProvider) ConfigDir() string            { return ".claude" }
 func (c *claudeProvider) SkillsSubdir() string         { return "skills" }
 func (c *claudeProvider) CommandsSubdir() string       { return "commands" }

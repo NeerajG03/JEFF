@@ -50,6 +50,7 @@ func RunSessionEnd(jeffHome, taskID, persona string, repos []string, agentKind, 
 		Persona:        persona,
 		Repos:          repos,
 		TranscriptPath: copiedPath,
+		DedupeKey:      transcriptPath, // stable per session — not timestamped copy
 		Reason:         reason,
 		Proposals:      proposals,
 		EndedAt:        now,

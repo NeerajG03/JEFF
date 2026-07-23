@@ -262,3 +262,40 @@ func TestBuildMemoryIndex_PopulatedAndScoped(t *testing.T) {
 		}
 	}
 }
+
+// TestApplyAddendum_SymlinkPreservation verifies that applying the addendum
+// to GEMINI.md (a symlink → CLAUDE.md) updates the real file instead of
+// replacing the link.
+func TestApplyAddendum_SymlinkPreservation(t *testing.T) {
+	dir := t.TempDir()
+	claudePath := filepath.Join(dir, "CLAUDE.md")
+	geminiPath := filepath.Join(dir, "GEMINI.md")
+
+	os.WriteFile(claudePath, []byte("## Original\n"), 0o644)
+	if err := os.Symlink("CLAUDE.md", geminiPath); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	addendum := addendumStartSentinel + "\nmemory: test\n" + addendumEndSentinel + "\n"
+	if err := applyAddendum(geminiPath, addendum); err != nil {
+		t.Fatalf("applyAddendum via symlink: %v", err)
+	}
+
+	// GEMINI.md must still be a symlink.
+	linkTarget, err := os.Readlink(geminiPath)
+	if err != nil {
+		t.Fatalf("GEMINI.md is no longer a symlink: %v", err)
+	}
+	if linkTarget != "CLAUDE.md" {
+		t.Errorf("GEMINI.md → %q, want → CLAUDE.md", linkTarget)
+	}
+
+	// CLAUDE.md must contain the addendum.
+	claudeData, _ := os.ReadFile(claudePath)
+	if !strings.Contains(string(claudeData), addendumStartSentinel) {
+		t.Error("CLAUDE.md missing addendum — symlink was replaced instead of followed")
+	}
+	if !strings.Contains(string(claudeData), "Original") {
+		t.Error("CLAUDE.md original content lost")
+	}
+}

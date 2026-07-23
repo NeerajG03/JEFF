@@ -44,7 +44,7 @@ jeff orchestrator info                                 # show all tasks under or
 
 JEFF manages memory automatically. Native CLI memory is suppressed in worker
 sessions; per-task CLAUDE.md carries a memory addendum that tells the agent how
-to capture via `jeff memory propose`. For the full picture: `jeff memory doc`.
+to capture via `jeff memory propose`. See `docs/usage.md` for the full picture.
 
 ## Skills
 

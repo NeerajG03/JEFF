@@ -410,7 +410,7 @@ func wrapAsCanonical(data []byte, slug, scope, indexDescription string) string {
 	}
 
 	var buf bytes.Buffer
-	if err := writeCanonical(&buf, fm, strings.TrimSpace(body)); err != nil {
+	if err := writeCanonicalFile(&buf, fm, strings.TrimSpace(body)); err != nil {
 		// Fallback: return original content unchanged so we don't lose data.
 		return string(data)
 	}

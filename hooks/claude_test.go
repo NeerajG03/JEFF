@@ -132,7 +132,7 @@ func TestInstallClaudeDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("script not written: %v", err)
 	}
-	if string(data) != "#!/bin/bash\n# jeff-hook-version: " + ScriptVersion + "\necho hello" {
+	if string(data) != "#!/bin/bash\n# jeff-hook-version: "+ScriptVersion+"\necho hello" {
 		t.Fatalf("unexpected script content: %s", data)
 	}
 

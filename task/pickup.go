@@ -22,8 +22,8 @@ type PickupOpts struct {
 	Persona        string
 	Repos          []string
 	ReposReadonly  []string
-	OrchestratorID string       // hook context (crew workers); "" for foreground pickup
-	Prompt         string       // used by crew start after Pickup; unused by Pickup itself
+	OrchestratorID string // hook context (crew workers); "" for foreground pickup
+	Prompt         string // used by crew start after Pickup; unused by Pickup itself
 	AgentOverride  jeff.AgentTool
 }
 

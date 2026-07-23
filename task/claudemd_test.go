@@ -849,3 +849,36 @@ echo "${PREFIX}/${ID}"
 		t.Errorf("expected feature/%s without attr, got %q", task.ID, branch2)
 	}
 }
+
+func TestWriteClaudeMD_Disabled(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+
+	// Populate persona memory and repo learnings.
+	memory.EnsurePersonaDir(home, "jenko")
+	os.WriteFile(filepath.Join(memory.PersonaMemoryDir(home, "jenko"), "MEMORY.md"),
+		[]byte("# Jenko Memory"), 0o644)
+	memory.EnsureRepoDir(home, "backend")
+	os.WriteFile(filepath.Join(memory.RepoLearningsDir(home, "backend"), "INDEX.md"),
+		[]byte("# backend Learnings"), 0o644)
+
+	t.Setenv("JEFF_MEMORY_DISABLE", "1")
+
+	task := &gig.Task{ID: "gig-disabled", Title: "Disabled test", Priority: gig.P2}
+	if err := WriteClaudeMD(dir, home, nil, task, "jenko", []string{"backend"}); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	content := string(data)
+
+	if strings.Contains(content, "## Persona Memory") {
+		t.Error("Persona Memory section should be omitted when disabled")
+	}
+	if strings.Contains(content, "## Repo Learnings") {
+		t.Error("Repo Learnings section should be omitted when disabled")
+	}
+	if strings.Contains(content, "## Scratchpad") {
+		t.Error("Scratchpad section should be omitted when disabled")
+	}
+}

@@ -81,7 +81,7 @@ func TestNames(t *testing.T) {
 func TestDefaultRegistryHasBuiltins(t *testing.T) {
 	r := DefaultRegistry()
 
-	expected := []string{"checkpoint-nudge", "crew-context", "gig-instructions", "gig-ready-tasks", "inbox-replay", "jeff-instructions", "jeff-repos", "memory-session-end", "memory-session-start", "orchestrator-inbox", "session-capture", "task-commands", "task-context", "worker-heartbeat", "worker-stop"}
+	expected := []string{"checkpoint-nudge", "crew-context", "gig-instructions", "gig-ready-tasks", "inbox-replay", "jeff-instructions", "jeff-repos", "memory-propose-nudge", "memory-session-end", "memory-session-start", "orchestrator-inbox", "session-capture", "task-commands", "task-context", "worker-heartbeat", "worker-stop"}
 	names := r.Names()
 	if len(names) != len(expected) {
 		t.Fatalf("got %d hooks %v, want %d %v", len(names), names, len(expected), expected)
@@ -116,5 +116,18 @@ func TestEnabledForSource(t *testing.T) {
 	enabled = EnabledForSource(nil, SourceTask, r)
 	if len(enabled) != 1 || !enabled["t1"] {
 		t.Fatalf("task source: got %v, want only t1", enabled)
+	}
+}
+
+func TestMemoryProposeNudgeHookRegistered(t *testing.T) {
+	h := DefaultRegistry().Get("memory-propose-nudge")
+	if h == nil {
+		t.Fatal("memory-propose-nudge hook not found in DefaultRegistry — was it unregistered?")
+	}
+	if h.Source != SourceTask {
+		t.Errorf("expected Source %v, got %v", SourceTask, h.Source)
+	}
+	if h.Event != "Stop" {
+		t.Errorf("expected Stop event, got %q", h.Event)
 	}
 }

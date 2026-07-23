@@ -75,8 +75,8 @@ func WriteClaudeMD(taskDir, jeffHome string, store Store, task *gig.Task, person
 		}
 	}
 
-	// Persona memory.
-	if personaName != "" {
+	// Persona memory (gated by JEFF_MEMORY_DISABLE).
+	if !memory.Disabled(jeffHome) && personaName != "" {
 		content, err := memory.LoadPersonaMemory(jeffHome, personaName)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: load persona memory: %v\n", err)
@@ -89,18 +89,20 @@ func WriteClaudeMD(taskDir, jeffHome string, store Store, task *gig.Task, person
 		}
 	}
 
-	// Repo learnings.
-	for _, repoName := range repos {
-		content, err := memory.LoadRepoLearnings(jeffHome, repoName)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: load repo learnings for %s: %v\n", repoName, err)
-			continue
-		}
-		if content != "" {
-			fmt.Fprintf(&sb, "## Repo Learnings: %s\n\n", repoName)
-			sb.WriteString(content)
-			sb.WriteString("\n\n")
-			fmt.Fprintf(&sb, "Detail files: `%s`\n\n", memory.RepoLearningsDir(jeffHome, repoName))
+	// Repo learnings (gated by JEFF_MEMORY_DISABLE).
+	if !memory.Disabled(jeffHome) {
+		for _, repoName := range repos {
+			content, err := memory.LoadRepoLearnings(jeffHome, repoName)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: load repo learnings for %s: %v\n", repoName, err)
+				continue
+			}
+			if content != "" {
+				fmt.Fprintf(&sb, "## Repo Learnings: %s\n\n", repoName)
+				sb.WriteString(content)
+				sb.WriteString("\n\n")
+				fmt.Fprintf(&sb, "Detail files: `%s`\n\n", memory.RepoLearningsDir(jeffHome, repoName))
+			}
 		}
 	}
 
@@ -115,8 +117,8 @@ func WriteClaudeMD(taskDir, jeffHome string, store Store, task *gig.Task, person
 	sb.WriteString("- **Mark done when complete** — `jeff done` closes the task and cleans up.\n")
 	sb.WriteString("\n")
 
-	// Scratchpad & memory guide.
-	if personaName != "" || len(repos) > 0 {
+	// Scratchpad & memory guide (gated by JEFF_MEMORY_DISABLE).
+	if !memory.Disabled(jeffHome) && (personaName != "" || len(repos) > 0) {
 		writeScratchpadGuide(&sb, taskDir, jeffHome, personaName, repos)
 	}
 

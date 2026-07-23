@@ -355,3 +355,62 @@ func TestUpdateIndex_CoreBucketIsNoop(t *testing.T) {
 		t.Errorf("UpdateIndex core: %v", err)
 	}
 }
+
+// TestSupersedeSameName verifies that superseding with the same slug as the
+// old entry succeeds — the duplicate guard in WriteCanonical must be bypassed.
+func TestSupersedeSameName(t *testing.T) {
+	home := t.TempDir()
+	if err := EnsureLayout(home); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC()
+	oldFM := CanonicalFrontmatter{
+		Frontmatter: Frontmatter{Name: "my-rule", Description: "old version", Type: TypeFeedback},
+		Status:      "accepted", Scope: "persona:jenko", ValidFrom: now,
+		Source: Source{Persona: "jenko", Task: "t1", Trigger: "self-noted"},
+	}
+	oldEntry, err := WriteCanonical(home, "persona:jenko", "procedural", oldFM, "old body\n")
+	if err != nil {
+		t.Fatalf("WriteCanonical: %v", err)
+	}
+
+	// Supersede reusing the same slug.
+	newFM := CanonicalFrontmatter{
+		Frontmatter: Frontmatter{Name: "my-rule", Description: "updated version", Type: TypeFeedback},
+		Status:      "accepted", Scope: "persona:jenko", ValidFrom: now,
+		Source: Source{Persona: "marlowe", Task: "t2", Trigger: "curator-update"},
+	}
+	newEntry, err := Supersede(home, oldEntry.Path, newFM, "new body\n")
+	if err != nil {
+		t.Fatalf("Supersede with same name: %v", err)
+	}
+
+	// New entry must reference old.
+	if len(newEntry.FM.Supersedes) == 0 || newEntry.FM.Supersedes[0] != "my-rule" {
+		t.Errorf("Supersedes: got %v, want [my-rule]", newEntry.FM.Supersedes)
+	}
+
+	// Old entry must be invalidated.
+	oldUpdated, err := ReadEntry(oldEntry.Path)
+	if err != nil {
+		t.Fatalf("ReadEntry old: %v", err)
+	}
+	if oldUpdated.FM.ValidTo == nil {
+		t.Error("old entry ValidTo must be set")
+	}
+	if oldUpdated.FM.SupersededBy != "my-rule" {
+		t.Errorf("old SupersededBy: got %q want my-rule", oldUpdated.FM.SupersededBy)
+	}
+	if oldUpdated.FM.Status != "superseded" {
+		t.Errorf("old Status: got %q want superseded", oldUpdated.FM.Status)
+	}
+
+	// Both files must exist.
+	if _, err := os.Stat(oldEntry.Path); err != nil {
+		t.Error("old entry file must exist (audit trail)")
+	}
+	if _, err := os.Stat(newEntry.Path); err != nil {
+		t.Error("new entry file must exist")
+	}
+}

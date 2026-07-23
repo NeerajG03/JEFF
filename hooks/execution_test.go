@@ -9,13 +9,13 @@ import (
 	"testing"
 )
 
-
-
 func setupStubs(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	for _, bin := range []string{"jeff", "gig", "jq"} {
-		if bin == "jq" { continue }
+		if bin == "jq" {
+			continue
+		}
 		path := filepath.Join(dir, bin)
 		script := "#!/bin/bash\necho 'stub " + bin + "' >&2\n"
 		os.WriteFile(path, []byte(script), 0o755)
@@ -134,7 +134,7 @@ func TestNoJq(t *testing.T) {
 	if bashPath, err := exec.LookPath("bash"); err == nil {
 		_ = os.Symlink(bashPath, filepath.Join(dir, "bash"))
 	}
-	t.Setenv("PATH", dir) 
+	t.Setenv("PATH", dir)
 
 	gen := taskContextHook().Scripts["claude"]
 	content := gen(HookContext{TaskID: "gig-123"})
@@ -142,7 +142,7 @@ func TestNoJq(t *testing.T) {
 	os.WriteFile(scriptPath, []byte(content), 0o755)
 
 	exec.Command("cat", "-v", scriptPath).Run()
-			cmd := exec.Command("bash", scriptPath)
+	cmd := exec.Command("bash", scriptPath)
 	cmd.Stdin = strings.NewReader(`{}`)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

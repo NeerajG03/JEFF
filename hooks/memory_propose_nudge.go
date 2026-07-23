@@ -14,7 +14,7 @@ func memoryProposeNudgeHook() *Hook {
 		Matcher:       "*",
 		Timeout:       5,
 		OpenCodeEvent: "session.idle",
-		Scripts: bashBoth(buildMemoryProposeNudgeScript, buildOpenCodeMemoryProposeNudgeSnippet),
+		Scripts:       bashBoth(buildMemoryProposeNudgeScript, buildOpenCodeMemoryProposeNudgeSnippet),
 	}
 }
 

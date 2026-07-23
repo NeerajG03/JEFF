@@ -154,6 +154,12 @@ func writeIndexBulletsCap(sb *strings.Builder, entries []Entry) int {
 // sentinel block or appending if none is found. Normalises the addendum to
 // end with exactly one newline before writing.
 func applyAddendum(targetPath, addendum string) error {
+	// Resolve symlinks so writing to GEMINI.md (a symlink → CLAUDE.md)
+	// updates the real file instead of replacing the link.
+	if resolved, err := filepath.EvalSymlinks(targetPath); err == nil {
+		targetPath = resolved
+	}
+
 	existing, err := os.ReadFile(targetPath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("inject: read %s: %w", filepath.Base(targetPath), err)

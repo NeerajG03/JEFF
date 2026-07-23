@@ -226,3 +226,43 @@ func TestQueueEntryRoundTrip(t *testing.T) {
 		t.Errorf("repos = %v", entry.Repos)
 	}
 }
+
+// TestRunSessionEnd_Dedupe verifies that two calls with the same source
+// transcript produce exactly one queue file (idempotent deduplication).
+func TestRunSessionEnd_Dedupe(t *testing.T) {
+	jeffHome := t.TempDir()
+	homeDir := t.TempDir()
+
+	// Create a stable source transcript.
+	srcDir := filepath.Join(homeDir, "session-data")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	srcTranscript := filepath.Join(srcDir, "transcript.jsonl")
+	if err := os.WriteFile(srcTranscript, []byte(`{"msg":"hello"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// First call.
+	if err := RunSessionEnd(jeffHome, "gig-dd1", "jenko", nil, "claude", srcTranscript, "done"); err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+
+	// Second call with same source transcript.
+	if err := RunSessionEnd(jeffHome, "gig-dd1", "jenko", nil, "claude", srcTranscript, "done"); err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+
+	// Verify: exactly one queue file.
+	dir := memory.QueueSessionsRoot(jeffHome)
+	files, _ := os.ReadDir(dir)
+	var count int
+	for _, f := range files {
+		if strings.HasSuffix(f.Name(), ".json") {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly 1 queue file after two calls with same source, got %d", count)
+	}
+}

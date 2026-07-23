@@ -219,6 +219,36 @@ cp "$SRC/.env.example" "$DEST/.env"
 cd "$DEST" && npm install
 ```
 
+## Memory Management
+
+JEFF manages a persistent memory store under `JEFF_HOME/memory/`. Workers propose
+new memories during sessions; the marlowe curator consolidates them periodically.
+
+```bash
+# Propose a new memory (for workers — writes to proposals/ for later curation)
+jeff memory propose --name <slug> --type <user|feedback|project|reference> \
+                    --description "<summary>" --body "<details>"
+
+# List canonical memory entries
+jeff memory list [--scope persona:jenko] [--bucket semantic] [--status accepted]
+
+# Show a full memory entry
+jeff memory show <name|path>
+
+# Curate proposals into canonical memory (marlowe only — JEFF_MEMORY_CAN_ADD=1)
+jeff memory curate [--persona <p>]
+
+# Add a canonical entry directly (curator only)
+jeff memory add --name <slug> --type <t> --description "<summary>" \
+                --body "<body>" --scope <scope> --bucket <bucket>
+
+# Supersede an existing entry (keeps audit trail)
+jeff memory add --supersede <old-path> --name <slug> ...
+
+# Disable memory subsystem (advisory — skips addendum and propose)
+jeff memory disable [--confirm]
+```
+
 ## Skills
 
 ### Add and Tag

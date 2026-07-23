@@ -165,8 +165,16 @@ func ListScope(jeffHome, scopeLabel, status string) ([]Entry, error) {
 // arguments if not already populated.
 //
 // This is the single write path for canonical entries. Only marlowe (running
-// with JEFF_MEMORY_CAN_ADD=1) should call this.
+// with JEFF_MEMORY_CAN_ADD=1) should call this. Refuses to overwrite existing
+// non-core entries — use Supersede to replace.
 func WriteCanonical(home, scope, bucket string, fm CanonicalFrontmatter, body string) (Entry, error) {
+	return writeCanonical(home, scope, bucket, fm, body, false)
+}
+
+// writeCanonical is the inner implementation. When allowExisting is true, it
+// permits overwriting an existing non-core entry (used by Supersede when the
+// successor reuses the old slug).
+func writeCanonical(home, scope, bucket string, fm CanonicalFrontmatter, body string, allowExisting bool) (Entry, error) {
 	if fm.Name == "" {
 		return Entry{}, fmt.Errorf("WriteCanonical: fm.Name is required")
 	}
@@ -197,9 +205,11 @@ func WriteCanonical(home, scope, bucket string, fm CanonicalFrontmatter, body st
 	} else {
 		dir = BucketPath(sPath, b)
 		fp = filepath.Join(dir, fm.Name+".md")
-		// Refuse silent overwrite for non-core entries.
-		if _, err := os.Stat(fp); err == nil {
-			return Entry{}, fmt.Errorf("memory entry %q already exists in %s/%s — use 'jeff memory add --supersede %s' to replace it", fm.Name, scope, bucket, fm.Name)
+		// Refuse silent overwrite for non-core entries (unless allowExisting).
+		if !allowExisting {
+			if _, err := os.Stat(fp); err == nil {
+				return Entry{}, fmt.Errorf("memory entry %q already exists in %s/%s — use 'jeff memory add --supersede %s' to replace it", fm.Name, scope, bucket, fm.Name)
+			}
 		}
 	}
 
@@ -213,7 +223,7 @@ func WriteCanonical(home, scope, bucket string, fm CanonicalFrontmatter, body st
 	}
 	defer f.Close()
 
-	if err := writeCanonical(f, fm, body); err != nil {
+	if err := writeCanonicalFile(f, fm, body); err != nil {
 		return Entry{}, fmt.Errorf("WriteCanonical: write: %w", err)
 	}
 
@@ -252,7 +262,7 @@ func Invalidate(entryPath string, supersededBy string, at time.Time) error {
 	}
 	defer out.Close()
 
-	if err := writeCanonical(out, fm, body); err != nil {
+	if err := writeCanonicalFile(out, fm, body); err != nil {
 		return fmt.Errorf("Invalidate: write: %w", err)
 	}
 	return nil
@@ -274,7 +284,7 @@ func Supersede(home, oldEntryPath string, newFm CanonicalFrontmatter, newBody st
 	// Record what we supersede.
 	newFm.Supersedes = append(newFm.Supersedes, oldSlug)
 
-	newEntry, err := WriteCanonical(home, scope, string(bucket), newFm, newBody)
+	newEntry, err := writeCanonical(home, scope, string(bucket), newFm, newBody, true)
 	if err != nil {
 		return Entry{}, fmt.Errorf("Supersede: write new: %w", err)
 	}

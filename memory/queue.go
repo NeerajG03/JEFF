@@ -22,13 +22,27 @@ type SessionQueueEntry struct {
 	Reason         string    `json:"reason"`
 	Proposals      []string  `json:"proposals"`
 	EndedAt        time.Time `json:"ended_at"`
+	// DedupeKey is used to derive the queue filename; when set, it takes
+	// priority over TranscriptPath for idempotent deduplication so the
+	// stable source path can be used as the key while TranscriptPath
+	// stores the actual (timestamped) copy destination.
+	DedupeKey string `json:"-"`
 }
 
-// WriteQueueEntry writes e to queue/sessions/<task>-<transcript>.json and returns
-// the resulting absolute path. When a transcript is available the key includes
-// the transcript filename base so the same (task, transcript) pair overwrites
-// (idempotent) instead of creating duplicate entries. Falls back to nanosecond
-// granularity when transcript is empty.
+// dedupeKey returns the path used for deduplication: DedupeKey if set,
+// otherwise TranscriptPath.
+func (e SessionQueueEntry) dedupeKey() string {
+	if e.DedupeKey != "" {
+		return e.DedupeKey
+	}
+	return e.TranscriptPath
+}
+
+// WriteQueueEntry writes e to queue/sessions/<task>-<key>.json and returns
+// the resulting absolute path. The key is derived from DedupeKey (if set) or
+// TranscriptPath so the same (task, transcript) pair overwrites (idempotent)
+// instead of creating duplicate entries. Falls back to nanosecond granularity
+// when neither is set.
 func WriteQueueEntry(jeffHome string, e SessionQueueEntry) (string, error) {
 	if e.Task == "" {
 		return "", fmt.Errorf("WriteQueueEntry: task is required")
@@ -41,8 +55,8 @@ func WriteQueueEntry(jeffHome string, e SessionQueueEntry) (string, error) {
 		return "", fmt.Errorf("WriteQueueEntry: mkdir: %w", err)
 	}
 	var name string
-	if e.TranscriptPath != "" {
-		base := strings.TrimSuffix(filepath.Base(e.TranscriptPath), filepath.Ext(e.TranscriptPath))
+	if key := e.dedupeKey(); key != "" {
+		base := strings.TrimSuffix(filepath.Base(key), filepath.Ext(key))
 		name = fmt.Sprintf("%s-%s.json", sanitizeTaskID(e.Task), sanitizeTaskID(base))
 	} else {
 		name = fmt.Sprintf("%s-%d.json", sanitizeTaskID(e.Task), e.EndedAt.UnixNano())

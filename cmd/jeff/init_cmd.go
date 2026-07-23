@@ -136,7 +136,7 @@ func runInit(here bool) error {
 	fmt.Println("  exports/    — artifacts and generated files")
 	fmt.Println("  CLAUDE.md   — agent instructions (editable)")
 	fmt.Println("  hooks/      — session hooks (configure in jeff.json)")
-	fmt.Println("  memory/     — canonical memory (run: jeff memory doc)")
+	fmt.Println("  memory/     — canonical memory (see docs/usage.md)")
 	return nil
 }
 

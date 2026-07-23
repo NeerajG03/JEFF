@@ -192,6 +192,11 @@ func TestNoPostToolUseResurfacesInboxContent(t *testing.T) {
 		if h.Event == "SessionStart" {
 			continue // SessionStart replay is the sanctioned surfacing.
 		}
+		// memory-propose-nudge intentionally blocks on Stop to ask about memory
+		// proposals — known exception to the no-block rule (not inbox-related).
+		if h.Name == "memory-propose-nudge" {
+			continue
+		}
 		for key, gen := range h.Scripts {
 			script := gen(ctx)
 			if strings.Contains(script, "crew inbox") && strings.Contains(script, "--format agent") {

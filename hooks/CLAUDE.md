@@ -14,7 +14,7 @@ Injects context into Claude Code and OpenCode sessions via hooks. Two delivery m
 |------|-------------|
 | `hook.go` | Hook type, Source, HookContext, EnabledForSource |
 | `registry.go` | Registry — holds all hooks, BySource/All |
-| `builtin.go` | All 15 built-in hook definitions + script generators |
+| `builtin.go` | All 16 built-in hook definitions + script generators |
 | `claude.go` | Write bash scripts + wire settings.json |
 | `opencode.go` | Generate combined OpenCode JS plugin |
 | `manager.go` | Sync — install/uninstall hooks idempotently |

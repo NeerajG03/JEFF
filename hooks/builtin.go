@@ -17,6 +17,7 @@ func builtinHooks() []*Hook {
 		taskCommandsHook(),
 		checkpointNudgeHook(),
 		inboxReplayHook(),
+		memoryProposeNudgeHook(),
 		workerHeartbeatHook(),
 		workerStopHook(),
 		sessionCaptureHook(),
@@ -291,16 +292,16 @@ func checkpointNudgeHook() *Hook {
 		Matcher: "Bash",
 		Timeout: 5,
 		Scripts: map[string]func(ctx HookContext) string{
-                        "claude": func(ctx HookContext) string {
-                                return buildCheckpointNudgeScript(ctx.CheckpointPatterns, "PostToolUse")
-                        },
-                        "opencode": func(ctx HookContext) string {
-                                return buildOpenCodeCheckpointNudgeSnippet(ctx.CheckpointPatterns)
-                        },
-                        "gemini": func(ctx HookContext) string {
-                                return buildCheckpointNudgeScript(ctx.CheckpointPatterns, "AfterTool")
-                        },
-                },
+			"claude": func(ctx HookContext) string {
+				return buildCheckpointNudgeScript(ctx.CheckpointPatterns, "PostToolUse")
+			},
+			"opencode": func(ctx HookContext) string {
+				return buildOpenCodeCheckpointNudgeSnippet(ctx.CheckpointPatterns)
+			},
+			"gemini": func(ctx HookContext) string {
+				return buildCheckpointNudgeScript(ctx.CheckpointPatterns, "AfterTool")
+			},
+		},
 	}
 }
 

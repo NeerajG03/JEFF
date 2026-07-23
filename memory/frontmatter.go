@@ -97,7 +97,7 @@ func ParseCanonical(r io.Reader) (CanonicalFrontmatter, string, error) {
 // writeCanonical serializes a canonical memory entry to w.
 // Exported as WriteCanonical(home, scope, bucket, fm, body) in store.go for callers
 // that want filesystem-backed writes; this is the low-level serializer.
-func writeCanonical(w io.Writer, fm CanonicalFrontmatter, body string) error {
+func writeCanonicalFile(w io.Writer, fm CanonicalFrontmatter, body string) error {
 	if fm.Name == "" {
 		return fmt.Errorf("canonical frontmatter: name is required")
 	}

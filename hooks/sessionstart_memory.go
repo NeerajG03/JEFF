@@ -24,6 +24,9 @@ import (
 //  3. memory.ApplySettings(taskDir, agentKind)
 //  4. writes a brief log entry to JEFF_HOME/queue/sessions/<task>-start.log
 func RunSessionStart(jeffHome, taskDir, persona, taskID string, repos []string, agentKind string) error {
+	if memory.Disabled(jeffHome) {
+		return nil
+	}
 	if err := memory.EnsureLayout(jeffHome); err != nil {
 		return fmt.Errorf("session-start: ensure layout: %w", err)
 	}

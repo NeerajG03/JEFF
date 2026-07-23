@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,6 +101,87 @@ func TestCurate_ProcessesQueueEntry(t *testing.T) {
 	}
 	if len(report.Errors) > 0 {
 		t.Errorf("unexpected errors: %v", report.Errors)
+	}
+}
+
+func TestCurate_AgentErrorPreservesInputs(t *testing.T) {
+	home := t.TempDir()
+	if err := EnsureLayout(home); err != nil {
+		t.Fatal(err)
+	}
+
+	qe := SessionQueueEntry{
+		Task:    "gig-ag-err",
+		Persona: "jenko",
+		EndedAt: time.Now().UTC(),
+	}
+	qPath, err := WriteQueueEntry(home, qe)
+	if err != nil {
+		t.Fatalf("WriteQueueEntry: %v", err)
+	}
+
+	proposalFM := Frontmatter{Name: "keep-me", Description: "should survive agent error", Type: TypeFeedback}
+	proposal, err := WriteProposal(home, "jenko", "gig-ag-err", proposalFM, "body\n")
+	if err != nil {
+		t.Fatalf("WriteProposal: %v", err)
+	}
+
+	runner := &mockRunner{output: "", err: fmt.Errorf("agent failed")}
+	report, err := Curate(CurateOptions{Home: home, Runner: runner})
+	if err != nil {
+		t.Fatalf("Curate: %v", err)
+	}
+
+	// Queue entry must still exist (not archived).
+	if _, err := os.Stat(qPath); err != nil {
+		t.Error("queue entry should NOT be archived on agent error")
+	}
+	// Proposal must still exist.
+	if _, err := os.Stat(proposal.Path); err != nil {
+		t.Error("proposal should NOT be archived on agent error")
+	}
+	// Report should contain the error.
+	if len(report.Errors) == 0 {
+		t.Error("expected at least one error in report for failed agent run")
+	}
+	// .last-curated must NOT be written on error.
+	stamp := filepath.Join(MemoryRoot(home), ".last-curated")
+	if _, err := os.Stat(stamp); err == nil {
+		t.Error(".last-curated should NOT exist when curate had errors")
+	}
+}
+
+func TestCurate_WritesLastCuratedOnSuccess(t *testing.T) {
+	home := t.TempDir()
+	if err := EnsureLayout(home); err != nil {
+		t.Fatal(err)
+	}
+
+	qe := SessionQueueEntry{
+		Task:    "gig-stamp",
+		Persona: "eric",
+		EndedAt: time.Now().UTC(),
+	}
+	if _, err := WriteQueueEntry(home, qe); err != nil {
+		t.Fatalf("WriteQueueEntry: %v", err)
+	}
+
+	runner := &mockRunner{output: mockReportJSON(1, 0, 0, nil)}
+	if _, err := Curate(CurateOptions{Home: home, Runner: runner}); err != nil {
+		t.Fatalf("Curate: %v", err)
+	}
+
+	stamp := filepath.Join(MemoryRoot(home), ".last-curated")
+	data, err := os.ReadFile(stamp)
+	if err != nil {
+		t.Fatalf(".last-curated not written: %v", err)
+	}
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		t.Fatal(".last-curated is empty")
+	}
+	if _, parseErr := time.Parse(time.RFC3339, content); parseErr != nil {
+		t.Errorf(".last-curated content is not RFC3339: %q — %v", content, parseErr)
 	}
 }
 
@@ -316,6 +398,51 @@ func TestParseAgentReport(t *testing.T) {
 				t.Errorf("flagged len: got %d want %d", len(got.Flagged), len(tc.want.Flagged))
 			}
 		})
+	}
+}
+
+func TestSweepRetention_RemovesOldFiles(t *testing.T) {
+	home := t.TempDir()
+	if err := EnsureLayout(home); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create an old transcript file.
+	transDir := TranscriptsRoot(home)
+	oldTrans := filepath.Join(transDir, "old.jsonl")
+	os.WriteFile(oldTrans, []byte("data"), 0o644)
+	_ = os.Chtimes(oldTrans, time.Now().Add(-30*24*time.Hour), time.Now().Add(-30*24*time.Hour))
+
+	// Create a new transcript file (should survive).
+	newTrans := filepath.Join(transDir, "new.jsonl")
+	os.WriteFile(newTrans, []byte("data"), 0o644)
+
+	// Create an old start-log.
+	queueDir := QueueSessionsRoot(home)
+	oldLog := filepath.Join(queueDir, "gig-old-start.log")
+	os.WriteFile(oldLog, []byte("log"), 0o644)
+	_ = os.Chtimes(oldLog, time.Now().Add(-10*24*time.Hour), time.Now().Add(-10*24*time.Hour))
+
+	// Create a new start-log (should survive).
+	newLog := filepath.Join(queueDir, "gig-new-start.log")
+	os.WriteFile(newLog, []byte("log"), 0o644)
+
+	sweepRetention(home)
+
+	// Old files must be gone.
+	if _, err := os.Stat(oldTrans); !os.IsNotExist(err) {
+		t.Error("old transcript should be removed")
+	}
+	if _, err := os.Stat(oldLog); !os.IsNotExist(err) {
+		t.Error("old start-log should be removed")
+	}
+
+	// New files must survive.
+	if _, err := os.Stat(newTrans); err != nil {
+		t.Error("new transcript should survive retention sweep")
+	}
+	if _, err := os.Stat(newLog); err != nil {
+		t.Error("new start-log should survive retention sweep")
 	}
 }
 

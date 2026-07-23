@@ -57,7 +57,6 @@ func (r ExecRunner) Run(ctx context.Context, prompt string, env []string) (strin
 type CurateOptions struct {
 	Home         string
 	Persona      string      // optional: only process this persona's queue entries
-	Auto         bool        // auto=true: no interactive prompts; flag conflicts in report only
 	Runner       AgentRunner // nil = caller must set (use NewExecRunner in cmd layer)
 	SkillContent string      // content of .skills/curation/SKILL.md; loaded by cmd layer
 }
@@ -141,7 +140,8 @@ func Curate(opts CurateOptions) (CurateReport, error) {
 		if runErr != nil {
 			report.Errors = append(report.Errors,
 				fmt.Errorf("agent run for %s: %w", item.Entry.Task, runErr))
-			// Still archive so we don't reprocess indefinitely.
+			// Preserve queue + proposals for retry — do not archive.
+			continue
 		}
 
 		partial := parseAgentReport(output)
@@ -163,6 +163,14 @@ func Curate(opts CurateOptions) (CurateReport, error) {
 					fmt.Errorf("archive proposal %s: %w", p.Path, archErr))
 			}
 		}
+	}
+
+	// On a fully successful pass (at least one item processed without error, or
+	// no items to process), write the .last-curated stamp.
+	if len(report.Errors) == 0 {
+		stamp := filepath.Join(MemoryRoot(opts.Home), ".last-curated")
+		_ = os.WriteFile(stamp, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
+		sweepRetention(opts.Home)
 	}
 
 	return report, nil
@@ -260,15 +268,67 @@ func listQueueItems(home string) ([]queueItem, error) {
 		path := filepath.Join(dir, de.Name())
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("listQueueItems: read %s: %w", path, err)
+			fmt.Fprintf(os.Stderr, "warning: skipping unreadable queue file %s: %v\n", path, err)
+			continue
 		}
 		var e SessionQueueEntry
 		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("listQueueItems: unmarshal %s: %w", path, err)
+			fmt.Fprintf(os.Stderr, "warning: skipping malformed queue file %s: %v\n", path, err)
+			continue
 		}
 		items = append(items, queueItem{Entry: e, Path: path})
 	}
 	return items, nil
+}
+
+// sweepRetention removes old files under transcripts/ and start-log files under
+// queue/sessions/. Does NOT touch archive/ or canonical memory.
+// transcripts/ files older than 28 days, start-logs older than 7 days.
+func sweepRetention(home string) {
+	now := time.Now()
+	transcriptsRoot := TranscriptsRoot(home)
+	queueRoot := QueueSessionsRoot(home)
+
+	var nTrans, nLogs int
+
+	filepath.WalkDir(transcriptsRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		if now.Sub(info.ModTime()) > 28*24*time.Hour {
+			if rmErr := os.Remove(path); rmErr == nil {
+				nTrans++
+			}
+		}
+		return nil
+	})
+
+	entries, err := os.ReadDir(queueRoot)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), "-start.log") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if now.Sub(info.ModTime()) > 7*24*time.Hour {
+			if rmErr := os.Remove(filepath.Join(queueRoot, e.Name())); rmErr == nil {
+				nLogs++
+			}
+		}
+	}
+
+	if nTrans > 0 || nLogs > 0 {
+		fmt.Fprintf(os.Stderr, "retention: removed %d transcripts, %d start-logs\n", nTrans, nLogs)
+	}
 }
 
 // archiveProposal moves a proposal file to archive/<iso-week>/proposals/<persona>/<task>/.

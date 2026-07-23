@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	jeffembed "github.com/NeerajG03/JEFF/embed"
 )
+
+const maxIndexEntriesPerScope = 30
 
 const (
 	addendumStartSentinel = "<!-- jeff-memory-addendum -->"
@@ -79,8 +82,11 @@ func buildMemoryIndex(jeffHome, persona string, repos []string) string {
 	if persona != "" {
 		if entries, err := ListScope(jeffHome, "persona:"+persona, "accepted"); err == nil && len(entries) > 0 {
 			fmt.Fprintf(&sb, "## Persona memory (%s)\n", persona)
-			writeIndexBullets(&sb, entries)
+			overflow := writeIndexBulletsCap(&sb, entries)
 			sb.WriteString("\n")
+			if overflow > 0 {
+				fmt.Fprintf(&sb, "- …and %d more — run 'jeff memory list --scope persona:%s'\n\n", overflow, persona)
+			}
 			any = true
 		}
 	}
@@ -88,16 +94,22 @@ func buildMemoryIndex(jeffHome, persona string, repos []string) string {
 	for _, repo := range repos {
 		if entries, err := ListScope(jeffHome, "repo:"+repo, "accepted"); err == nil && len(entries) > 0 {
 			fmt.Fprintf(&sb, "## Repo memory (%s)\n", repo)
-			writeIndexBullets(&sb, entries)
+			overflow := writeIndexBulletsCap(&sb, entries)
 			sb.WriteString("\n")
+			if overflow > 0 {
+				fmt.Fprintf(&sb, "- …and %d more — run 'jeff memory list --scope repo:%s'\n\n", overflow, repo)
+			}
 			any = true
 		}
 	}
 
 	if entries, err := ListScope(jeffHome, "orchestrator", "accepted"); err == nil && len(entries) > 0 {
 		sb.WriteString("## Orchestrator memory (global rules)\n")
-		writeIndexBullets(&sb, entries)
+		overflow := writeIndexBulletsCap(&sb, entries)
 		sb.WriteString("\n")
+		if overflow > 0 {
+			fmt.Fprintf(&sb, "- …and %d more — run 'jeff memory list --scope orchestrator'\n\n", overflow)
+		}
 		any = true
 	}
 
@@ -109,11 +121,26 @@ func buildMemoryIndex(jeffHome, persona string, repos []string) string {
 	return sb.String()
 }
 
-// writeIndexBullets appends one "`slug` — description" bullet per entry.
-func writeIndexBullets(sb *strings.Builder, entries []Entry) {
+// writeIndexBulletsCap appends one "`slug` — description" bullet per entry, sorted
+// by importance descending then valid_from descending, capped at maxIndexEntriesPerScope.
+// Returns the number of entries that were truncated (0 if within limit).
+func writeIndexBulletsCap(sb *strings.Builder, entries []Entry) int {
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].FM.Importance != entries[j].FM.Importance {
+			return entries[i].FM.Importance > entries[j].FM.Importance
+		}
+		return entries[i].FM.ValidFrom.After(entries[j].FM.ValidFrom)
+	})
+	limit := maxIndexEntriesPerScope
+	overflow := 0
+	if len(entries) > limit {
+		overflow = len(entries) - limit
+		entries = entries[:limit]
+	}
 	for _, e := range entries {
 		fmt.Fprintf(sb, "- `%s` — %s\n", e.FM.Name, e.FM.Description)
 	}
+	return overflow
 }
 
 // applyAddendum writes addendum into targetPath, replacing any existing
@@ -150,5 +177,10 @@ func applyAddendum(targetPath, addendum string) error {
 		content += addendum
 	}
 
-	return os.WriteFile(targetPath, []byte(content), 0o644)
+	// Write atomically: tmp file + rename (atomic on POSIX).
+	tmpPath := targetPath + ".tmp"
+	if err := os.WriteFile(tmpPath, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("inject: write tmp: %w", err)
+	}
+	return os.Rename(tmpPath, targetPath)
 }

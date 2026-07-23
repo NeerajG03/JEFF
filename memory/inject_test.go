@@ -1,10 +1,12 @@
 package memory
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestApplyToTask_FreshFile(t *testing.T) {
@@ -179,6 +181,43 @@ func TestBuildMemoryIndex_Empty(t *testing.T) {
 	got := buildMemoryIndex(home, "jenko", []string{"jeff"})
 	if got != "" {
 		t.Errorf("expected empty index with no canonical entries, got %q", got)
+	}
+}
+
+func TestBuildMemoryIndex_CapsAtMaxEntries(t *testing.T) {
+	home := t.TempDir()
+	if err := EnsureLayout(home); err != nil {
+		t.Fatalf("EnsureLayout: %v", err)
+	}
+
+	// Write 35 entries for persona:jenko.
+	for i := range 35 {
+		name := fmt.Sprintf("entry-%02d", i)
+		fm := CanonicalFrontmatter{
+			Frontmatter: Frontmatter{Name: name, Type: TypeFeedback, Description: "test entry " + name},
+			Importance:  35 - i,
+			ValidFrom:   time.Now().UTC(),
+			Source:      Source{Persona: "jenko", Task: "t", Trigger: "self-noted"},
+		}
+		if _, err := WriteCanonical(home, "persona:jenko", "semantic", fm, "body\n"); err != nil {
+			t.Fatalf("WriteCanonical %s: %v", name, err)
+		}
+	}
+
+	got := buildMemoryIndex(home, "jenko", nil)
+	// Should have 30 bullets + overflow line.
+	lines := strings.Split(strings.TrimSpace(got), "\n")
+	bulletCount := 0
+	for _, line := range lines {
+		if strings.HasPrefix(line, "- `") {
+			bulletCount++
+		}
+	}
+	if bulletCount != 30 {
+		t.Errorf("expected 30 bullets, got %d", bulletCount)
+	}
+	if !strings.Contains(got, "…and 5 more") {
+		t.Errorf("expected overflow message for 5 more entries, got:\n%s", got)
 	}
 }
 

@@ -12,13 +12,14 @@ The two APIs share a Go package but no function names collide. They will coexist
 | File | What it does | Owner |
 |------|-------------|-------|
 | `types.go` | `MemoryType`, `ScopeKind`, `Bucket`, path resolvers, `EnsureLayout` | FND |
+| `disable.go` | `Disabled(jeffHome)` gate — checks `JEFF_MEMORY_DISABLE` env var and `jeff.json memory.disabled` | R3 |
 | `frontmatter.go` | YAML frontmatter parse/write — worker-facing 3-field schema + canonical (bi-temporal) schema | FND |
 | `proposals.go` | `proposals/<persona>/<task>/*.md` CRUD | FND |
-| `queue.go` | `queue/sessions/*.json` CRUD + `archive/<iso-week>/queue/` rollover | FND |
-| `store.go` | Read-only canonical-memory access (`ListEntries`, `ReadEntry`, `EntryFilter`) | FND |
-| `inject.go` | Memory-pack composition + CLAUDE.md/GEMINI.md addendum | A (stub) |
+| `queue.go` | `queue/sessions/*.json` CRUD + `archive/<iso-week>/queue/` rollover; dedupes by (task, transcript) | FND |
+| `store.go` | Canonical-memory access (`ListEntries`, `ReadEntry`, `EntryFilter`), write helpers (`WriteCanonical`, `Invalidate`, `Supersede`). Skips corrupt entries with stderr warning. Refuses duplicate non-core writes. | FND |
+| `inject.go` | Memory-pack composition + CLAUDE.md/GEMINI.md addendum. Index capped at 30 entries per scope. Atomically writes via tmp+rename. | A (stub) |
 | `suppress.go` | Native-memory suppression (Claude/Gemini/opencode) | A (stub) |
-| `curate.go` | marlowe curation loop, supersede semantics, archive sweep | C (stub) |
+| `curate.go` | marlowe curation loop, supersede semantics, archive sweep, `.last-curated` stamp, retention sweep. No longer archives on agent error (inputs preserved for retry). `CurateOptions.Auto` removed. | C |
 | `doc.go` | `jeff memory doc` content | D (stub) |
 | `init.go` | Initialize/Update/Migrate (retires legacy /learn API) | E (stub) |
 
@@ -60,6 +61,41 @@ Canonical (marlowe-enriched, bi-temporal) adds: `status`, `scope`, `goal_served`
 |---|---|---|
 | jenko, schmidt, eric, hardy, dickson | unset / 0 | `propose`, `list`, `show`, `status`, `doc` |
 | marlowe | `1` | all of the above + `add`, `curate` |
+
+## Disable gate
+
+The memory subsystem can be disabled via `JEFF_MEMORY_DISABLE=1` env var or `jeff.json` `memory.disabled: true`. When disabled:
+- Session-start and session-end hooks are no-ops.
+- Pickup omits legacy persona-memory and repo-learnings sections from CLAUDE.md.
+- `jeff memory propose` returns an error.
+- `memory/disable.go` provides the `Disabled(jeffHome string) bool` helper. The `memory` package must NOT import the root `jeff` package (import cycle risk).
+
+## Corrupt-file resilience
+
+- `ListEntries` and `ListScope` skip entries that fail to parse, emitting a `fmt.Fprintf(os.Stderr, "warning: …")` and continuing. Only I/O errors on the directory walk itself remain fatal.
+- `listQueueItems` similarly skips malformed or unreadable JSON files.
+
+## Duplicate-write refusal
+
+- `WriteCanonical` refuses to overwrite an existing non-core entry. Returns an error mentioning `--supersede`.
+- The `core` bucket (a single well-known file per scope) is exempt — it is meant to be rewritten.
+- `Supersede` writes a new entry then invalidates the old one; covered by existing tests.
+
+## Queue dedupe
+
+- `WriteQueueEntry` keys on `<task>-<transcriptBase>.json` when a transcript path is available. Same task + same transcript → idempotent overwrite.
+- Falls back to `<task>-<unixnano>.json` when transcript is empty.
+
+## Index cap
+
+- `buildMemoryIndex` caps each scope's bullets at 30, sorted by `importance` desc then `valid_from` desc. Overflow is reported as "…and N more — run 'jeff memory list --scope <scope>'".
+
+## Retention sweep
+
+- After a successful curate pass, `sweepRetention(home)` removes:
+  - `transcripts/` files older than 28 days (by mtime).
+  - `queue/sessions/*-start.log` files older than 7 days.
+- Does NOT touch `archive/` or canonical memory.
 
 ## Conventions
 

@@ -24,6 +24,9 @@ import (
 // Idempotent: each call creates a new queue entry with a fresh timestamp.
 // No LLM is spawned.
 func RunSessionEnd(jeffHome, taskID, persona string, repos []string, agentKind, transcriptPath, reason string) error {
+	if memory.Disabled(jeffHome) {
+		return nil
+	}
 	now := time.Now().UTC()
 
 	// Copy transcript (best-effort — queue entry is still written on failure).

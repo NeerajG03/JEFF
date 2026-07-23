@@ -115,3 +115,60 @@ func TestListQueueEntries_MissingDirOK(t *testing.T) {
 		t.Fatalf("expected 0 entries, got %d", len(out))
 	}
 }
+
+func TestWriteQueueEntry_SameTranscriptOverwrites(t *testing.T) {
+	home := t.TempDir()
+	if err := EnsureLayout(home); err != nil {
+		t.Fatal(err)
+	}
+
+	// Two writes with the same transcript must produce one file.
+	e := SessionQueueEntry{
+		Task:           "gig-dedup",
+		Persona:        "jenko",
+		TranscriptPath: "/tmp/session-abc.jsonl",
+	}
+	p1, err := WriteQueueEntry(home, e)
+	if err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+	p2, err := WriteQueueEntry(home, e)
+	if err != nil {
+		t.Fatalf("second write: %v", err)
+	}
+	if p1 != p2 {
+		t.Errorf("same transcript should produce same path: %q vs %q", p1, p2)
+	}
+	entries, err := ListQueueEntries(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("expected 1 queue entry for deduped transcript, got %d", len(entries))
+	}
+}
+
+func TestWriteQueueEntry_DifferentTranscriptsProduceTwoFiles(t *testing.T) {
+	home := t.TempDir()
+	if err := EnsureLayout(home); err != nil {
+		t.Fatal(err)
+	}
+
+	e1 := SessionQueueEntry{Task: "gig-dedup2", Persona: "jenko", TranscriptPath: "/tmp/session-1.jsonl"}
+	e2 := SessionQueueEntry{Task: "gig-dedup2", Persona: "jenko", TranscriptPath: "/tmp/session-2.jsonl"}
+
+	if _, err := WriteQueueEntry(home, e1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteQueueEntry(home, e2); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := ListQueueEntries(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Errorf("expected 2 queue entries for different transcripts, got %d", len(entries))
+	}
+}

@@ -10,6 +10,24 @@ import (
 	"github.com/NeerajG03/JEFF/memory"
 )
 
+func TestRunSessionEnd_DisableGateSkipsAll(t *testing.T) {
+	jeffHome := t.TempDir()
+	t.Setenv("JEFF_MEMORY_DISABLE", "1")
+
+	if err := RunSessionEnd(jeffHome, "gig-ds1", "jenko", []string{"jeff"}, "claude", "", "user"); err != nil {
+		t.Fatalf("RunSessionEnd with disabled memory: %v", err)
+	}
+
+	// No queue entry should be written.
+	entries, err := memory.ListQueueEntries(jeffHome)
+	if err != nil {
+		t.Fatalf("ListQueueEntries: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected 0 queue entries when memory disabled, got %d", len(entries))
+	}
+}
+
 func TestRunSessionEnd_QueueWrite(t *testing.T) {
 	jeffHome := t.TempDir()
 

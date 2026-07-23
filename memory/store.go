@@ -61,7 +61,8 @@ func ListEntries(jeffHome string, filter EntryFilter) ([]Entry, error) {
 			for _, fp := range files {
 				e, err := ReadEntry(fp)
 				if err != nil {
-					return nil, err
+					fmt.Fprintf(os.Stderr, "warning: skipping unreadable memory entry %s: %v\n", fp, err)
+					continue
 				}
 				e.Scope = sc.label
 				e.Bucket = bucket
@@ -132,7 +133,8 @@ func ListScope(jeffHome, scopeLabel, status string) ([]Entry, error) {
 		for _, fp := range files {
 			e, err := ReadEntry(fp)
 			if err != nil {
-				return nil, err
+				fmt.Fprintf(os.Stderr, "warning: skipping unreadable memory entry %s: %v\n", fp, err)
+				continue
 			}
 			e.Scope = scopeLabel
 			e.Bucket = bucket
@@ -195,6 +197,10 @@ func WriteCanonical(home, scope, bucket string, fm CanonicalFrontmatter, body st
 	} else {
 		dir = BucketPath(sPath, b)
 		fp = filepath.Join(dir, fm.Name+".md")
+		// Refuse silent overwrite for non-core entries.
+		if _, err := os.Stat(fp); err == nil {
+			return Entry{}, fmt.Errorf("memory entry %q already exists in %s/%s — use 'jeff memory add --supersede %s' to replace it", fm.Name, scope, bucket, fm.Name)
+		}
 	}
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {

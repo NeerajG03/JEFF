@@ -12,8 +12,8 @@ func init() {
 	RegisterProvider(&geminiProvider{})
 }
 
-func (g *geminiProvider) Name() AgentTool    { return AgentGemini }
-func (g *geminiProvider) Command() string    { return "gemini" }
+func (g *geminiProvider) Name() AgentTool { return AgentGemini }
+func (g *geminiProvider) Command() string { return "gemini" }
 
 // isGeminiModel returns true if the model name is valid for Gemini CLI.
 // Accepts aliases (auto, pro, flash, flash-lite) and full IDs (gemini-*).
@@ -53,11 +53,14 @@ func (g *geminiProvider) BuildCurateArgs(prompt string) []string {
 	return []string{"--approval-mode=yolo", "-p", prompt}
 }
 
-func (g *geminiProvider) SupportsInlinePrompt() bool { return true }
-func (g *geminiProvider) ConfigDir() string           { return ".gemini" }
-func (g *geminiProvider) SkillsSubdir() string        { return "skills" }
-func (g *geminiProvider) CommandsSubdir() string      { return "commands" }
-func (g *geminiProvider) CommandFileExt() string      { return "toml" }
+// SupportsInlinePrompt is false: workers must always run in the interactive TUI
+// rather than being launched with a baked-in prompt arg. jeff pastes the initial
+// prompt after launch (via the Ink-aware bracketed-paste path in lifecycle.go).
+func (g *geminiProvider) SupportsInlinePrompt() bool { return false }
+func (g *geminiProvider) ConfigDir() string          { return ".gemini" }
+func (g *geminiProvider) SkillsSubdir() string       { return "skills" }
+func (g *geminiProvider) CommandsSubdir() string     { return "commands" }
+func (g *geminiProvider) CommandFileExt() string     { return "toml" }
 
 func (g *geminiProvider) ContextFileAliases() []string {
 	return []string{"GEMINI.md"}

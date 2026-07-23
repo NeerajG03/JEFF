@@ -15,8 +15,8 @@ func init() {
 	RegisterProvider(&opencodeProvider{})
 }
 
-func (o *opencodeProvider) Name() AgentTool    { return AgentOpenCode }
-func (o *opencodeProvider) Command() string    { return "opencode" }
+func (o *opencodeProvider) Name() AgentTool { return AgentOpenCode }
+func (o *opencodeProvider) Command() string { return "opencode" }
 
 func (o *opencodeProvider) BuildLaunchArgs(opts LaunchOpts) []string {
 	args := []string{"--auto"}
@@ -40,11 +40,14 @@ func (o *opencodeProvider) BuildCurateArgs(prompt string) []string {
 	return []string{"run", "--auto", prompt}
 }
 
-func (o *opencodeProvider) SupportsInlinePrompt() bool { return true }
-func (o *opencodeProvider) ConfigDir() string           { return ".opencode" }
-func (o *opencodeProvider) SkillsSubdir() string        { return "skills" }
-func (o *opencodeProvider) CommandsSubdir() string      { return "commands" }
-func (o *opencodeProvider) CommandFileExt() string      { return "md" }
+// SupportsInlinePrompt is false: workers must always run in the interactive TUI
+// rather than being launched with a baked-in --prompt. jeff pastes the initial
+// prompt after launch (see lifecycle.go).
+func (o *opencodeProvider) SupportsInlinePrompt() bool   { return false }
+func (o *opencodeProvider) ConfigDir() string            { return ".opencode" }
+func (o *opencodeProvider) SkillsSubdir() string         { return "skills" }
+func (o *opencodeProvider) CommandsSubdir() string       { return "commands" }
+func (o *opencodeProvider) CommandFileExt() string       { return "md" }
 func (o *opencodeProvider) ContextFileAliases() []string { return []string{"AGENTS.md"} }
 
 func (o *opencodeProvider) EnsureHomeDirs(home string) error {

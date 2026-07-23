@@ -27,9 +27,6 @@ func (f *fakeProvider) DoctorDeps() []DoctorDep {
 func (f *fakeProvider) EnsureHomeDirs(home string) error    { return nil }
 func (f *fakeProvider) WriteHomeDefaults(home string) error { return nil }
 func (f *fakeProvider) HookDeliveryKey() string             { return "fake" }
-func (f *fakeProvider) InstallPersonaAgent(targetDir, name, description, model, prompt string) error {
-	return nil
-}
 
 func TestProviderRegistryExtensibility(t *testing.T) {
 	// 1. Register fake

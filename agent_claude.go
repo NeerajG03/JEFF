@@ -94,8 +94,6 @@ func (c *claudeProvider) WriteHomeDefaults(home string) error {
 
 func (c *claudeProvider) HookDeliveryKey() string { return "claude" }
 
-func (c *claudeProvider) InstallPersonaAgent(_, _, _, _, _ string) error { return nil }
-
 // writeIfNotExists writes content to path only if the file doesn't already exist.
 func writeIfNotExists(path, content string) {
 	if _, err := os.Stat(path); err == nil {

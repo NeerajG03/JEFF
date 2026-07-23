@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -78,7 +77,7 @@ func (o *opencodeProvider) DoctorDeps() []DoctorDep {
 }
 
 func (o *opencodeProvider) EnsureHomeDirs(home string) error {
-	for _, dir := range []string{"agents", "commands", "plugins", "skills"} {
+	for _, dir := range []string{"commands", "plugins", "skills"} {
 		if err := os.MkdirAll(filepath.Join(home, ".opencode", dir), 0o755); err != nil {
 			return err
 		}
@@ -108,37 +107,4 @@ func (o *opencodeProvider) HookDeliveryKey() string { return "opencode" }
 func isOpenCodeModel(model string) bool {
 	provider, modelID, ok := strings.Cut(model, "/")
 	return ok && provider != "" && modelID != ""
-}
-
-// InstallPersonaAgent writes a task/home-local OpenCode agent definition.
-// The file is managed by JEFF but existing files are preserved so users can
-// customize a persona without an update unexpectedly overwriting it.
-func (o *opencodeProvider) InstallPersonaAgent(targetDir, name, description, model, prompt string) error {
-	if name == "" || prompt == "" {
-		return nil
-	}
-	if description == "" {
-		description = name + " persona"
-	}
-	var content strings.Builder
-	content.WriteString("---\n")
-	fmt.Fprintf(&content, "description: %s\n", strconv.Quote(description))
-	content.WriteString("mode: all\n")
-	if isOpenCodeModel(model) {
-		fmt.Fprintf(&content, "model: %s\n", model)
-	}
-	content.WriteString("---\n\n")
-	content.WriteString(prompt)
-	if !strings.HasSuffix(prompt, "\n") {
-		content.WriteByte('\n')
-	}
-
-	path := filepath.Join(targetDir, ".opencode", "agents", name+".md")
-	if _, err := os.Stat(path); err == nil {
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create OpenCode agents dir: %w", err)
-	}
-	return os.WriteFile(path, []byte(content.String()), 0o644)
 }

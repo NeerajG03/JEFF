@@ -103,10 +103,6 @@ type AgentProvider interface {
 
 	// HookDeliveryKey returns the key used to look up the hook Delivery for this agent.
 	HookDeliveryKey() string
-
-	// InstallPersonaAgent writes a provider-native persona agent definition.
-	// Providers without native persona agents should leave this as a no-op.
-	InstallPersonaAgent(targetDir, name, description, model, prompt string) error
 }
 
 var (

@@ -105,5 +105,3 @@ func (g *geminiProvider) WriteHomeDefaults(home string) error {
 }
 
 func (g *geminiProvider) HookDeliveryKey() string { return "gemini" }
-
-func (g *geminiProvider) InstallPersonaAgent(_, _, _, _, _ string) error { return nil }

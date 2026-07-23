@@ -330,14 +330,13 @@ func Stop(store *Store, taskID string) error {
 
 	target := SessionTarget(sess.TmuxSession, sess.WindowName)
 
-	// Send interrupt to stop the agent.
+	// Send interrupt to stop the agent, but NEVER kill the window. The worker's
+	// tmux window is deliberately left open for inspection after a stop (gig-6c1c);
+	// combined with the `remain-on-exit` option set at window creation, the pane
+	// survives even if the interrupt causes the agent process to exit. Explicit
+	// teardown happens only via cleanup/done, not worker-stop.
 	if HasWindowInSession(sess.TmuxSession, sess.WindowName) {
 		_ = SendInterrupt(target)
-		// Give the agent a moment to exit gracefully.
-		time.Sleep(3 * time.Second)
-		if HasWindowInSession(sess.TmuxSession, sess.WindowName) {
-			_ = KillWindow(target)
-		}
 	}
 
 	return store.UpdateStatus(taskID, "stopped")

@@ -340,6 +340,7 @@ INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // ""')
 
 if [ -z "$COMMAND" ]; then
+  echo '{}'
   exit 0
 fi
 
@@ -353,6 +354,8 @@ if echo "$COMMAND" | grep -qE ` + shellQuote(combined) + `; then
       additionalContext: "You just completed a significant action. Consider running jeff checkpoint --done ... --next ... to save a progress snapshot for the user."
     }
   }'
+else
+  echo '{}'
 fi
 `
 }

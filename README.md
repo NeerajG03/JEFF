@@ -139,6 +139,7 @@ jeff dashboard                          # interactive TUI (auto-refreshes every 
 | `jeff ship [--repo] [--draft] [--dry-run]` | Push branches and create PRs |
 | `jeff done [id] [--reason] [--force]` | Close task and clean up workspace |
 | `jeff status [--all]` | Overview of active tasks and workspaces |
+| `jeff stats [--since 30d] [--persona] [--repo] [--outcome] [--json]` | Observability over gig events and attributes |
 | `jeff open [id]` | Open workspace in IDE |
 | `jeff doctor` | Check required and optional dependencies |
 | `jeff notify` | Surface a macOS system notification |

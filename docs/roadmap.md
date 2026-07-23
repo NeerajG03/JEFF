@@ -356,7 +356,9 @@ This isn't a hard limit — it's a behavioral nudge injected via the hook system
 
 ---
 
-## Phase 3: Observability (`jeff stats`)
+## Phase 3: Observability (`jeff stats`) (Shipped in part)
+
+*Note: The `jeff stats` command and core data layer are shipped. Metrics like first-ship rate and rejection correlation are awaiting a reject flow to populate the `rejection_count` attribute.*
 
 ### The Data Layer
 

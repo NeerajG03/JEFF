@@ -88,6 +88,19 @@ jeff status            # show active tasks only
 jeff status --all      # include completed/stale workspaces
 ```
 
+### Stats
+
+Query-time statistics and observability computed from gig task events and attributes.
+
+```bash
+jeff stats                         # show stats for the last 30 days
+jeff stats --since 7d              # filter by last 7 days (also accepts Nd, e.g., 14d)
+jeff stats --persona jenko         # filter by persona
+jeff stats --repo backend          # filter by repo
+jeff stats --outcome done          # filter by outcome
+jeff stats --json                  # output raw JSON data
+```
+
 ## Configuration
 
 ### Agent Tool

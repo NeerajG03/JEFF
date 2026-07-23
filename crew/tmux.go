@@ -19,9 +19,10 @@ const DashboardWindowName = "dashboard"
 func EnsureTmux() error {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		hint := "install tmux"
-		if runtime.GOOS == "darwin" {
+		switch runtime.GOOS {
+		case "darwin":
 			hint = "brew install tmux"
-		} else if runtime.GOOS == "linux" {
+		case "linux":
 			hint = "apt/dnf install tmux"
 		}
 		return fmt.Errorf("tmux not found in PATH — required for crew management (install: %s)", hint)

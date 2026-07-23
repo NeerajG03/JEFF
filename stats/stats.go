@@ -90,22 +90,22 @@ func Collect(store *gig.Store, opts Options) (*Report, error) {
 
 		var repos []string
 		if raw, ok := attrMap[jeff.AttrRepos]; ok {
-			json.Unmarshal([]byte(raw), &repos)
+			_ = json.Unmarshal([]byte(raw), &repos)
 		}
 
 		var prs map[string]string
 		if raw, ok := attrMap[jeff.AttrPRURLs]; ok {
-			json.Unmarshal([]byte(raw), &prs)
+			_ = json.Unmarshal([]byte(raw), &prs)
 		}
 
 		var skillsLoaded []string
 		if raw, ok := attrMap[jeff.AttrSkillsLoaded]; ok {
-			json.Unmarshal([]byte(raw), &skillsLoaded)
+			_ = json.Unmarshal([]byte(raw), &skillsLoaded)
 		}
 
 		var memoryLoaded []string
 		if raw, ok := attrMap[jeff.AttrMemoryLoaded]; ok {
-			json.Unmarshal([]byte(raw), &memoryLoaded)
+			_ = json.Unmarshal([]byte(raw), &memoryLoaded)
 		}
 
 		checkpoints, err := store.ListCheckpoints(t.ID)

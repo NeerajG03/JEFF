@@ -291,7 +291,7 @@ func sweepRetention(home string) {
 
 	var nTrans, nLogs int
 
-	filepath.WalkDir(transcriptsRoot, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(transcriptsRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}

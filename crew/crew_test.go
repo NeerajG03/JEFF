@@ -719,9 +719,11 @@ func withDeadPaneFakeTmux(t *testing.T, windowNames []string) func() []string {
 func TestRefreshDeadPaneDetectsDeadWorkers(t *testing.T) {
 	store := tempStore(t)
 
-	// Seed two running sessions.
-	runningSession(t, store, "gig-dpd1", "jeff")
-	runningSession(t, store, "gig-dpd2", "jeff")
+	// Seed two running sessions whose heartbeats are STALE (beyond the grace
+	// period). A dead pane alone is not enough to fail a worker — the worker
+	// must also have gone silent past DefaultStallThreshold. See gig-0c51.
+	staleRunningSession(t, store, "gig-dpd1", "jeff")
+	staleRunningSession(t, store, "gig-dpd2", "jeff")
 
 	// Fake tmux reports both windows exist but all panes are dead.
 	_ = withDeadPaneFakeTmux(t, []string{"gig-dpd1", "gig-dpd2"})
@@ -797,6 +799,214 @@ func TestRefreshLiveWindowTouchesSession(t *testing.T) {
 	}
 	if !s.LastSeen.After(now.Add(-30 * time.Second)) {
 		t.Errorf("LastSeen not updated: %v", s.LastSeen)
+	}
+}
+
+// installCaseTmux writes a fake tmux binary whose behaviour is driven by a
+// `case "$1" in ... esac` body (the shell snippet between `in` and `esac`) and
+// puts it on PATH for the test. It lets gig-0c51 regression tests simulate a
+// transient probe error, a listing error, or a missing window deterministically.
+func installCaseTmux(t *testing.T, body string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "tmux")
+	script := "#!/bin/sh\ncase \"$1\" in\n" + body + "esac\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatalf("create fake tmux binary: %v", err)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+}
+
+// gig-0c51: crew.Refresh() used to false-fail live, actively-working workers on
+// a single transient tmux-probe misfire. The tests below lock in the fix:
+// a probe ERROR is never death, a fresh heartbeat vetoes the failed transition,
+// and a window-listing error skips the session instead of mass-failing it.
+
+// TestRefreshProbeErrorNeverFails verifies that when the window exists but the
+// #{pane_dead} probe ERRORS (tmux busy / transient), the worker is NOT failed —
+// the error means "unknown, not dead".
+func TestRefreshProbeErrorNeverFails(t *testing.T) {
+	store := tempStore(t)
+	// Fresh worker: window exists, but display-message exits non-zero (probe error).
+	runningSession(t, store, "gig-pe1", "jeff")
+	installCaseTmux(t, "  list-windows)\n    echo \"gig-pe1\"\n    ;;\n  display-message)\n    exit 1\n    ;;\n")
+
+	if err := Refresh(store, nil); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	s, err := store.GetSession("gig-pe1")
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if s.Status != "running" {
+		t.Errorf("status = %q, want running (a probe error must not fail a worker)", s.Status)
+	}
+}
+
+// TestRefreshFreshHeartbeatVetoesFailure verifies that even when the window is
+// gone, a worker with a recent heartbeat (last_seen within the grace period) is
+// NOT failed — the fresh heartbeat proves it is alive and working.
+func TestRefreshFreshHeartbeatVetoesFailure(t *testing.T) {
+	store := tempStore(t)
+	// Fresh worker (last_seen = now); tmux reports NO windows (window gone).
+	runningSession(t, store, "gig-fh1", "jeff")
+	installCaseTmux(t, "  list-windows)\n    ;;\n")
+
+	if err := Refresh(store, nil); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	s, err := store.GetSession("gig-fh1")
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if s.Status != "running" {
+		t.Errorf("status = %q, want running (a fresh heartbeat must veto the failed transition)", s.Status)
+	}
+}
+
+// TestRefreshFailsGenuinelyGoneWorker verifies the true-positive path still
+// works: a worker whose window is gone AND whose heartbeat is stale (beyond the
+// grace period) IS marked failed.
+func TestRefreshFailsGenuinelyGoneWorker(t *testing.T) {
+	store := tempStore(t)
+	staleRunningSession(t, store, "gig-gone1", "jeff")
+	installCaseTmux(t, "  list-windows)\n    ;;\n")
+
+	if err := Refresh(store, nil); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	s, err := store.GetSession("gig-gone1")
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if s.Status != "failed" {
+		t.Errorf("status = %q, want failed (genuinely gone + stale must fail)", s.Status)
+	}
+}
+
+// TestRefreshListingErrorLeavesWorkersUntouched verifies that when
+// ListWindowsInSession ERRORS, Refresh skips that session and leaves its workers
+// untouched rather than treating the window map as empty and mass-failing them.
+func TestRefreshListingErrorLeavesWorkersUntouched(t *testing.T) {
+	store := tempStore(t)
+	// Stale worker — it WOULD be failed if the empty window map were trusted.
+	staleRunningSession(t, store, "gig-le1", "jeff")
+	// list-windows exits non-zero → ListWindowsInSession returns an error.
+	installCaseTmux(t, "  list-windows)\n    exit 1\n    ;;\n")
+
+	if err := Refresh(store, nil); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	s, err := store.GetSession("gig-le1")
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if s.Status != "running" {
+		t.Errorf("status = %q, want running (a listing error must leave workers untouched)", s.Status)
+	}
+}
+
+// ownedStaleSession seeds a stale running worker bound to an orchestrator.
+func ownedStaleSession(t *testing.T, store *Store, taskID, orchID string) {
+	t.Helper()
+	now := time.Now().UTC()
+	if err := store.PutSession(&Session{
+		TaskID:         taskID,
+		TmuxSession:    "jeff",
+		WindowName:     taskID,
+		TaskDir:        "/tmp",
+		Status:         "running",
+		OrchestratorID: orchID,
+		StartedAt:      now.Add(-2 * DefaultStallThreshold),
+		LastSeen:       now.Add(-2 * DefaultStallThreshold),
+	}); err != nil {
+		t.Fatalf("put session %s: %v", taskID, err)
+	}
+}
+
+// TestRefreshNotifiesOrchestratorOnFailure verifies that a worker owned by an
+// orchestrator that genuinely crosses into failed notifies its orchestrator
+// exactly once — and that a subsequent Refresh does not re-notify.
+func TestRefreshNotifiesOrchestratorOnFailure(t *testing.T) {
+	store := tempStore(t)
+	durableOrchestrator(t, store, "orch-1")
+	ownedStaleSession(t, store, "gig-own1", "orch-1")
+	installCaseTmux(t, "  list-windows)\n    ;;\n")
+
+	if err := Refresh(store, nil); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	s, err := store.GetSession("gig-own1")
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if s.Status != "failed" {
+		t.Fatalf("status = %q, want failed", s.Status)
+	}
+	msgs, err := store.PendingOrchestratorMessages("orch-1")
+	if err != nil {
+		t.Fatalf("PendingOrchestratorMessages: %v", err)
+	}
+	failedMsgs := 0
+	for _, m := range msgs {
+		if m.Type == "worker-failed" {
+			failedMsgs++
+			if !strings.Contains(m.Content, "gig-own1") {
+				t.Errorf("notification missing taskID: %q", m.Content)
+			}
+		}
+	}
+	if failedMsgs != 1 {
+		t.Fatalf("worker-failed notifications = %d, want 1", failedMsgs)
+	}
+
+	// A second Refresh must NOT re-notify: the worker is already failed (and is
+	// excluded from the active session list), so no new signal is produced.
+	if err := Refresh(store, nil); err != nil {
+		t.Fatalf("second Refresh: %v", err)
+	}
+	msgs, err = store.PendingOrchestratorMessages("orch-1")
+	if err != nil {
+		t.Fatalf("PendingOrchestratorMessages (2): %v", err)
+	}
+	failedMsgs = 0
+	for _, m := range msgs {
+		if m.Type == "worker-failed" {
+			failedMsgs++
+		}
+	}
+	if failedMsgs != 1 {
+		t.Errorf("worker-failed notifications after re-Refresh = %d, want 1 (no re-notify)", failedMsgs)
+	}
+}
+
+// TestRefreshNoOrchestratorNoNotification verifies that failing a worker with no
+// orchestrator produces no orchestrator notification.
+func TestRefreshNoOrchestratorNoNotification(t *testing.T) {
+	store := tempStore(t)
+	durableOrchestrator(t, store, "orch-2")
+	// Worker is stale and gone, but owned by NO orchestrator.
+	staleRunningSession(t, store, "gig-noorch1", "jeff")
+	installCaseTmux(t, "  list-windows)\n    ;;\n")
+
+	if err := Refresh(store, nil); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	s, err := store.GetSession("gig-noorch1")
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if s.Status != "failed" {
+		t.Fatalf("status = %q, want failed", s.Status)
+	}
+	msgs, err := store.PendingOrchestratorMessages("orch-2")
+	if err != nil {
+		t.Fatalf("PendingOrchestratorMessages: %v", err)
+	}
+	for _, m := range msgs {
+		if m.Type == "worker-failed" {
+			t.Errorf("unexpected worker-failed notification for orphan worker: %q", m.Content)
+		}
 	}
 }
 

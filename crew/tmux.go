@@ -277,14 +277,19 @@ func HasSession(name string) bool {
 
 // PaneIsDead reports whether the pane at the given target has exited.
 // With remain-on-exit on, the window persists but the pane shows a dead
-// status indicator instead of being destroyed. Returns true if the pane
-// cannot be probed (target doesn't exist, tmux not running, etc.).
-func PaneIsDead(target string) bool {
+// status indicator instead of being destroyed.
+//
+// It is tri-state: a probe error (target doesn't exist, tmux busy, a
+// transient failure) is NOT death — it returns (false, err) so callers can
+// treat the result as "unknown, not dead". Only a successful probe reporting
+// #{pane_dead}=="1" yields (true, nil). Never treat a probe error as death;
+// doing so false-fails live workers on a single transient tmux hiccup.
+func PaneIsDead(target string) (bool, error) {
 	out, err := tmuxOutput("display-message", "-t", target, "-p", "#{pane_dead}")
 	if err != nil {
-		return true
+		return false, err
 	}
-	return strings.TrimSpace(out) == "1"
+	return strings.TrimSpace(out) == "1", nil
 }
 
 // AttachToSession attaches to an arbitrary tmux session (not just "jeff").

@@ -16,6 +16,13 @@ import (
 // working immediately instead of sitting idle.
 const DefaultPrompt = "Read your task context using `gig show` for your task ID and begin working."
 
+// DefaultStallThreshold is the idle time (now - last_seen) after which a worker
+// is considered stalled. Refresh reuses it as a heartbeat grace period: a worker
+// whose window/pane looks gone is only marked failed once it has ALSO been silent
+// for longer than this — a fresh heartbeat vetoes the failed transition. This is
+// also the default for `jeff crew check-stalls --threshold`.
+const DefaultStallThreshold = 10 * time.Minute
+
 // isActiveStatus reports whether a session status means the worker may still be running.
 func isActiveStatus(status string) bool {
 	return status == "running" || status == "starting"
@@ -358,36 +365,89 @@ func Refresh(store *Store, isTaskClosed func(taskID string) bool) error {
 		return err
 	}
 
-	// Batch tmux lookups by session.
+	// Batch tmux lookups by session. If listing a session's windows ERRORS
+	// (tmux busy, transient failure), record it and SKIP every worker in that
+	// session this pass — do NOT treat the empty window map as "all windows
+	// gone" and mass-fail live workers. Their state is left untouched until a
+	// pass that can actually see the session.
 	sessionWindows := make(map[string]map[string]bool)
+	listFailed := make(map[string]bool)
 	for _, sess := range sessions {
 		if _, ok := sessionWindows[sess.TmuxSession]; !ok {
-			sessionWindows[sess.TmuxSession] = make(map[string]bool)
 			windows, err := ListWindowsInSession(sess.TmuxSession)
-			if err == nil {
-				for _, w := range windows {
-					sessionWindows[sess.TmuxSession][w] = true
-				}
+			if err != nil {
+				listFailed[sess.TmuxSession] = true
+				continue
+			}
+			set := make(map[string]bool)
+			for _, w := range windows {
+				set[w] = true
+			}
+			sessionWindows[sess.TmuxSession] = set
+		}
+	}
+
+	// A worker is only failed when it looks dead/gone AND has been silent past
+	// the heartbeat grace period. A fresh heartbeat (recent last_seen) means the
+	// agent is alive and working, so it vetoes any failed transition regardless
+	// of what a single transient tmux probe reports.
+	now := time.Now().UTC()
+	hasFreshHeartbeat := func(sess *Session) bool {
+		return now.Sub(sess.LastSeen) <= DefaultStallThreshold
+	}
+	// markFailed transitions a worker to failed, or to done when its task is
+	// closed. The failed transition is vetoed by a fresh heartbeat. reason
+	// describes why (dead pane / window gone) for the orchestrator notification.
+	markFailed := func(sess *Session, reason string) {
+		if isTaskClosed != nil && isTaskClosed(sess.TaskID) {
+			if err := store.UpdateStatus(sess.TaskID, "done"); err != nil {
+				errs = append(errs, fmt.Errorf("mark done %s: %w", sess.TaskID, err))
+			}
+			return
+		}
+		if hasFreshHeartbeat(sess) {
+			// Recent heartbeat — worker is alive; keep it and bump last_seen.
+			if err := store.TouchSession(sess.TaskID); err != nil {
+				errs = append(errs, fmt.Errorf("touch %s: %w", sess.TaskID, err))
+			}
+			return
+		}
+		if sess.Status == "failed" {
+			// Already failed — never re-notify on a subsequent pass.
+			return
+		}
+		if err := store.UpdateStatus(sess.TaskID, "failed"); err != nil {
+			errs = append(errs, fmt.Errorf("mark failed %s: %w", sess.TaskID, err))
+			return
+		}
+		// Genuine open->failed transition. Notify the owning orchestrator exactly
+		// once so it is not left waiting on a dead worker. No-op when the worker
+		// has no orchestrator; de-duplicated by signal type against re-notifying.
+		if sess.OrchestratorID != "" {
+			if err := SignalWorkerFailed(store, sess.TaskID, reason); err != nil {
+				errs = append(errs, fmt.Errorf("notify orchestrator of failed %s: %w", sess.TaskID, err))
 			}
 		}
 	}
 
 	for _, sess := range sessions {
+		if listFailed[sess.TmuxSession] {
+			// Couldn't enumerate this session's windows this pass — leave
+			// every worker in it untouched rather than false-failing them.
+			continue
+		}
 		windows := sessionWindows[sess.TmuxSession]
 		target := SanitizeWindowName(sess.WindowName)
 		if windows[target] || windows[sess.WindowName] {
 			// Window exists — check if the pane is dead (remain-on-exit
-			// keeps the window open after the process exits).
-			if PaneIsDead(SessionTarget(sess.TmuxSession, sess.WindowName)) {
-				if isTaskClosed != nil && isTaskClosed(sess.TaskID) {
-					if err := store.UpdateStatus(sess.TaskID, "done"); err != nil {
-						errs = append(errs, fmt.Errorf("mark done %s: %w", sess.TaskID, err))
-					}
-				} else {
-					if err := store.UpdateStatus(sess.TaskID, "failed"); err != nil {
-						errs = append(errs, fmt.Errorf("mark failed %s: %w", sess.TaskID, err))
-					}
-				}
+			// keeps the window open after the process exits). A probe error is
+			// "unknown, not dead": never fail a worker on a transient hiccup.
+			dead, err := PaneIsDead(SessionTarget(sess.TmuxSession, sess.WindowName))
+			if err != nil {
+				dead = false
+			}
+			if dead {
+				markFailed(sess, "dead pane")
 			} else {
 				if err := store.TouchSession(sess.TaskID); err != nil {
 					errs = append(errs, fmt.Errorf("touch %s: %w", sess.TaskID, err))
@@ -396,16 +456,8 @@ func Refresh(store *Store, isTaskClosed func(taskID string) bool) error {
 			continue
 		}
 
-		// Window is gone — determine why.
-		if isTaskClosed != nil && isTaskClosed(sess.TaskID) {
-			if err := store.UpdateStatus(sess.TaskID, "done"); err != nil {
-				errs = append(errs, fmt.Errorf("mark done %s: %w", sess.TaskID, err))
-			}
-		} else {
-			if err := store.UpdateStatus(sess.TaskID, "failed"); err != nil {
-				errs = append(errs, fmt.Errorf("mark failed %s: %w", sess.TaskID, err))
-			}
-		}
+		// Window is gone — fail (or mark done) subject to the heartbeat grace.
+		markFailed(sess, "window gone")
 	}
 
 	// Sync orchestrator state: mark stopped if tmux session is gone.
@@ -493,7 +545,13 @@ var windowIsLive = func(sessionName, windowName string) bool {
 	if !HasWindowInSession(sessionName, windowName) {
 		return false
 	}
-	return !PaneIsDead(SessionTarget(sessionName, windowName))
+	dead, err := PaneIsDead(SessionTarget(sessionName, windowName))
+	if err != nil {
+		// Can't confirm liveness — treat as not live so we never blindly
+		// Ctrl-C a pane we couldn't probe.
+		return false
+	}
+	return !dead
 }
 
 // FrameToWorker renders the attributed line typed into a worker's pane (and
@@ -585,6 +643,17 @@ func SignalOrchestrator(store *Store, taskID, message string) error {
 func SignalWorkerStopped(store *Store, taskID string) error {
 	message := "Agent has stopped working — the tmux window is still active."
 	return signalOrchestrator(store, taskID, message, "worker-stop", true)
+}
+
+// SignalWorkerFailed notifies the owning orchestrator that a worker has crossed
+// into the failed state (its pane died or its window is gone, past the heartbeat
+// grace period), so the orchestrator is not left silently waiting on a dead
+// worker. De-duplicated by signal type so repeated Refresh passes never
+// re-notify for the same worker. reason describes the failure (e.g. "dead pane",
+// "window gone"). No-op when the worker has no orchestrator.
+func SignalWorkerFailed(store *Store, taskID, reason string) error {
+	message := fmt.Sprintf("Worker %s failed (%s) and is no longer running.", taskID, reason)
+	return signalOrchestrator(store, taskID, message, "worker-failed", true)
 }
 
 // signalOrchestrator is the shared implementation for durable worker→orchestrator

@@ -1234,7 +1234,7 @@ func crewCheckStallsCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&threshold, "threshold", "10m", "Idle time before a worker is considered stalled")
+	cmd.Flags().StringVar(&threshold, "threshold", crew.DefaultStallThreshold.String(), "Idle time before a worker is considered stalled")
 	return cmd
 }
 

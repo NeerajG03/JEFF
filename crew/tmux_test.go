@@ -261,7 +261,7 @@ func TestSendCommandViaBuffer(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := withFakeTmux(t)
 
-			if err := SendCommandViaBuffer(tc.target, tc.command); err != nil {
+			if err := SendCommandViaBuffer(tc.target, tc.command, 500*time.Millisecond); err != nil {
 				t.Fatalf("SendCommandViaBuffer(%q): %v", tc.command, err)
 			}
 
@@ -397,14 +397,14 @@ func TestDivertInterruptSettleDelay(t *testing.T) {
 		agent string
 		want  time.Duration
 	}{
-		{"gemini", geminiInterruptSettleDelay},
-		{"claude", defaultInterruptSettleDelay},
-		{"", defaultInterruptSettleDelay},
-		{"other-agent", defaultInterruptSettleDelay},
+		{"gemini", 4 * time.Second},
+		{"claude", 2 * time.Second},
+		{"", 2 * time.Second},
+		{"other-agent", 2 * time.Second},
 	}
 	for _, tc := range cases {
 		t.Run(tc.agent, func(t *testing.T) {
-			got := interruptSettleDelay(tc.agent)
+			got := providerTiming(tc.agent).InterruptSettle
 			if got != tc.want {
 				t.Errorf("interruptSettleDelay(%q) = %v, want %v", tc.agent, got, tc.want)
 			}
@@ -543,8 +543,8 @@ func TestSendCommandWithDelayGeminiCase(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := withFakeTmux(t)
 
-			// Use geminiSendDelay to mirror what sendCommandForSession does.
-			if err := SendCommandWithDelay(tc.target, tc.command, geminiSendDelay); err != nil {
+			// Use 500 * time.Millisecond to mirror what sendCommandForSession does.
+			if err := SendCommandWithDelay(tc.target, tc.command, 500*time.Millisecond); err != nil {
 				t.Fatalf("SendCommandWithDelay(%q): %v", tc.command, err)
 			}
 

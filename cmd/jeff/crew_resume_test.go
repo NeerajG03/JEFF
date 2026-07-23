@@ -56,10 +56,10 @@ func TestBuildResumeOpts(t *testing.T) {
 			wantModel:     "haiku",
 		},
 		{
-			name:          "Nil session fallback",
-			nilSession:    true,
-			wantAgent:     "claude",
-			wantModel:     "opus",
+			name:       "Nil session fallback",
+			nilSession: true,
+			wantAgent:  "claude",
+			wantModel:  "opus",
 		},
 	}
 
@@ -76,8 +76,7 @@ func TestBuildResumeOpts(t *testing.T) {
 					Model: tt.existingModel,
 				}
 			}
-				agentTool, model = resolveResumeAgentModel(existing, agentTool, model)
-
+			agentTool, model = resolveResumeAgentModel(existing, agentTool, model)
 
 			if string(agentTool) != tt.wantAgent {
 				t.Errorf("agentTool = %q, want %q", agentTool, tt.wantAgent)

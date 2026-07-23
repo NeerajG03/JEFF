@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // opencodeProvider implements AgentProvider for OpenCode.
@@ -53,6 +54,25 @@ func (o *opencodeProvider) SkillsSubdir() string         { return "skills" }
 func (o *opencodeProvider) CommandsSubdir() string       { return "commands" }
 func (o *opencodeProvider) CommandFileExt() string       { return "md" }
 func (o *opencodeProvider) ContextFileAliases() []string { return []string{"AGENTS.md"} }
+
+func (o *opencodeProvider) ContextFileName() string { return "CLAUDE.md" }
+func (o *opencodeProvider) MemorySuppressEnv() map[string]string {
+	return nil
+}
+func (o *opencodeProvider) SendTiming() SendTiming {
+	return SendTiming{
+		PasteDelay:        100 * time.Millisecond,
+		InterruptSettle:   2 * time.Second,
+		UseBracketedPaste: false,
+	}
+}
+func (o *opencodeProvider) OwnsModel(model string) bool { return false }
+func (o *opencodeProvider) ModelExamples() []string {
+	return []string{"provider/model"}
+}
+func (o *opencodeProvider) DoctorDeps() []DoctorDep {
+	return []DoctorDep{{Name: "opencode", Required: true}}
+}
 
 func (o *opencodeProvider) EnsureHomeDirs(home string) error {
 	for _, dir := range []string{"agents", "commands", "plugins", "skills"} {

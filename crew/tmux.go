@@ -100,7 +100,7 @@ func SendCommandWithDelay(target, command string, delay time.Duration) error {
 // SendCommandViaBuffer writes the command to a temporary tmux buffer and pastes
 // it into the target pane using bracketed paste mode (-p). The buffer is deleted
 // (-d) immediately after pasting to prevent leaks and cross-worker race conditions.
-func SendCommandViaBuffer(target, command string) error {
+func SendCommandViaBuffer(target, command string, pasteDelay time.Duration) error {
 	bufName := fmt.Sprintf("jeff-send-%d", os.Getpid())
 	cmd := exec.Command("tmux", "load-buffer", "-b", bufName, "-")
 	cmd.Stdin = strings.NewReader(command)
@@ -111,7 +111,7 @@ func SendCommandViaBuffer(target, command string) error {
 	if err := tmuxRun("paste-buffer", "-b", bufName, "-t", target, "-p", "-d"); err != nil {
 		return err
 	}
-	time.Sleep(geminiSendDelay)
+	time.Sleep(pasteDelay)
 	return tmuxRun("send-keys", "-t", target, "Enter")
 }
 

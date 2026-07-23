@@ -74,7 +74,6 @@ type taskCreatedMsg struct {
 	task *gig.Task
 }
 
-
 // New creates a new dashboard model.
 func New(crewStore *crew.Store, gigStore *gig.Store) Model {
 	return Model{
@@ -295,7 +294,6 @@ func (m Model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.input.input, cmd = m.input.input.Update(msg)
 	return m, cmd
 }
-
 
 // --- Create form handling ---
 

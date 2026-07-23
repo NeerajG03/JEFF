@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/NeerajG03/JEFF"
 	"strings"
 	"time"
 
@@ -86,29 +87,17 @@ func buildAgentCmd(launchCmd, agent, model, resumeSessionID string, skipPermissi
 	if launchCmd != "" {
 		return launchCmd
 	}
-	// Legacy fallback.
-	if agent == "" {
-		agent = "claude"
+
+	p := jeff.GetProvider(jeff.AgentTool(agent))
+	if p == nil {
+		p = jeff.GetProvider(jeff.AgentClaudeCode) // legacy rows: preserve old default
 	}
-	cmd := agent
-	if skipPermissions {
-		if agent == "opencode" {
-			cmd += " --auto"
-		} else {
-			cmd += " --dangerously-skip-permissions"
-		}
-	}
-	if model != "" {
-		cmd += " --model " + model
-	}
-	if resumeSessionID != "" {
-		if agent == "opencode" {
-			cmd += " --session " + resumeSessionID
-		} else {
-			cmd += " --resume " + resumeSessionID
-		}
-	}
-	return cmd
+	parts := append([]string{p.Command()}, p.BuildLaunchArgs(jeff.LaunchOpts{
+		Model:           model,
+		ResumeSessionID: resumeSessionID,
+		SkipPermissions: skipPermissions,
+	})...)
+	return strings.Join(parts, " ")
 }
 
 // StartOpts configures a new crew session.
@@ -455,30 +444,19 @@ func StopOrchestrator(store *Store, orchestratorID string) error {
 	return store.UpdateOrchestratorStatus(orchestratorID, "stopped")
 }
 
-// geminiSendDelay is the paste-to-Enter delay for Gemini CLI workers.
-// Gemini's Ink/React TUI processes keyboard input asynchronously; 100 ms (the
-// default in SendCommand) is not enough for the pasted text to be committed to
-// the input buffer before the Enter keystroke arrives, causing the Enter to be
-// dropped.  500 ms is reliably sufficient.  See gig-906c.
-const geminiSendDelay = 500 * time.Millisecond
-
-// geminiInterruptSettleDelay is the post-C-c settle time for Gemini CLI workers.
-// Gemini's Ink/React TUI takes longer than 2 s to fully transition out of the
-// interrupted state.  During that window, the input field accepts text but routes
-// it to the "Queued" buffer rather than live input — so the divert message never
-// starts a fresh turn.  4 s is reliably sufficient for the TUI to reach an idle
-// input state before the divert message is pasted.  See gig-c6dd.
-const geminiInterruptSettleDelay = 4 * time.Second
-
-// defaultInterruptSettleDelay is the post-C-c settle time for non-Gemini agents.
-const defaultInterruptSettleDelay = 2 * time.Second
-
 // interruptSettleDelay returns the post-C-c settle duration for the given agent.
-func interruptSettleDelay(agent string) time.Duration {
-	if agent == "gemini" {
-		return geminiInterruptSettleDelay
+
+func providerTiming(agent string) jeff.SendTiming {
+	p := jeff.GetProvider(jeff.AgentTool(agent))
+	if p != nil {
+		return p.SendTiming()
 	}
-	return defaultInterruptSettleDelay
+	// default fallback for unknown agent
+	return jeff.SendTiming{
+		PasteDelay:        100 * time.Millisecond,
+		InterruptSettle:   2 * time.Second,
+		UseBracketedPaste: false,
+	}
 }
 
 // sendCommandForSession sends a command to a tmux target, routing through the
@@ -486,11 +464,9 @@ func interruptSettleDelay(agent string) time.Duration {
 // bracketed-paste + Enter) so Ink's usePaste hook receives the message as a
 // single block. All other agents use the standard SendCommand path unchanged.
 func sendCommandForSession(target, command, agent string) error {
-	if agent == "gemini" || agent == "claude" {
-		return SendCommandViaBuffer(target, command)
-	}
-	if agent == "opencode" {
-		return SendCommand(target, command)
+	timing := providerTiming(agent)
+	if timing.UseBracketedPaste {
+		return SendCommandViaBuffer(target, command, timing.PasteDelay)
 	}
 	return SendCommand(target, command)
 }
@@ -547,7 +523,7 @@ func Send(store *Store, taskID, content string, interrupt bool) (*Message, error
 		if err := SendInterrupt(target); err != nil {
 			return nil, fmt.Errorf("interrupt: %w", err)
 		}
-		time.Sleep(interruptSettleDelay(sess.Agent))
+		time.Sleep(providerTiming(sess.Agent).InterruptSettle)
 	}
 
 	// The delivery: type the attributed content into the pane. On success, ack

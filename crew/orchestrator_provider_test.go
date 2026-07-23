@@ -12,13 +12,13 @@ func TestOrchestratorAgentModelRoundTrip(t *testing.T) {
 	store := tempStore(t)
 
 	orch := &Orchestrator{
-		ID:        "orch-oc",
+		ID:          "orch-oc",
 		TmuxSession: "jeff-oc",
 		TmuxWindow:  "orchestrator",
-		Agent:     "opencode",
-		Model:     "opencode/deepseek-v4-flash-free",
-		StartedAt: time.Now().UTC(),
-		Status:    "running",
+		Agent:       "opencode",
+		Model:       "opencode/deepseek-v4-flash-free",
+		StartedAt:   time.Now().UTC(),
+		Status:      "running",
 	}
 	if err := store.PutOrchestrator(orch); err != nil {
 		t.Fatalf("PutOrchestrator: %v", err)

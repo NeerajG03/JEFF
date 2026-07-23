@@ -6,6 +6,7 @@ package memory
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/NeerajG03/JEFF"
 	"os"
 	"path/filepath"
 )
@@ -20,16 +21,15 @@ import (
 // into a settings.json "env" block.
 func EnvOverrides(persona, agentKind string) map[string]string {
 	m := make(map[string]string)
-	switch agentKind {
-	case "claude":
-		m["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
-	case "gemini":
-		m["GEMINI_NO_AUTO_MEMORY"] = "1"
+	p := jeff.GetProvider(jeff.AgentTool(agentKind))
+	if p != nil {
+		for k, v := range p.MemorySuppressEnv() {
+			m[k] = v
+		}
 	}
 	if persona == "marlowe" {
 		m["JEFF_MEMORY_CAN_ADD"] = "1"
 	} else {
-		// Explicitly unset so the var is not inherited from a parent marlowe session.
 		m["JEFF_MEMORY_CAN_ADD"] = ""
 	}
 	return m
@@ -41,10 +41,14 @@ func EnvOverrides(persona, agentKind string) map[string]string {
 // Claude: writes CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 to .claude/settings.json env block.
 // Gemini: writes memory.autoload=false to .gemini/settings.json.
 func ApplySettings(taskDir, agentKind string) error {
-	switch agentKind {
-	case "claude":
+	p := jeff.GetProvider(jeff.AgentTool(agentKind))
+	if p == nil {
+		return nil
+	}
+	switch p.Name() {
+	case jeff.AgentClaudeCode:
 		return applyClaudeSuppress(taskDir)
-	case "gemini":
+	case jeff.AgentGemini:
 		return applyGeminiSuppress(taskDir)
 	default:
 		return nil

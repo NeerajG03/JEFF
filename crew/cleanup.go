@@ -144,4 +144,3 @@ func Cleanup(store *Store, jeffHome string, dryRun bool) (*CleanupResult, error)
 
 	return result, nil
 }
-

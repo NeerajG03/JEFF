@@ -75,7 +75,7 @@ func configEnumCmd[T ~string](use, short string, validNames []string,
 
 func configAgentCmd() *cobra.Command {
 	return configEnumCmd[jeff.AgentTool](
-		"agent [claude|opencode]", "Get or set the preferred agent tool",
+		fmt.Sprintf("agent [%s]", strings.Join(jeff.AgentTool("").ValidNames(), "|")), "Get or set the preferred agent tool",
 		jeff.AgentTool("").ValidNames(),
 		func() string { return string(cfg.Agent) },
 		func(v string) { cfg.Agent = jeff.AgentTool(v) },

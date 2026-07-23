@@ -15,7 +15,7 @@ func openCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "open [gig-id]",
 		Short: "Open a task workspace (or JEFF_HOME) in your configured IDE",
-		Args: cobra.MaximumNArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ide := cfg.IDE
 			if ide == "" {

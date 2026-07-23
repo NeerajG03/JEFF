@@ -320,6 +320,12 @@ func TestBuildAgentCmd(t *testing.T) {
 		{"", "haiku", "", "claude --dangerously-skip-permissions --model haiku"},
 		{"claude", "", "abc123", "claude --dangerously-skip-permissions --resume abc123"},
 		{"claude", "sonnet", "abc123", "claude --dangerously-skip-permissions --model sonnet --resume abc123"},
+		{"gemini", "", "", "gemini --approval-mode=yolo"},
+		{"gemini", "flash", "", "gemini --approval-mode=yolo -m gemini-3.5-flash"},
+		{"gemini", "", "abc123", "gemini --approval-mode=yolo --resume latest"},
+		{"opencode", "", "", "opencode --auto"},
+		{"opencode", "deepseek/deepseek-r1", "", "opencode --auto --model deepseek/deepseek-r1"},
+		{"opencode", "", "abc123", "opencode --auto --session abc123"},
 	}
 	for _, tc := range tests {
 		got := buildAgentCmd("", tc.agent, tc.model, tc.resumeID, true)

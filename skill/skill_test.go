@@ -174,10 +174,10 @@ func TestSetTags(t *testing.T) {
 
 func TestMatch(t *testing.T) {
 	tests := []struct {
-		name    string
-		entry   SkillEntry
-		ctx     MatchContext
-		want    bool
+		name  string
+		entry SkillEntry
+		ctx   MatchContext
+		want  bool
 	}{
 		{
 			name:  "persona match",

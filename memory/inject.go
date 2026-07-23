@@ -4,6 +4,7 @@ package memory
 
 import (
 	"fmt"
+	"github.com/NeerajG03/JEFF"
 	"os"
 	"path/filepath"
 	"sort"
@@ -40,7 +41,12 @@ func ApplyToTask(jeffHome, taskDir, persona, taskID string, repos []string, agen
 
 // addendumTemplate returns the raw template string for the given agent kind.
 func addendumTemplate(agentKind string) string {
-	if agentKind == "gemini" {
+	name := "CLAUDE.md"
+	p := jeff.GetProvider(jeff.AgentTool(agentKind))
+	if p != nil {
+		name = p.ContextFileName()
+	}
+	if name == "GEMINI.md" {
 		return jeffembed.MemoryContextGemini
 	}
 	return jeffembed.MemoryContextClaude
@@ -49,8 +55,9 @@ func addendumTemplate(agentKind string) string {
 // contextFilePath returns the absolute path of the context file to update.
 func contextFilePath(taskDir, agentKind string) string {
 	name := "CLAUDE.md"
-	if agentKind == "gemini" {
-		name = "GEMINI.md"
+	p := jeff.GetProvider(jeff.AgentTool(agentKind))
+	if p != nil {
+		name = p.ContextFileName()
 	}
 	return filepath.Join(taskDir, name)
 }

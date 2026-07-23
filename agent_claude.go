@@ -3,6 +3,7 @@ package jeff
 import (
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // isClaudeModel returns true if the model name belongs to the Claude family.
@@ -54,6 +55,27 @@ func (c *claudeProvider) SkillsSubdir() string         { return "skills" }
 func (c *claudeProvider) CommandsSubdir() string       { return "commands" }
 func (c *claudeProvider) CommandFileExt() string       { return "md" }
 func (c *claudeProvider) ContextFileAliases() []string { return nil }
+
+func (c *claudeProvider) ContextFileName() string { return "CLAUDE.md" }
+func (c *claudeProvider) MemorySuppressEnv() map[string]string {
+	return map[string]string{
+		"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+	}
+}
+func (c *claudeProvider) SendTiming() SendTiming {
+	return SendTiming{
+		PasteDelay:        100 * time.Millisecond,
+		InterruptSettle:   2 * time.Second,
+		UseBracketedPaste: true,
+	}
+}
+func (c *claudeProvider) OwnsModel(model string) bool { return isClaudeModel(model) }
+func (c *claudeProvider) ModelExamples() []string {
+	return []string{"sonnet", "opus", "haiku", "claude-<full-id>"}
+}
+func (c *claudeProvider) DoctorDeps() []DoctorDep {
+	return []DoctorDep{{Name: "claude", Required: true}}
+}
 
 func (c *claudeProvider) EnsureHomeDirs(home string) error {
 	return os.MkdirAll(filepath.Join(home, ".claude"), 0o755)

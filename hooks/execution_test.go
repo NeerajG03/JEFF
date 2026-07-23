@@ -129,9 +129,12 @@ func TestNoJq(t *testing.T) {
 	for _, bin := range []string{"jeff", "gig"} {
 		path := filepath.Join(dir, bin)
 		script := "#!/bin/bash\necho 'stub " + bin + "' >&2\n"
-		os.WriteFile(path, []byte(script), 0o755)
+		_ = os.WriteFile(path, []byte(script), 0o755)
 	}
-	t.Setenv("PATH", dir+":/bin") 
+	if bashPath, err := exec.LookPath("bash"); err == nil {
+		_ = os.Symlink(bashPath, filepath.Join(dir, "bash"))
+	}
+	t.Setenv("PATH", dir) 
 
 	gen := taskContextHook().Scripts["claude"]
 	content := gen(HookContext{TaskID: "gig-123"})

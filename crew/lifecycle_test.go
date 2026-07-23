@@ -28,6 +28,25 @@ func runningSession(t *testing.T, store *Store, taskID, tmuxSession string) {
 	}
 }
 
+// staleRunningSession seeds a running session whose last_seen is well beyond the
+// heartbeat grace period, so Refresh's grace-period veto does not apply and a
+// genuinely dead/gone worker can be marked failed.
+func staleRunningSession(t *testing.T, store *Store, taskID, tmuxSession string) {
+	t.Helper()
+	now := time.Now().UTC()
+	if err := store.PutSession(&Session{
+		TaskID:      taskID,
+		TmuxSession: tmuxSession,
+		WindowName:  taskID,
+		TaskDir:     "/tmp",
+		Status:      "running",
+		StartedAt:   now.Add(-2 * DefaultStallThreshold),
+		LastSeen:    now.Add(-2 * DefaultStallThreshold),
+	}); err != nil {
+		t.Fatalf("put session %s: %v", taskID, err)
+	}
+}
+
 func stoppedSession(t *testing.T, store *Store, taskID, tmuxSession string) {
 	t.Helper()
 	now := time.Now().UTC()

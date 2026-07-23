@@ -89,11 +89,12 @@ func getDoctorDeps() []dep {
 			if !seen[adep.Name] {
 				seen[adep.Name] = true
 				installCmd := ""
-				if adep.Name == "claude" {
+				switch adep.Name {
+				case "claude":
 					installCmd = "npm install -g @anthropic-ai/claude-code"
-				} else if adep.Name == "gemini" {
+				case "gemini":
 					installCmd = "npm install -g @google/gemini-cli"
-				} else if adep.Name == "opencode" {
+				case "opencode":
 					installCmd = "npm install -g @opencode/cli"
 				}
 				base = append(base, dep{

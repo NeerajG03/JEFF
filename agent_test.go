@@ -417,7 +417,7 @@ func TestProviderNewMethods(t *testing.T) {
 			t.Errorf("InterruptSettle zero for %s", agent)
 		}
 
-		for _, _ = range examples {
+		for range examples {
 			// Some examples like claude-<full-id> won't match exactly, but let's test the first one.
 			if p.Name() != AgentOpenCode && !p.OwnsModel(examples[0]) {
 				t.Errorf("OwnsModel failed for its own example %s on agent %s", examples[0], agent)

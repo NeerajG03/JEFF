@@ -11,7 +11,6 @@ import (
 	jeffembed "github.com/NeerajG03/JEFF/embed"
 	"github.com/NeerajG03/JEFF/hooks"
 	"github.com/spf13/cobra"
-	"github.com/NeerajG03/JEFF/workspace"
 )
 
 func configCmd() *cobra.Command {
@@ -156,7 +155,7 @@ func configHooksToggleCmd(verb string, value bool) *cobra.Command {
 			if err := jeff.SaveConfig(cfg); err != nil {
 				return fmt.Errorf("save config: %w", err)
 			}
-			fmt.Printf("%sd %s\n", strings.ToUpper(verb[:1]) + verb[1:], name)
+			fmt.Printf("%sd %s\n", strings.ToUpper(verb[:1])+verb[1:], name)
 			return syncHooksFromConfig()
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -169,39 +168,27 @@ func configHooksEnableCmd() *cobra.Command  { return configHooksToggleCmd("enabl
 func configHooksDisableCmd() *cobra.Command { return configHooksToggleCmd("disable", false) }
 
 func configHooksSyncCmd() *cobra.Command {
-        var syncTasks bool
-        cmd := &cobra.Command{
-                Use:   "sync",
-                Short: "Re-sync hooks to disk from config",
-                RunE: func(cmd *cobra.Command, args []string) error {
-                        if err := syncHooksFromConfig(); err != nil {
-                                return err
-                        }
-                        if syncTasks {
-                                tasksDir := filepath.Join(cfg.Home, "tasks")
-                                entries, err := os.ReadDir(tasksDir)
-                                if err == nil {
-                                        for _, entry := range entries {
-                                                if !entry.IsDir() {
-                                                        continue
-                                                }
-                                                taskID := workspace.ExtractTaskID(entry.Name())
-                                                if !strings.HasPrefix(taskID, "gig-") {
-                                                        continue
-                                                }
-                                                taskDir := filepath.Join(tasksDir, entry.Name())
-                                                personaName := detectPersona(taskDir)
-                                                repos := detectRepos(taskDir)
-                                                syncTaskHooks(cfg, taskDir, taskID, personaName, repos, "")
-                                                fmt.Printf("Synced hooks for %s\n", entry.Name())
-                                        }
-                                }
-                        }
-                        return nil
-                },
-        }
-        cmd.Flags().BoolVar(&syncTasks, "tasks", false, "Also sync hooks in all task workspaces")
-        return cmd
+	var syncTasks bool
+	cmd := &cobra.Command{
+		Use:   "sync",
+		Short: "Re-sync hooks to disk from config",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := syncHooksFromConfig(); err != nil {
+				return err
+			}
+			if syncTasks {
+				for _, ws := range taskWorkspaces(cfg.Home) {
+					personaName := detectPersona(ws.Dir)
+					repos := detectRepos(ws.Dir)
+					syncTaskHooks(cfg, ws.Dir, ws.TaskID, personaName, repos, "")
+					fmt.Printf("Synced hooks for %s\n", ws.Name)
+				}
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&syncTasks, "tasks", false, "Also sync hooks in all task workspaces")
+	return cmd
 }
 
 func configResetClaudeMDCmd() *cobra.Command {

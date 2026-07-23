@@ -483,7 +483,7 @@ func workerHeartbeatHook() *Hook {
 				if ctx.TaskID == "" {
 					return ""
 				}
-				return jsToolDynamicSnippet("worker-heartbeat", "jeff crew touch "+ctx.TaskID+" 2>/dev/null")
+				return jsToolDynamicSnippet("worker-heartbeat", "jeff crew touch "+shellQuote(ctx.TaskID)+" 2>/dev/null")
 			},
 		),
 	}
@@ -708,9 +708,9 @@ func buildOpenCodeInboxCheckSnippet(taskID string) string {
 		return ""
 	}
 	return `      // [inbox-check]
-      { const count = run(` + strconv.Quote("jeff crew inbox "+taskID+" --count 2>/dev/null") + `);
+      { const count = run(` + strconv.Quote("jeff crew inbox "+shellQuote(taskID)+" --count 2>/dev/null") + `);
         if (count && count !== "0") {
-          const messages = run(` + strconv.Quote("jeff crew inbox "+taskID+" --format agent 2>/dev/null") + `);
+          const messages = run(` + strconv.Quote("jeff crew inbox "+shellQuote(taskID)+" --format agent 2>/dev/null") + `);
           if (messages) parts.push(messages);
         }
       }`

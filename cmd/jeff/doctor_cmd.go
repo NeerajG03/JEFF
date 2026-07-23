@@ -78,6 +78,20 @@ var doctorDeps = []dep{
 		VersionArgs: []string{"--version"},
 		InstallCmd:  "npm install -g @google/gemini-cli",
 	},
+	{
+		Name:        "jq",
+		Required:    true,
+		Binary:      "jq",
+		VersionArgs: []string{"--version"},
+		InstallCmd:  "brew install jq",
+	},
+	{
+		Name:        "opencode",
+		Required:    false,
+		Binary:      "opencode",
+		VersionArgs: []string{"--version"},
+		InstallCmd:  "npm install -g @opencode/cli",
+	},
 }
 
 func doctorCmd() *cobra.Command {

@@ -14,11 +14,7 @@ func memoryProposeNudgeHook() *Hook {
 		Matcher: "*",
 		Timeout: 5,
 		OpenCodeEvent: "session.idle",
-		Scripts: map[string]func(ctx HookContext) string{
-			"claude": buildMemoryProposeNudgeScript,
-			"opencode": buildOpenCodeMemoryProposeNudgeSnippet,
-			"gemini": buildMemoryProposeNudgeScript,
-		},
+		Scripts: bashBoth(buildMemoryProposeNudgeScript, buildOpenCodeMemoryProposeNudgeSnippet),
 	}
 }
 
@@ -34,6 +30,10 @@ func buildMemoryProposeNudgeScript(_ HookContext) string {
 	return `#!/bin/bash
 set -euo pipefail
 
+if ! command -v jq >/dev/null 2>&1; then
+  echo '{}'
+  exit 0
+fi
 INPUT=$(cat)
 
 SENTINEL="$(pwd)/.nudged"

@@ -33,17 +33,14 @@ func gigInstructionsHook() *Hook {
 		Source:  SourceHome,
 		Event:   "SessionStart",
 		Matcher: "*",
-		Scripts: map[string]func(ctx HookContext) string{
-			"claude": func(ctx HookContext) string {
+		Scripts: bashBoth(
+			func(ctx HookContext) string {
 				return claudeSessionStartStatic(gigInstructionsContext)
 			},
-			"opencode": func(ctx HookContext) string {
+			func(ctx HookContext) string {
 				return jsStaticSnippet("gig-instructions", gigInstructionsContext)
 			},
-			"gemini": func(ctx HookContext) string {
-				return claudeSessionStartStatic(gigInstructionsContext)
-			},
-		},
+		),
 	}
 }
 
@@ -54,19 +51,15 @@ func gigReadyTasksHook() *Hook {
 		Source:  SourceHome,
 		Event:   "SessionStart",
 		Matcher: "*",
-		Scripts: map[string]func(ctx HookContext) string{
-			"claude": func(ctx HookContext) string {
+		Scripts: bashBoth(
+			func(ctx HookContext) string {
 				return claudeSessionStartDynamic(`## Tasks ready for pickup
 ` + "$(gig ready 2>/dev/null || echo '(no tasks)')")
 			},
-			"opencode": func(ctx HookContext) string {
+			func(ctx HookContext) string {
 				return jsDynamicSnippet("gig-ready-tasks", `gig ready 2>/dev/null`)
 			},
-			"gemini": func(ctx HookContext) string {
-				return claudeSessionStartDynamic(`## Tasks ready for pickup
-` + "$(gig ready 2>/dev/null || echo '(no tasks)')")
-			},
-		},
+		),
 	}
 }
 
@@ -77,19 +70,15 @@ func jeffReposHook() *Hook {
 		Source:  SourceHome,
 		Event:   "SessionStart",
 		Matcher: "*",
-		Scripts: map[string]func(ctx HookContext) string{
-			"claude": func(ctx HookContext) string {
+		Scripts: bashBoth(
+			func(ctx HookContext) string {
 				return claudeSessionStartDynamic(`## Registered repos
 ` + "$(jeff repo list 2>/dev/null || echo '(none)')")
 			},
-			"opencode": func(ctx HookContext) string {
+			func(ctx HookContext) string {
 				return jsDynamicSnippet("jeff-repos", `jeff repo list 2>/dev/null`)
 			},
-			"gemini": func(ctx HookContext) string {
-				return claudeSessionStartDynamic(`## Registered repos
-` + "$(jeff repo list 2>/dev/null || echo '(none)')")
-			},
-		},
+		),
 	}
 }
 
@@ -100,27 +89,39 @@ func jeffInstructionsHook() *Hook {
 		Source:  SourceHome,
 		Event:   "SessionStart",
 		Matcher: "*",
-		Scripts: map[string]func(ctx HookContext) string{
-			"claude": func(ctx HookContext) string {
+		Scripts: bashBoth(
+			func(ctx HookContext) string {
 				return claudeSessionStartStatic(jeffInstructionsContext)
 			},
-			"opencode": func(ctx HookContext) string {
+			func(ctx HookContext) string {
 				return jsStaticSnippet("jeff-instructions", jeffInstructionsContext)
 			},
-			"gemini": func(ctx HookContext) string {
-				return claudeSessionStartStatic(jeffInstructionsContext)
-			},
-		},
+		),
 	}
 }
 
 // claudeSessionStartStatic wraps static content (no shell expansion) in a
 // Claude Code SessionStart hook script. Uses a heredoc so backticks, single
 // quotes, and double quotes are all passed through literally.
+// bashBoth returns a Scripts map registering the same bash generator for
+// the claude and gemini deliveries (their script bodies are identical today;
+// the gemini delivery remaps event names and timeout units at install time).
+func bashBoth(fn func(HookContext) string, opencode ...func(HookContext) string) map[string]func(HookContext) string {
+	m := map[string]func(HookContext) string{"claude": fn, "gemini": fn}
+	if len(opencode) > 0 {
+		m["opencode"] = opencode[0]
+	}
+	return m
+}
+
 func claudeSessionStartStatic(content string) string {
 	return `#!/bin/bash
 set -euo pipefail
 
+if ! command -v jq >/dev/null 2>&1; then
+  echo '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"[jeff] jq not installed - hooks degraded. Run: jeff doctor"}}'
+  exit 0
+fi
 INPUT=$(cat)
 
 read -r -d '' CONTEXT <<'HEREDOC' || true
@@ -144,6 +145,10 @@ func claudeSessionStartDynamic(content string) string {
 	return `#!/bin/bash
 set -euo pipefail
 
+if ! command -v jq >/dev/null 2>&1; then
+  echo '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"[jeff] jq not installed - hooks degraded. Run: jeff doctor"}}'
+  exit 0
+fi
 INPUT=$(cat)
 
 CONTEXT="` + content + `"
@@ -239,28 +244,21 @@ func taskContextHook() *Hook {
 		Source:  SourceTask,
 		Event:   "SessionStart",
 		Matcher: "*",
-		Scripts: map[string]func(ctx HookContext) string{
-			"claude": func(ctx HookContext) string {
+		Scripts: bashBoth(
+			func(ctx HookContext) string {
 				if ctx.TaskID == "" {
 					return claudeSessionStartStatic("(no task context — TaskID not set)")
 				}
 				return claudeSessionStartDynamic(`## Current Task
-` + "$(gig show " + ctx.TaskID + " 2>/dev/null || echo '(task not found)')")
+` + "$(gig show " + shellQuote(ctx.TaskID) + " 2>/dev/null || echo '(task not found)')")
 			},
-			"opencode": func(ctx HookContext) string {
+			func(ctx HookContext) string {
 				if ctx.TaskID == "" {
 					return ""
 				}
-				return jsDynamicSnippet("task-context", `gig show `+ctx.TaskID+` 2>/dev/null`)
+				return jsDynamicSnippet("task-context", `gig show `+shellQuote(ctx.TaskID)+` 2>/dev/null`)
 			},
-			"gemini": func(ctx HookContext) string {
-				if ctx.TaskID == "" {
-					return claudeSessionStartStatic("(no task context — TaskID not set)")
-				}
-				return claudeSessionStartDynamic(`## Current Task
-` + "$(gig show " + ctx.TaskID + " 2>/dev/null || echo '(task not found)')")
-			},
-		},
+		),
 	}
 }
 
@@ -271,17 +269,14 @@ func taskCommandsHook() *Hook {
 		Source:  SourceTask,
 		Event:   "SessionStart",
 		Matcher: "*",
-		Scripts: map[string]func(ctx HookContext) string{
-			"claude": func(ctx HookContext) string {
+		Scripts: bashBoth(
+			func(ctx HookContext) string {
 				return claudeSessionStartStatic(taskCommandsContext)
 			},
-			"opencode": func(ctx HookContext) string {
+			func(ctx HookContext) string {
 				return jsStaticSnippet("task-commands", taskCommandsContext)
 			},
-			"gemini": func(ctx HookContext) string {
-				return claudeSessionStartStatic(taskCommandsContext)
-			},
-		},
+		),
 	}
 }
 
@@ -296,18 +291,16 @@ func checkpointNudgeHook() *Hook {
 		Matcher: "Bash",
 		Timeout: 5,
 		Scripts: map[string]func(ctx HookContext) string{
-			"claude": func(ctx HookContext) string {
-				return buildCheckpointNudgeScript(ctx.CheckpointPatterns, "PostToolUse")
-			},
-			"opencode": func(ctx HookContext) string {
-				return buildOpenCodeCheckpointNudgeSnippet(ctx.CheckpointPatterns)
-			},
-			// Gemini maps PostToolUse → AfterTool; the emitted hookEventName MUST
-			// match the settings key or Gemini discards the output (gig-ddd6).
-			"gemini": func(ctx HookContext) string {
-				return buildCheckpointNudgeScript(ctx.CheckpointPatterns, "AfterTool")
-			},
-		},
+                        "claude": func(ctx HookContext) string {
+                                return buildCheckpointNudgeScript(ctx.CheckpointPatterns, "PostToolUse")
+                        },
+                        "opencode": func(ctx HookContext) string {
+                                return buildOpenCodeCheckpointNudgeSnippet(ctx.CheckpointPatterns)
+                        },
+                        "gemini": func(ctx HookContext) string {
+                                return buildCheckpointNudgeScript(ctx.CheckpointPatterns, "AfterTool")
+                        },
+                },
 	}
 }
 
@@ -325,7 +318,8 @@ echo '{}'
 `
 	}
 
-	// Build a combined ERE pattern: (pat1|pat2|pat3)
+	// Build a combined ERE (Extended Regular Expression) pattern:
+	// CheckpointPatterns are evaluated as EREs by grep -E. (pat1|pat2|pat3)
 	combined := "(" + patterns[0]
 	for _, p := range patterns[1:] {
 		combined += "|" + p
@@ -335,6 +329,10 @@ echo '{}'
 	return `#!/bin/bash
 set -euo pipefail
 
+if ! command -v jq >/dev/null 2>&1; then
+  echo '{}'
+  exit 0
+fi
 INPUT=$(cat)
 
 # Extract the command from tool input.
@@ -345,7 +343,7 @@ if [ -z "$COMMAND" ]; then
 fi
 
 # Check against configured checkpoint patterns.
-if echo "$COMMAND" | grep -qE '` + combined + `'; then
+if echo "$COMMAND" | grep -qE ` + shellQuote(combined) + `; then
   jq -n \
     --arg ev "` + eventName + `" \
     '{
@@ -385,19 +383,15 @@ func crewContextHook() *Hook {
 		Source:  SourceHome,
 		Event:   "SessionStart",
 		Matcher: "*",
-		Scripts: map[string]func(ctx HookContext) string{
-			"claude": func(ctx HookContext) string {
+		Scripts: bashBoth(
+			func(ctx HookContext) string {
 				return claudeSessionStartDynamic(`## Active Crew Sessions
 ` + "$(jeff crew list 2>/dev/null || echo '(no active sessions)')")
 			},
-			"opencode": func(ctx HookContext) string {
+			func(ctx HookContext) string {
 				return jsDynamicSnippet("crew-context", `jeff crew list 2>/dev/null`)
 			},
-			"gemini": func(ctx HookContext) string {
-				return claudeSessionStartDynamic(`## Active Crew Sessions
-` + "$(jeff crew list 2>/dev/null || echo '(no active sessions)')")
-			},
-		},
+		),
 	}
 }
 
@@ -414,19 +408,15 @@ func inboxReplayHook() *Hook {
 		Event:   "SessionStart",
 		Matcher: "*",
 		Timeout: 5,
-		Scripts: map[string]func(ctx HookContext) string{
-			"claude": func(ctx HookContext) string {
+		Scripts: bashBoth(
+			func(ctx HookContext) string {
 				return buildInboxReplayScript(ctx.TaskID, "SessionStart")
 			},
-			"opencode": func(ctx HookContext) string {
+			func(ctx HookContext) string {
 				// SessionStart → session.created (see openCodeEventName).
 				return buildOpenCodeInboxCheckSnippet(ctx.TaskID)
 			},
-			"gemini": func(ctx HookContext) string {
-				// SessionStart is the same key on Claude and Gemini.
-				return buildInboxReplayScript(ctx.TaskID, "SessionStart")
-			},
-		},
+		),
 	}
 }
 
@@ -447,16 +437,20 @@ echo '{}'
 	return `#!/bin/bash
 set -euo pipefail
 
+if ! command -v jq >/dev/null 2>&1; then
+  echo '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"[jeff] jq not installed - hooks degraded. Run: jeff doctor"}}'
+  exit 0
+fi
 INPUT=$(cat)
 
 # Recovery only: replay log rows left unacked because they were typed while this
 # worker's pane was dead. Live-delivered messages were acked at send time, so in
 # the normal case this is empty and nothing is re-surfaced.
-PENDING=$(jeff crew inbox ` + taskID + ` --count 2>/dev/null || echo "0")
+PENDING=$(jeff crew inbox ` + shellQuote(taskID) + ` --count 2>/dev/null || echo "0")
 [ "$PENDING" = "0" ] && exit 0
 
 # --format agent frames + acks, so each row replays exactly once.
-MESSAGES=$(jeff crew inbox ` + taskID + ` --format agent 2>/dev/null)
+MESSAGES=$(jeff crew inbox ` + shellQuote(taskID) + ` --format agent 2>/dev/null)
 
 jq -n \
   --arg ctx "$MESSAGES" \
@@ -481,20 +475,17 @@ func workerHeartbeatHook() *Hook {
 		Event:   "PostToolUse",
 		Matcher: "*",
 		Timeout: 3,
-		Scripts: map[string]func(ctx HookContext) string{
-			"claude": func(ctx HookContext) string {
+		Scripts: bashBoth(
+			func(ctx HookContext) string {
 				return buildWorkerHeartbeatScript(ctx.TaskID)
 			},
-			"opencode": func(ctx HookContext) string {
+			func(ctx HookContext) string {
 				if ctx.TaskID == "" {
 					return ""
 				}
-				return jsToolDynamicSnippet("worker-heartbeat", "jeff crew touch "+ctx.TaskID+" 2>/dev/null")
+				return jsToolDynamicSnippet("worker-heartbeat", "jeff crew touch "+shellQuote(ctx.TaskID)+" 2>/dev/null")
 			},
-			"gemini": func(ctx HookContext) string {
-				return buildWorkerHeartbeatScript(ctx.TaskID)
-			},
-		},
+		),
 	}
 }
 
@@ -514,7 +505,7 @@ INPUT=$(cat)
 
 # Touch last_seen as heartbeat signal.
 # Stall detection is handled by jeff daemon, not here.
-jeff crew touch ` + taskID + ` 2>/dev/null || true
+jeff crew touch ` + shellQuote(taskID) + ` 2>/dev/null || true
 
 echo '{}'
 `
@@ -536,17 +527,14 @@ func workerStopHook() *Hook {
 		// Claude's Stop-on-every-turn behavior, so the orchestrator is pinged
 		// each time the agent finishes working.
 		OpenCodeEvent: "session.idle",
-		Scripts: map[string]func(ctx HookContext) string{
-			"claude": func(ctx HookContext) string {
+		Scripts: bashBoth(
+			func(ctx HookContext) string {
 				return buildWorkerStopScript(ctx.TaskID, ctx.OrchestratorID)
 			},
-			"opencode": func(ctx HookContext) string {
+			func(ctx HookContext) string {
 				return buildOpenCodeWorkerStopSnippet(ctx.TaskID, ctx.OrchestratorID)
 			},
-			"gemini": func(ctx HookContext) string {
-				return buildWorkerStopScript(ctx.TaskID, ctx.OrchestratorID)
-			},
-		},
+		),
 	}
 }
 
@@ -560,21 +548,18 @@ func sessionCaptureHook() *Hook {
 		Event:   "SessionStart",
 		Matcher: "*",
 		Timeout: 5,
-		Scripts: map[string]func(ctx HookContext) string{
-			"claude": func(ctx HookContext) string {
+		Scripts: bashBoth(
+			func(ctx HookContext) string {
 				return buildSessionCaptureScript(ctx.TaskID)
 			},
-			"opencode": func(ctx HookContext) string {
+			func(ctx HookContext) string {
 				if ctx.TaskID == "" {
 					return ""
 				}
 				return `        // [session-capture]
         if (id) runFile("jeff", ["crew", "session-id", ` + strconv.Quote(ctx.TaskID) + `, id]);`
 			},
-			"gemini": func(ctx HookContext) string {
-				return buildSessionCaptureScript(ctx.TaskID)
-			},
-		},
+		),
 	}
 }
 
@@ -598,7 +583,7 @@ if [ -z "$SESSION_ID" ]; then
   exit 0
 fi
 
-jeff crew session-id ` + taskID + ` "$SESSION_ID" 2>/dev/null || true
+jeff crew session-id ` + shellQuote(taskID) + ` "$SESSION_ID" 2>/dev/null || true
 
 echo '{}'
 `
@@ -622,7 +607,7 @@ set -euo pipefail
 
 INPUT=$(cat)
 
-jeff crew worker-stopped ` + taskID + ` 2>/dev/null || true
+jeff crew worker-stopped ` + shellQuote(taskID) + ` 2>/dev/null || true
 
 echo '{}'
 `
@@ -642,23 +627,20 @@ func orchestratorInboxHook() *Hook {
 		Event:   "SessionStart",
 		Matcher: "*",
 		Timeout: 5,
-		Scripts: map[string]func(ctx HookContext) string{
-			"claude": func(ctx HookContext) string {
+		Scripts: bashBoth(
+			func(ctx HookContext) string {
 				return buildOrchestratorInboxScript(ctx.OrchestratorID)
 			},
-			"opencode": func(ctx HookContext) string {
+			func(ctx HookContext) string {
 				return buildOpenCodeOrchestratorInboxSnippet(ctx.OrchestratorID)
 			},
-			"gemini": func(ctx HookContext) string {
-				return buildOrchestratorInboxScript(ctx.OrchestratorID)
-			},
-		},
+		),
 	}
 }
 
 func buildOrchestratorInboxScript(orchestratorID string) string {
 	// If no orchestrator ID is configured, detect from tmux session name.
-	detection := `ORCH_ID="` + orchestratorID + `"`
+	detection := `ORCH_ID=` + shellQuote(orchestratorID)
 	if orchestratorID == "" {
 		detection = `# Auto-detect orchestrator ID from env var or tmux session name.
 ORCH_ID=""
@@ -676,6 +658,10 @@ fi
 	return `#!/bin/bash
 set -euo pipefail
 
+if ! command -v jq >/dev/null 2>&1; then
+  echo '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"[jeff] jq not installed - hooks degraded. Run: jeff doctor"}}'
+  exit 0
+fi
 INPUT=$(cat)
 
 ` + detection + `
@@ -722,9 +708,9 @@ func buildOpenCodeInboxCheckSnippet(taskID string) string {
 		return ""
 	}
 	return `      // [inbox-check]
-      { const count = run(` + strconv.Quote("jeff crew inbox "+taskID+" --count 2>/dev/null") + `);
+      { const count = run(` + strconv.Quote("jeff crew inbox "+shellQuote(taskID)+" --count 2>/dev/null") + `);
         if (count && count !== "0") {
-          const messages = run(` + strconv.Quote("jeff crew inbox "+taskID+" --format agent 2>/dev/null") + `);
+          const messages = run(` + strconv.Quote("jeff crew inbox "+shellQuote(taskID)+" --format agent 2>/dev/null") + `);
           if (messages) parts.push(messages);
         }
       }`

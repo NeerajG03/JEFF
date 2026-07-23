@@ -125,11 +125,7 @@ func sessionEndMemoryHook() *Hook {
 		Event:   "Stop",
 		Matcher: "*",
 		Timeout: 15,
-		Scripts: map[string]func(ctx HookContext) string{
-			"claude": buildSessionEndMemoryScript,
-			"opencode": buildOpenCodeSessionEndMemorySnippet,
-			"gemini": buildSessionEndMemoryScript,
-		},
+		Scripts: bashBoth(buildSessionEndMemoryScript, buildOpenCodeSessionEndMemorySnippet),
 	}
 }
 
@@ -153,6 +149,10 @@ func buildSessionEndMemoryScript(ctx HookContext) string {
 	return `#!/bin/bash
 set -euo pipefail
 
+if ! command -v jq >/dev/null 2>&1; then
+  echo '{}'
+  exit 0
+fi
 INPUT=$(cat)
 JEFF_HOME="${JEFF_HOME:-}"
 

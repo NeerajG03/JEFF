@@ -70,7 +70,7 @@ func readSettingsFile(path string) (map[string]any, error) {
 
 	var settings map[string]any
 	if err := json.Unmarshal(data, &settings); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+		return nil, fmt.Errorf("parse %s: %w — the file may contain comments or trailing commas (JSONC); jeff needs plain JSON here", path, err)
 	}
 	return settings, nil
 }
@@ -181,8 +181,10 @@ func blockContainsScript(block any, scriptName string) bool {
 			continue
 		}
 		cmd, _ := hkMap["command"].(string)
-		if strings.Contains(cmd, scriptName) {
-			return true
+		for _, p := range strings.Fields(cmd) {
+			if filepath.Base(p) == scriptName {
+				return true
+			}
 		}
 	}
 	return false

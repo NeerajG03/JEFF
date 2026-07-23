@@ -132,7 +132,7 @@ func TestInstallClaudeDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("script not written: %v", err)
 	}
-	if string(data) != "#!/bin/bash\necho hello" {
+	if string(data) != "#!/bin/bash\n# jeff-hook-version: " + ScriptVersion + "\necho hello" {
 		t.Fatalf("unexpected script content: %s", data)
 	}
 
@@ -291,4 +291,22 @@ func containsStr(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+func TestBlockContainsScript(t *testing.T) {
+	block := map[string]any{
+		"hooks": []any{
+			map[string]any{
+				"command": "/path/to/task-context.sh",
+			},
+		},
+	}
+	// Should not match suffix.
+	if blockContainsScript(block, "context.sh") {
+		t.Errorf("Matched context.sh when it should only match exact basename task-context.sh")
+	}
+	// Should match exact basename.
+	if !blockContainsScript(block, "task-context.sh") {
+		t.Errorf("Failed to match exact basename task-context.sh")
+	}
 }

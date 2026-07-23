@@ -96,7 +96,7 @@ Each package has a `CLAUDE.md` with types, file roles, and extension patterns:
 | Package | Guide | What it covers |
 |---------|-------|---------------|
 | `crew/` | `crew/CLAUDE.md` | SQLite store, session lifecycle, tmux ops, message types |
-| `hooks/` | `hooks/CLAUDE.md` | 15 built-in hooks, static vs dynamic scripts, delivery |
+| `hooks/` | `hooks/CLAUDE.md` | 16 built-in hooks, static vs dynamic scripts, delivery |
 | `memory/` | `memory/CLAUDE.md` | Persona memory, repo learnings, /learn command |
 | `persona/` | `persona/CLAUDE.md` | Embedded templates, model defaults, adding personas |
 | `skill/` | `skill/CLAUDE.md` | Registry, matching logic, injection, embedded skills |

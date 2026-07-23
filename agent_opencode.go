@@ -73,7 +73,7 @@ func (o *opencodeProvider) ModelExamples() []string {
 	return []string{"provider/model"}
 }
 func (o *opencodeProvider) DoctorDeps() []DoctorDep {
-	return []DoctorDep{{Name: "opencode", Required: true}}
+	return []DoctorDep{{Name: "opencode", Required: false}}
 }
 
 func (o *opencodeProvider) EnsureHomeDirs(home string) error {

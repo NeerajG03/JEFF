@@ -90,7 +90,7 @@ func (g *geminiProvider) ModelExamples() []string {
 	return []string{"pro", "flash", "flash-lite", "auto", "gemini-<full-id>"}
 }
 func (g *geminiProvider) DoctorDeps() []DoctorDep {
-	return []DoctorDep{{Name: "gemini", Required: true}}
+	return []DoctorDep{{Name: "gemini", Required: false}}
 }
 
 func (g *geminiProvider) EnsureHomeDirs(home string) error {

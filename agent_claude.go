@@ -68,7 +68,7 @@ func (c *claudeProvider) MemorySuppressEnv() map[string]string {
 }
 func (c *claudeProvider) SendTiming() SendTiming {
 	return SendTiming{
-		PasteDelay:        100 * time.Millisecond,
+		PasteDelay:        500 * time.Millisecond,
 		InterruptSettle:   2 * time.Second,
 		UseBracketedPaste: true,
 	}
@@ -78,7 +78,7 @@ func (c *claudeProvider) ModelExamples() []string {
 	return []string{"sonnet", "opus", "haiku", "claude-<full-id>"}
 }
 func (c *claudeProvider) DoctorDeps() []DoctorDep {
-	return []DoctorDep{{Name: "claude", Required: true}}
+	return []DoctorDep{{Name: "claude", Required: false}}
 }
 
 func (c *claudeProvider) EnsureHomeDirs(home string) error {

@@ -1,10 +1,12 @@
 package crew
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
-	"testing"
 	"sync"
+	"testing"
 	"time"
 )
 
@@ -667,6 +669,134 @@ func TestSendWithInterrupt(t *testing.T) {
 	}
 	if msgs[0].Content != "urgent redirect" {
 		t.Errorf("content = %q, want %q", msgs[0].Content, "urgent redirect")
+	}
+}
+
+// withFakeTmux returns a fake tmux. This variant is identical but produces
+// stdout for list-windows (window names) and display-message (#{pane_dead}),
+// enabling Refresh tests that need the window-exists branch to exercise
+// the dead-pane detection path.
+func withDeadPaneFakeTmux(t *testing.T, windowNames []string) func() []string {
+	t.Helper()
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "calls.log")
+	bin := filepath.Join(dir, "tmux")
+
+	var sb strings.Builder
+	sb.WriteString("#!/bin/sh\n")
+	sb.WriteString("case \"$1\" in\n")
+	sb.WriteString("  list-windows)\n")
+	for _, w := range windowNames {
+		sb.WriteString(fmt.Sprintf("    echo \"%s\"\n", w))
+	}
+	sb.WriteString("    ;;\n")
+	sb.WriteString("  display-message)\n")
+	sb.WriteString("    echo \"1\"\n")
+	sb.WriteString("    ;;\n")
+	sb.WriteString("esac\n")
+	sb.WriteString("echo \"$*\" >> " + logFile + "\n")
+
+	if err := os.WriteFile(bin, []byte(sb.String()), 0755); err != nil {
+		t.Fatalf("create fake tmux binary: %v", err)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+
+	return func() []string {
+		data, _ := os.ReadFile(logFile)
+		var lines []string
+		for _, l := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+			if l != "" {
+				lines = append(lines, l)
+			}
+		}
+		return lines
+	}
+}
+
+// TestRefreshDeadPaneDetectsDeadWorkers verifies that Refresh marks sessions
+// as failed when the tmux window exists but the pane inside is dead
+// (remain-on-exit keeps the window open after the agent exits).
+func TestRefreshDeadPaneDetectsDeadWorkers(t *testing.T) {
+	store := tempStore(t)
+
+	// Seed two running sessions.
+	runningSession(t, store, "gig-dpd1", "jeff")
+	runningSession(t, store, "gig-dpd2", "jeff")
+
+	// Fake tmux reports both windows exist but all panes are dead.
+	_ = withDeadPaneFakeTmux(t, []string{"gig-dpd1", "gig-dpd2"})
+
+	// Refresh with nil isTaskClosed — dead workers should be marked "failed".
+	if err := Refresh(store, nil); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	s1, err := store.GetSession("gig-dpd1")
+	if err != nil {
+		t.Fatalf("GetSession gig-dpd1: %v", err)
+	}
+	if s1.Status != "failed" {
+		t.Errorf("gig-dpd1 status = %q, want failed", s1.Status)
+	}
+
+	s2, err := store.GetSession("gig-dpd2")
+	if err != nil {
+		t.Fatalf("GetSession gig-dpd2: %v", err)
+	}
+	if s2.Status != "failed" {
+		t.Errorf("gig-dpd2 status = %q, want failed", s2.Status)
+	}
+}
+
+// TestRefreshLiveWindowTouchesSession verifies that Refresh touches sessions
+// whose windows exist and panes are alive (the normal running path).
+func TestRefreshLiveWindowTouchesSession(t *testing.T) {
+	store := tempStore(t)
+	now := time.Now().UTC()
+
+	// Create a session with a past LastSeen so we can verify Touch updates it.
+	sess := &Session{
+		TaskID:      "gig-live1",
+		TmuxSession: "jeff",
+		WindowName:  "gig-live1",
+		TaskDir:     "/tmp",
+		Status:      "running",
+		StartedAt:   now,
+		LastSeen:    now.Add(-1 * time.Hour),
+	}
+	if err := store.PutSession(sess); err != nil {
+		t.Fatalf("put session: %v", err)
+	}
+
+	// Use the default fake tmux (no display-message output) — PaneIsDead sees
+	// empty string != "1" → not dead. ListWindowsInSession returns nothing
+	// though, so for the window to appear alive we also need windows listed.
+	//
+	// Use withDeadPaneFakeTmux but with only gig-live1 as the listed window
+	// and override display-message to return "0" (alive).
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "calls.log")
+	bin := filepath.Join(dir, "tmux")
+	// For list-windows return our window; for display-message return "0" (alive).
+	script := "#!/bin/sh\ncase \"$1\" in\n  list-windows)\n    echo \"gig-live1\"\n    ;;\n  display-message)\n    echo \"0\"\n    ;;\nesac\necho \"$*\" >> " + logFile + "\n"
+	if err := os.WriteFile(bin, []byte(script), 0755); err != nil {
+		t.Fatalf("create fake tmux binary: %v", err)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+
+	if err := Refresh(store, nil); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	s, err := store.GetSession("gig-live1")
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if s.Status != "running" {
+		t.Errorf("status = %q, want running", s.Status)
+	}
+	if !s.LastSeen.After(now.Add(-30 * time.Second)) {
+		t.Errorf("LastSeen not updated: %v", s.LastSeen)
 	}
 }
 

@@ -376,8 +376,22 @@ func Refresh(store *Store, isTaskClosed func(taskID string) bool) error {
 		windows := sessionWindows[sess.TmuxSession]
 		target := SanitizeWindowName(sess.WindowName)
 		if windows[target] || windows[sess.WindowName] {
-			if err := store.TouchSession(sess.TaskID); err != nil {
-				errs = append(errs, fmt.Errorf("touch %s: %w", sess.TaskID, err))
+			// Window exists — check if the pane is dead (remain-on-exit
+			// keeps the window open after the process exits).
+			if PaneIsDead(SessionTarget(sess.TmuxSession, sess.WindowName)) {
+				if isTaskClosed != nil && isTaskClosed(sess.TaskID) {
+					if err := store.UpdateStatus(sess.TaskID, "done"); err != nil {
+						errs = append(errs, fmt.Errorf("mark done %s: %w", sess.TaskID, err))
+					}
+				} else {
+					if err := store.UpdateStatus(sess.TaskID, "failed"); err != nil {
+						errs = append(errs, fmt.Errorf("mark failed %s: %w", sess.TaskID, err))
+					}
+				}
+			} else {
+				if err := store.TouchSession(sess.TaskID); err != nil {
+					errs = append(errs, fmt.Errorf("touch %s: %w", sess.TaskID, err))
+				}
 			}
 			continue
 		}
@@ -471,9 +485,16 @@ func sendCommandForSession(target, command, agent string) error {
 	return SendCommand(target, command)
 }
 
-// windowIsLive reports whether a worker's tmux window is currently alive. It is
-// a package var so tests can force a deterministic answer without a real tmux.
-var windowIsLive = HasWindowInSession
+// windowIsLive reports whether a worker's tmux window has a live (non-dead)
+// pane. With remain-on-exit on, the window persists after the process exits;
+// window existence alone is not enough to determine liveness. It is a package
+// var so tests can force a deterministic answer without a real tmux.
+var windowIsLive = func(sessionName, windowName string) bool {
+	if !HasWindowInSession(sessionName, windowName) {
+		return false
+	}
+	return !PaneIsDead(SessionTarget(sessionName, windowName))
+}
 
 // FrameToWorker renders the attributed line typed into a worker's pane (and
 // replayed from the log). The msg-id is carried in the frame so the worker can

@@ -275,6 +275,18 @@ func HasSession(name string) bool {
 	return hasSession(name)
 }
 
+// PaneIsDead reports whether the pane at the given target has exited.
+// With remain-on-exit on, the window persists but the pane shows a dead
+// status indicator instead of being destroyed. Returns true if the pane
+// cannot be probed (target doesn't exist, tmux not running, etc.).
+func PaneIsDead(target string) bool {
+	out, err := tmuxOutput("display-message", "-t", target, "-p", "#{pane_dead}")
+	if err != nil {
+		return true
+	}
+	return strings.TrimSpace(out) == "1"
+}
+
 // AttachToSession attaches to an arbitrary tmux session (not just "jeff").
 // Uses an interactive exec so tmux can take over the terminal's TTY.
 func AttachToSession(sessionName, windowName string) error {

@@ -10,6 +10,7 @@ import (
 	"github.com/NeerajG03/JEFF"
 	jeffembed "github.com/NeerajG03/JEFF/embed"
 	"github.com/NeerajG03/JEFF/hooks"
+	"github.com/NeerajG03/JEFF/task"
 	"github.com/spf13/cobra"
 )
 
@@ -178,8 +179,8 @@ func configHooksSyncCmd() *cobra.Command {
 			}
 			if syncTasks {
 				for _, ws := range taskWorkspaces(cfg.Home) {
-					personaName := detectPersona(ws.Dir)
-					repos := detectRepos(ws.Dir)
+					personaName := task.DetectPersona(ws.Dir)
+					repos := task.DetectRepos(ws.Dir)
 					syncTaskHooks(cfg, ws.Dir, ws.TaskID, personaName, repos, "")
 					fmt.Printf("Synced hooks for %s\n", ws.Name)
 				}

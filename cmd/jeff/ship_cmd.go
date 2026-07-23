@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -193,51 +192,42 @@ type shipWorktree struct {
 	wtDir  string // resolved worktree path
 }
 
-// discoverWorktrees finds worktree symlinks in the task dir and resolves their branches.
+// discoverWorktrees finds worktree symlinks in the task dir and resolves their
+// branches. It adapts workspace.ListTaskWorktrees, keeping ship's own concerns:
+// the repo filter, the .jeff-base self-heal, and stripping "origin/" from the
+// PR base branch.
 func discoverWorktrees(taskDir, repoFilter string) ([]shipWorktree, error) {
-	entries, err := os.ReadDir(taskDir)
+	wts, err := workspace.ListTaskWorktrees(taskDir)
 	if err != nil {
-		return nil, fmt.Errorf("read task dir: %w", err)
+		return nil, err
 	}
 
 	var result []shipWorktree
-	for _, e := range entries {
-		fullPath := filepath.Join(taskDir, e.Name())
-		if !gitutil.IsSymlink(fullPath) {
+	for _, wt := range wts {
+		if repoFilter != "" && wt.Repo != repoFilter {
 			continue
 		}
 
-		if repoFilter != "" && e.Name() != repoFilter {
-			continue
+		if err := workspace.EnsureJeffBaseExcluded(wt.Path); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: exclude .jeff-base for %s: %v\n", wt.Repo, err)
 		}
 
-		target, err := os.Readlink(fullPath)
-		if err != nil {
+		if wt.Branch == "" {
+			fmt.Fprintf(os.Stderr, "Warning: could not detect branch for %s\n", wt.Repo)
 			continue
 		}
-
-		if err := workspace.EnsureJeffBaseExcluded(target); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: exclude .jeff-base for %s: %v\n", e.Name(), err)
-		}
-
-		branch, err := currentBranch(target)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: could not detect branch for %s: %v\n", e.Name(), err)
-			continue
-		}
-		base := workspace.ReadBaseBranch(target)
 
 		// Strip "origin/" prefix from base for PR target.
-		prBase := base
-		if after, ok := strings.CutPrefix(base, "origin/"); ok {
+		prBase := wt.Base
+		if after, ok := strings.CutPrefix(wt.Base, "origin/"); ok {
 			prBase = after
 		}
 
 		result = append(result, shipWorktree{
-			repo:   e.Name(),
-			branch: branch,
+			repo:   wt.Repo,
+			branch: wt.Branch,
 			base:   prBase,
-			wtDir:  target,
+			wtDir:  wt.Path,
 		})
 	}
 
@@ -385,16 +375,6 @@ func recordShipResults(store *gig.Store, taskID string, results []shipResult) er
 		return fmt.Errorf("record ship comment: %w", err)
 	}
 	return nil
-}
-
-// currentBranch returns the checked-out branch name for a worktree directory.
-// Unlike filepath.Base, this correctly handles branch names containing slashes (e.g. "jeff/gig-1234").
-func currentBranch(wtDir string) (string, error) {
-	out, err := gitutil.Output(wtDir, "rev-parse", "--abbrev-ref", "HEAD")
-	if err != nil {
-		return "", fmt.Errorf("rev-parse HEAD: %w", err)
-	}
-	return strings.TrimSpace(string(out)), nil
 }
 
 // hasUnpushedCommits checks if the branch has commits not yet on the remote.

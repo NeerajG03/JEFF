@@ -247,6 +247,52 @@ func worktreeRemoveDir(jeffHome, repoName, wtDir string, force bool) error {
 	return nil
 }
 
+// TaskWorktree describes a repo worktree symlinked into a task directory.
+type TaskWorktree struct {
+	Repo   string // symlink name in the task dir
+	Path   string // resolved worktree path
+	Branch string // git branch (from `git rev-parse --abbrev-ref HEAD`); "" if undetectable
+	Base   string // contents of .jeff-base; "" if absent
+}
+
+// ListTaskWorktrees scans taskDir for symlinks pointing at repo worktrees and
+// returns one TaskWorktree per resolvable link. It replaces the four ad-hoc
+// symlink scanners that previously lived in the CLI (pickup/ship/status/done).
+//
+// Branch is resolved via the real git branch (`git rev-parse --abbrev-ref
+// HEAD`) rather than the last path component, so worktrees stored under a
+// slash-bearing branch (worktrees/<repo>/feat/x) report the correct branch.
+// Unresolvable links are skipped silently, matching the prior behavior of all
+// four call sites.
+func ListTaskWorktrees(taskDir string) ([]TaskWorktree, error) {
+	entries, err := os.ReadDir(taskDir)
+	if err != nil {
+		return nil, fmt.Errorf("read task dir: %w", err)
+	}
+
+	var result []TaskWorktree
+	for _, e := range entries {
+		fullPath := filepath.Join(taskDir, e.Name())
+		if !gitutil.IsSymlink(fullPath) {
+			continue
+		}
+		stat, err := os.Stat(fullPath)
+		if err != nil || !stat.IsDir() {
+			continue
+		}
+		target, err := os.Readlink(fullPath)
+		if err != nil {
+			continue
+		}
+		wt := TaskWorktree{Repo: e.Name(), Path: target, Base: ReadBaseBranch(target)}
+		if out, err := gitutil.Output(target, "rev-parse", "--abbrev-ref", "HEAD"); err == nil {
+			wt.Branch = strings.TrimSpace(string(out))
+		}
+		result = append(result, wt)
+	}
+	return result, nil
+}
+
 // WorktreeList returns all worktrees for a repo.
 func WorktreeList(jeffHome, repoName string) ([]string, error) {
 	wtBase := filepath.Join(jeffHome, "worktrees", repoName)

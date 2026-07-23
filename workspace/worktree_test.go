@@ -449,3 +449,38 @@ func TestResolveBranchName_ScriptFails(t *testing.T) {
 		t.Error("expected error for failing script")
 	}
 }
+
+func TestListTaskWorktrees_IgnoresRegularFiles(t *testing.T) {
+	home := t.TempDir()
+	taskDir := t.TempDir()
+
+	// Regular file — should be ignored.
+	os.WriteFile(filepath.Join(taskDir, "CLAUDE.md"), []byte("test"), 0o644)
+
+	// Regular dir — should be ignored.
+	os.MkdirAll(filepath.Join(taskDir, ".claude"), 0o755)
+
+	// A real worktree symlinked in — should be found, with its real branch.
+	setupGitRepo(t, home, "myrepo")
+	wtDir, err := WorktreeAdd(WorktreeOpts{JeffHome: home, RepoName: "myrepo", Branch: "gig-lt01", BaseBranch: "main", TaskDir: taskDir})
+	if err != nil {
+		t.Fatalf("WorktreeAdd: %v", err)
+	}
+
+	result, err := ListTaskWorktrees(taskDir)
+	if err != nil {
+		t.Fatalf("ListTaskWorktrees: %v", err)
+	}
+	if len(result) != 1 {
+		t.Fatalf("expected 1 worktree, got %d: %+v", len(result), result)
+	}
+	if result[0].Repo != "myrepo" {
+		t.Errorf("expected Repo=myrepo, got %q", result[0].Repo)
+	}
+	if result[0].Branch != "gig-lt01" {
+		t.Errorf("expected Branch=gig-lt01, got %q", result[0].Branch)
+	}
+	if result[0].Path != wtDir {
+		t.Errorf("expected Path=%q, got %q", wtDir, result[0].Path)
+	}
+}

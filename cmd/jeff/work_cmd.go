@@ -6,6 +6,7 @@ import (
 
 	jeff "github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/persona"
+	"github.com/NeerajG03/JEFF/task"
 	"github.com/spf13/cobra"
 )
 
@@ -32,12 +33,12 @@ func workCmd() *cobra.Command {
 			defer store.Close()
 
 			// Regenerate CLAUDE.md (injects latest checkpoint + current memory/worktrees).
-			if err := refreshTaskClaudeMD(taskDir, store, taskID); err != nil {
+			if err := task.RefreshClaudeMD(store, cfg, taskID, taskDir); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: refresh task context: %v\n", err)
 			}
 
 			// Resolve persona → agent + model, mirroring pickup.
-			personaName := resolveTaskPersona(store, taskID, taskDir)
+			personaName := task.ResolvePersona(store, taskID, taskDir)
 			agentTool := cfg.Agent
 			if personaName != "" {
 				if pa := persona.RegisteredAgent(cfg.Home, personaName); pa != "" {
@@ -47,7 +48,7 @@ func workCmd() *cobra.Command {
 			model := persona.RegisteredModel(cfg.Home, personaName)
 
 			fmt.Fprintf(os.Stderr, "Resuming %s in %s...\n", taskID, taskDir)
-			repos := detectRepos(taskDir)
+			repos := task.DetectRepos(taskDir)
 				orchestratorID, _, _ := detectOrchestratorID()
 				syncTaskHooks(cfg, taskDir, taskID, personaName, repos, orchestratorID)
 				return launchAgent(taskDir, agentTool, model, personaName, effectiveSkipPermissions(cfg, safeFlag))

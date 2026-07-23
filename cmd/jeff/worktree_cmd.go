@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/NeerajG03/JEFF/task"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/spf13/cobra"
 )
@@ -62,7 +63,7 @@ func worktreeAddCmd() *cobra.Command {
 					store, err := openGigStore()
 					if err == nil {
 						defer store.Close()
-						if err := refreshTaskClaudeMD(taskDir, store, taskID); err != nil {
+						if err := task.RefreshClaudeMD(store, cfg, taskID, taskDir); err != nil {
 							fmt.Fprintf(os.Stderr, "Warning: refresh CLAUDE.md: %v\n", err)
 						}
 					}

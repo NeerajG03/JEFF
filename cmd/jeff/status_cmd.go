@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/NeerajG03/JEFF/internal/gitutil"
@@ -166,29 +164,20 @@ func printStatusEntry(e statusEntry) {
 	}
 }
 
-// discoverWorktreeStatus finds symlinked worktrees in a task dir with their status.
+// discoverWorktreeStatus finds symlinked worktrees in a task dir with their
+// status. It adapts workspace.ListTaskWorktrees, adding status's dirty probe.
 func discoverWorktreeStatus(taskDir string) []worktreeStatus {
-	entries, err := os.ReadDir(taskDir)
+	wts, err := workspace.ListTaskWorktrees(taskDir)
 	if err != nil {
 		return nil
 	}
 
 	var result []worktreeStatus
-	for _, e := range entries {
-		fullPath := filepath.Join(taskDir, e.Name())
-		if !gitutil.IsSymlink(fullPath) {
-			continue
-		}
-		target, err := os.Readlink(fullPath)
-		if err != nil {
-			continue
-		}
-		branch := filepath.Base(target)
-		dirty := isGitDirty(target)
+	for _, wt := range wts {
 		result = append(result, worktreeStatus{
-			repo:   e.Name(),
-			branch: branch,
-			dirty:  dirty,
+			repo:   wt.Repo,
+			branch: wt.Branch,
+			dirty:  isGitDirty(wt.Path),
 		})
 	}
 	return result

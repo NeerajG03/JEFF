@@ -6,18 +6,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
 	jeff "github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/crew"
-	jeffembed "github.com/NeerajG03/JEFF/embed"
-	"github.com/NeerajG03/JEFF/hooks"
 	"github.com/NeerajG03/JEFF/identity"
-	"github.com/NeerajG03/JEFF/memory"
 	"github.com/NeerajG03/JEFF/persona"
-	"github.com/NeerajG03/JEFF/skill"
+	"github.com/NeerajG03/JEFF/task"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/NeerajG03/gig"
 	"github.com/spf13/cobra"
@@ -160,10 +156,31 @@ func crewStartCmd() *cobra.Command {
 			}
 
 			// Run the pickup sequence (claim, workspace, worktrees, hooks, skills).
-			taskDir, err := pickupTask(taskID, personaName, repos, reposReadonly, orchestratorID, agentTool)
+			// Open a dedicated gig store for pickup and close it before the
+			// worker launches, so the DB isn't held for the session. The crew
+			// store (cs) is a separate DB and stays open for StartWorker.
+			gs, err := openGigStore()
 			if err != nil {
 				return err
 			}
+			if err := jeff.EnsureAttrs(gs); err != nil {
+				gs.Close()
+				return fmt.Errorf("ensure attrs: %w", err)
+			}
+			res, err := task.Pickup(gs, cfg, task.PickupOpts{
+				TaskID:         taskID,
+				Persona:        personaName,
+				Repos:          repos,
+				ReposReadonly:  reposReadonly,
+				OrchestratorID: orchestratorID,
+				Prompt:         promptOverride,
+				AgentOverride:  agentTool,
+			})
+			gs.Close()
+			if err != nil {
+				return err
+			}
+			taskDir := res.TaskDir
 
 			var sess *crew.Session
 
@@ -294,8 +311,8 @@ func crewResumeCmd() *cobra.Command {
 			}
 
 			// Detect persona and repos from existing workspace.
-			personaName := detectPersona(td.Path)
-			repos := detectRepos(td.Path)
+			personaName := task.DetectPersona(td.Path)
+			repos := task.DetectRepos(td.Path)
 			// Look up existing session for resume context.
 			var resumeSessionID, orchestratorID string
 			agentTool := cfg.Agent
@@ -325,7 +342,6 @@ func crewResumeCmd() *cobra.Command {
 			// Build launch command via provider. Resume has no --safe flag
 			// (per plan); the safety posture always follows current config,
 			// not the original session, so it resolves fresh on every resume.
-			syncTaskHooks(cfg, td.Path, taskID, personaName, repos, orchestratorID)
 			skip := effectiveSkipPermissions(cfg, false)
 			provider := jeff.GetProvider(agentTool)
 			var launchCmd string
@@ -1128,195 +1144,6 @@ Use --dry-run to preview what would be cleaned up without making changes.`,
 
 // pickupTask runs the full pickup sequence and returns the task directory.
 // Extracted from pickupCmd for reuse by crew start.
-func pickupTask(taskID, personaName string, repos, reposReadonly []string, orchestratorID string, agentOverride jeff.AgentTool) (string, error) {
-	store, err := openGigStore()
-	if err != nil {
-		return "", err
-	}
-	defer store.Close()
-
-	if err := jeff.EnsureAttrs(store); err != nil {
-		return "", fmt.Errorf("ensure attrs: %w", err)
-	}
-
-	task, err := store.Get(taskID)
-	if err != nil {
-		return "", fmt.Errorf("task %s not found: %w", taskID, err)
-	}
-
-	claimResult, err := store.Claim(taskID, "jeff")
-	if err != nil {
-		return "", fmt.Errorf("claim: %w", err)
-	}
-	fmt.Fprintf(os.Stderr, "Claimed %s: %s\n", taskID, task.Title)
-	if claimResult.ParentProgressed {
-		fmt.Fprintf(os.Stderr, "Parent %s → in_progress\n", claimResult.ParentID)
-	}
-
-	td, err := workspace.Create(cfg.Home, taskID, task.Title)
-	if err != nil {
-		return "", fmt.Errorf("create workspace: %w", err)
-	}
-	fmt.Fprintf(os.Stderr, "Workspace: %s\n", td.Path)
-
-	allRepos := append([]string{}, repos...)
-	allRepos = append(allRepos, reposReadonly...)
-	if len(allRepos) > 0 {
-		reposJSON, _ := json.Marshal(allRepos)
-		if err := store.SetAttr(taskID, jeff.AttrRepos, string(reposJSON)); err != nil {
-			return "", fmt.Errorf("set repos attr: %w", err)
-		}
-	}
-	if personaName != "" {
-		if err := store.SetAttr(taskID, jeff.AttrPersona, personaName); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: set persona attr: %v\n", err)
-		}
-	}
-	if err := store.SetAttr(taskID, jeff.AttrTeamSize, "1"); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: set team_size attr: %v\n", err)
-	}
-
-	taskJSON := buildTaskJSON(store, task)
-	for _, repoName := range repos {
-		rc := cfg.Repos[repoName]
-		branch, err := resolveRepoBranch(rc, taskJSON, taskID)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: branch name for %s: %v, using %s\n", repoName, err, taskID)
-			branch = taskID
-		}
-
-		opts := workspace.WorktreeOpts{
-			JeffHome: cfg.Home,
-			RepoName: repoName,
-			Branch:   branch,
-			TaskDir:  td.Path,
-		}
-		if rc != nil {
-			opts.BaseBranch = rc.BaseBranch
-			opts.PostSetup = rc.PostSetup
-		}
-
-		wtDir, err := workspace.WorktreeAdd(opts)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: worktree for %s: %v\n", repoName, err)
-			continue
-		}
-		fmt.Fprintf(os.Stderr, "Worktree: %s → %s\n", repoName, wtDir)
-	}
-
-	for _, repoName := range reposReadonly {
-		target, err := workspace.ReadonlyLink(cfg.Home, repoName, td.Path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: readonly link for %s: %v\n", repoName, err)
-			continue
-		}
-		fmt.Fprintf(os.Stderr, "Readonly: %s → %s\n", repoName, target)
-	}
-
-	if personaName != "" {
-		if err := memory.EnsurePersonaDir(cfg.Home, personaName); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: persona memory: %v\n", err)
-		}
-	}
-	for _, repoName := range allRepos {
-		if err := memory.EnsureRepoDir(cfg.Home, repoName); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: repo learnings: %v\n", err)
-		}
-	}
-
-	if err := writeTaskClaudeMD(td.Path, cfg.Home, store, task, personaName, allRepos); err != nil {
-		return "", fmt.Errorf("write task CLAUDE.md: %w", err)
-	}
-
-	var memScopes []string
-	if personaName != "" {
-		if content, _ := memory.LoadPersonaMemory(cfg.Home, personaName); content != "" {
-			memScopes = append(memScopes, "persona:"+personaName)
-		}
-	}
-	for _, r := range allRepos {
-		if content, _ := memory.LoadRepoLearnings(cfg.Home, r); content != "" {
-			memScopes = append(memScopes, "repo:"+r)
-		}
-	}
-	if len(memScopes) > 0 {
-		if data, err := json.Marshal(memScopes); err == nil {
-			if err := store.SetAttr(taskID, jeff.AttrMemoryLoaded, string(data)); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: set memory_loaded attr: %v\n", err)
-			}
-		}
-	}
-
-	// Append a readonly notice so the agent knows which repos it must not modify.
-	if len(reposReadonly) > 0 {
-		if err := appendReadonlyNote(td.Path, reposReadonly); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: readonly note: %v\n", err)
-		}
-	}
-
-	// Inject memory addendum + suppress native memory for the active agent.
-	// RunSessionStart is idempotent; the bash hook re-runs it on session resume.
-	agentKind := string(agentOverride)
-	if agentKind == "" {
-		agentKind = string(cfg.Agent)
-	}
-	if err := hooks.RunSessionStart(cfg.Home, td.Path, personaName, taskID, allRepos, agentKind); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: memory session-start: %v\n", err)
-	}
-
-	syncTaskHooks(cfg, td.Path, taskID, personaName, allRepos, orchestratorID)
-
-	// Always alias .gemini/skills → .claude/skills before injecting skills,
-	// regardless of whether the gemini agent is registered. Skills should be
-	// in sync across agents, so gemini sessions see what claude sessions get.
-	if err := jeffembed.EnsureGeminiSkillsAlias(td.Path); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: alias .gemini/skills: %v\n", err)
-	}
-
-	// Inject matching skills into ALL registered agent config dirs that support skills.
-	// This ensures skills are available regardless of which agent launches in this workspace.
-	mctx := &skill.MatchContext{
-		Persona: personaName,
-		GigType: string(task.Type),
-		Labels:  task.Labels,
-	}
-	var injectedNames []string
-	injectedSet := make(map[string]bool)
-	for _, agent := range jeff.RegisteredAgents() {
-		p := jeff.GetProvider(agent)
-		if p == nil || p.SkillsSubdir() == "" {
-			continue
-		}
-		names, err := skill.InjectMatchingTo(cfg.Home, td.Path, p.ConfigDir(), p.SkillsSubdir(), mctx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: skill injection (%s): %v\n", agent, err)
-		}
-		if len(injectedNames) == 0 {
-			injectedNames = names
-		}
-		for _, n := range names {
-			injectedSet[n] = true
-		}
-	}
-	if len(injectedNames) > 0 {
-		fmt.Fprintf(os.Stderr, "Skills: %s\n", strings.Join(injectedNames, ", "))
-	}
-	if len(injectedSet) > 0 {
-		names := make([]string, 0, len(injectedSet))
-		for n := range injectedSet {
-			names = append(names, n)
-		}
-		sort.Strings(names)
-		if data, err := json.Marshal(names); err == nil {
-			if err := store.SetAttr(taskID, jeff.AttrSkillsLoaded, string(data)); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: set skills_loaded attr: %v\n", err)
-			}
-		}
-	}
-
-	return td.Path, nil
-}
-
 // relativeTime returns a human-friendly relative time string.
 func relativeTime(t time.Time) string {
 	d := time.Since(t)

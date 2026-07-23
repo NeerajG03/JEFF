@@ -10,7 +10,7 @@ import (
 )
 
 // ScriptVersion is the current version stamp written into generated hook scripts.
-const ScriptVersion = "2"
+const ScriptVersion = "3"
 
 // Source identifies where a hook gets installed.
 type Source string

@@ -28,10 +28,18 @@ Each package has its own `CLAUDE.md` with contextual detail — auto-loaded when
 ## Build & Test
 
 ```bash
-go build -o jeff ./cmd/jeff/
+go build -o /tmp/jeff-dev ./cmd/jeff/   # local test build — throwaway path, invoke explicitly: /tmp/jeff-dev ...
 go test ./...
 go vet ./...
 ```
+
+> ⚠️ **NEVER touch, repoint, or replace the live `jeff` command, and never build a local dev build into it.**
+> Do NOT `go install`, `go build -o jeff` into PATH, symlink, alias, `mv`, or otherwise overwrite/shadow the
+> installed `jeff` binary or change what `jeff` on PATH resolves to. The running orchestrator and **every active
+> crew worker depend on the installed `jeff`** — swapping it out mid-session kills them (this has repeatedly caused
+> workers to die). For local testing always build to a throwaway path (e.g. `/tmp/jeff-dev`) and invoke that path
+> explicitly; leave the system `jeff` untouched. Shipping a real change goes through the normal PR + release flow,
+> not by repointing the local command.
 
 ## Conventions
 

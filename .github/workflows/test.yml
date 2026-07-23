@@ -32,8 +32,9 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      # version: latest can introduce new linters over time; pin (e.g. v2.1)
-      # if stability across runs matters more than picking up new checks.
+      # Pinned deliberately (was `latest`): a golangci-lint auto-bump to v2.12.2
+      # silently reddened main when new staticcheck rules (ST1005/QF1012) landed.
+      # Bump this intentionally after running `golangci-lint run ./...` locally.
       - uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
+          version: v2.12.2

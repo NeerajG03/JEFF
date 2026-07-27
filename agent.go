@@ -49,11 +49,9 @@ type AgentProvider interface {
 	BuildCurateArgs(prompt string, opts LaunchOpts) []string
 
 	// SupportsInlinePrompt reports whether the agent may be launched with the
-	// initial prompt baked into its argv. All current providers return false:
-	// workers must run in the interactive TUI, and a launch-time prompt arg
-	// pushes these CLIs into non-interactive single-turn mode (they run one turn
-	// and exit, tearing down the worker). jeff always launches the bare
-	// interactive CLI and pastes the prompt afterward (see crew/lifecycle.go).
+	// initial prompt baked into its argv while remaining a persistent worker.
+	// Providers that return false are launched bare and receive the prompt via
+	// the post-start delivery path in crew/lifecycle.go.
 	SupportsInlinePrompt() bool
 
 	// ConfigDir returns the agent's config directory name (e.g. ".claude", ".gemini").

@@ -318,9 +318,9 @@ func TestSendCommandViaBuffer(t *testing.T) {
 	}
 }
 
-// TestSendCommandForSessionGeminiRoutesToBuffer verifies the routing invariant
-// for gig-ca9f: agent="gemini" must use the paste-buffer path; all other agents
-// must use the send-keys -l path. Claude must never touch paste-buffer.
+// TestSendCommandForSessionGeminiRoutesToBuffer verifies that Ink-based agent
+// TUIs use the paste-buffer path. Claude, Gemini, and OpenCode must not route
+// prompt text through send-keys -l because it races with TUI input handling.
 func TestSendCommandForSessionGeminiRoutesToBuffer(t *testing.T) {
 	t.Run("gemini-uses-paste-buffer", func(t *testing.T) {
 		calls := withFakeTmux(t)
@@ -369,6 +369,31 @@ func TestSendCommandForSessionGeminiRoutesToBuffer(t *testing.T) {
 		for _, c := range sendKeysCalls(all) {
 			if strings.Contains(c, " -l ") {
 				t.Errorf("claude path: must not use send-keys -l, got: %q", c)
+			}
+		}
+	})
+
+	t.Run("opencode-uses-buffer-too", func(t *testing.T) {
+		calls := withFakeTmux(t)
+
+		if err := sendCommandForSession("jeff:test", "hello", "opencode"); err != nil {
+			t.Fatalf("sendCommandForSession opencode: %v", err)
+		}
+
+		all := calls()
+		hasPaste := false
+		for _, c := range pasteBufferCalls(all) {
+			if strings.Contains(c, "-p") {
+				hasPaste = true
+				break
+			}
+		}
+		if !hasPaste {
+			t.Errorf("opencode path: expected bracketed paste via paste-buffer; all calls: %v", all)
+		}
+		for _, c := range sendKeysCalls(all) {
+			if strings.Contains(c, " -l ") {
+				t.Errorf("opencode path: must not use send-keys -l, got: %q", c)
 			}
 		}
 	})

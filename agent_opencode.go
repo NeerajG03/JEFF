@@ -109,10 +109,11 @@ func (o *opencodeProvider) BuildCurateArgs(prompt string, opts LaunchOpts) []str
 	return []string{"run", "--auto", prompt}
 }
 
-// SupportsInlinePrompt is false: workers must always run in the interactive TUI
-// rather than being launched with a baked-in --prompt. jeff pastes the initial
-// prompt after launch (see lifecycle.go).
-func (o *opencodeProvider) SupportsInlinePrompt() bool   { return false }
+// SupportsInlinePrompt is true: opencode accepts `--prompt "<text>"` and stays
+// in the interactive TUI. jeff bakes the initial prompt into argv at launch
+// (see cmd/jeff/crew_cmd.go) instead of pasting it after launch — the
+// paste-after-launch path was unreliable for opencode's Ink-based TUI.
+func (o *opencodeProvider) SupportsInlinePrompt() bool { return true }
 func (o *opencodeProvider) ConfigDir() string            { return ".opencode" }
 func (o *opencodeProvider) SkillsSubdir() string         { return "skills" }
 func (o *opencodeProvider) CommandsSubdir() string       { return "commands" }

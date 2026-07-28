@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	jeff "github.com/NeerajG03/JEFF"
 	jeffembed "github.com/NeerajG03/JEFF/embed"
 	"github.com/NeerajG03/JEFF/memory"
 	"github.com/NeerajG03/JEFF/skill"
@@ -72,5 +74,47 @@ func TestTaskWorkspace_GeminiSkillsAliasReflectsClaudeSkills(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(taskDir, ".gemini", "skills", "deploy", "SKILL.md")); err != nil {
 		t.Errorf("skill no longer visible after idempotent alias call: %v", err)
+	}
+}
+
+func TestVerifyPickup_Passes(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("content"), 0o644)
+	os.MkdirAll(filepath.Join(dir, ".claude"), 0o755)
+
+	err := verifyPickup(dir, jeff.AgentClaudeCode)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+}
+
+func TestVerifyPickup_FailsOnMissingClaudeMD(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".claude"), 0o755)
+
+	err := verifyPickup(dir, jeff.AgentClaudeCode)
+	if err == nil {
+		t.Fatal("expected error for missing CLAUDE.md")
+	}
+	var ece *exitCode
+	if !errors.As(err, &ece) {
+		t.Fatalf("expected *exitCode, got %T", err)
+	}
+	if ece.code != 1 {
+		t.Errorf("expected exit code 1, got %d", ece.code)
+	}
+}
+
+func TestVerifyPickup_FailsOnMissingTaskDir(t *testing.T) {
+	err := verifyPickup("/nonexistent/path", jeff.AgentClaudeCode)
+	if err == nil {
+		t.Fatal("expected error for missing task dir")
+	}
+	var ece *exitCode
+	if !errors.As(err, &ece) {
+		t.Fatalf("expected *exitCode, got %T", err)
+	}
+	if ece.code != 1 {
+		t.Errorf("expected exit code 1, got %d", ece.code)
 	}
 }

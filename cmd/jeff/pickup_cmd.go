@@ -16,6 +16,7 @@ func pickupCmd() *cobra.Command {
 		personaName string
 		repos       []string
 		safeFlag    bool
+		testFlag    bool
 	)
 
 	cmd := &cobra.Command{
@@ -56,6 +57,18 @@ func pickupCmd() *cobra.Command {
 				return err
 			}
 
+			if testFlag {
+				fmt.Fprintf(os.Stderr, "\nTest mode — workspace ready at %s\n", res.TaskDir)
+				fmt.Fprintf(os.Stderr, "Verify:\n")
+				fmt.Fprintf(os.Stderr, "  • Task dir:   %s\n", res.TaskDir)
+				fmt.Fprintf(os.Stderr, "  • CLAUDE.md:  %s\n", res.TaskDir+"/CLAUDE.md")
+				fmt.Fprintf(os.Stderr, "  • Worktrees:  ls %s/\n", res.TaskDir)
+				for range repos {
+					fmt.Fprintf(os.Stderr, "  • Skills:     ls %s/.claude/skills/\n", res.TaskDir)
+				}
+				return nil
+			}
+
 			// Launch agent tool in task directory (foreground, blocks).
 			fmt.Fprintf(os.Stderr, "\nLaunching %s in %s...\n", agentTool, res.TaskDir)
 			// Resolve persona model for foreground launch.
@@ -67,6 +80,7 @@ func pickupCmd() *cobra.Command {
 	cmd.Flags().StringVar(&personaName, "persona", "", "Persona template to use ("+strings.Join(persona.Names(), ", ")+")")
 	cmd.Flags().StringSliceVar(&repos, "repos", nil, "Repos this task touches (creates worktrees)")
 	cmd.Flags().BoolVar(&safeFlag, "safe", false, `Launch the agent with its permission prompts enabled (pass "--safe" to override skip_permissions)`)
+	cmd.Flags().BoolVar(&testFlag, "test", false, "Prepare the workspace and verify structure, then exit without launching the agent (useful for CI, non-interactive setup, or staging a workspace)")
 	cmd.ValidArgsFunction = readyTaskCompletion
 	_ = cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
 	_ = cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)

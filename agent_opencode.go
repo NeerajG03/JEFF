@@ -109,11 +109,11 @@ func (o *opencodeProvider) BuildCurateArgs(prompt string, opts LaunchOpts) []str
 	return []string{"run", "--auto", prompt}
 }
 
-// SupportsInlinePrompt is false: opencode's --prompt flag causes the process
-// to exit after completing the prompt (single-shot mode). Workers must launch
-// bare and receive the initial prompt via the post-start bracketed-paste
-// path (see crew/lifecycle.go:296-308).
-func (o *opencodeProvider) SupportsInlinePrompt() bool { return false }
+// SupportsInlinePrompt is true: opencode --prompt survives and stays interactive
+// (verified in isolation and against real tmux). With the Cleanup fix, inline
+// prompt is safe — the prompt ships as the first user message at process start,
+// avoiding the unreliable bracketed-paste delivery path.
+func (o *opencodeProvider) SupportsInlinePrompt() bool { return true }
 func (o *opencodeProvider) ConfigDir() string            { return ".opencode" }
 func (o *opencodeProvider) SkillsSubdir() string         { return "skills" }
 func (o *opencodeProvider) CommandsSubdir() string       { return "commands" }

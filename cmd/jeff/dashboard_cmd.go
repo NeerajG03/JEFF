@@ -46,13 +46,14 @@ func dashboardCmd() *cobra.Command {
 	}
 }
 
-// attachToTmux hands the terminal to the jeff tmux session at the given window.
-func attachToTmux(windowName string) error {
-	target := crew.TmuxSessionName + ":" + windowName
-
+// attachToTmux hands the terminal to the tmux session at the given target.
+// The target is a full "session:window" string (built by the TUI via
+// crew.SessionTarget) so workers hosted in orchestrator-owned sessions
+// ("jeff-<suffix>") resolve correctly, not just the shared "jeff" session.
+func attachToTmux(target string) error {
 	if crew.InsideTmux() {
-		// Already in tmux — switch client to the jeff session + window.
-		return crew.AttachSession(windowName)
+		// Already in tmux — switch client to the target session + window.
+		return execTmuxRun("switch-client", "-t", target)
 	}
 
 	// Outside tmux — exec into tmux attach (replaces this process).
@@ -61,9 +62,18 @@ func attachToTmux(windowName string) error {
 		return fmt.Errorf("tmux not found: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "Attaching to tmux window %s...\n", windowName)
+	fmt.Fprintf(os.Stderr, "Attaching to tmux target %s...\n", target)
 	// Use syscall exec to replace process, keeping the terminal clean.
 	return execTmux(tmuxBin, "attach-session", "-t", target)
+}
+
+// execTmuxRun looks up tmux and runs the given args via execTmux.
+func execTmuxRun(args ...string) error {
+	tmuxBin, err := exec.LookPath("tmux")
+	if err != nil {
+		return fmt.Errorf("tmux not found: %w", err)
+	}
+	return execTmux(tmuxBin, args...)
 }
 
 // execTmux runs tmux and waits (we can't use syscall.Exec on all platforms).

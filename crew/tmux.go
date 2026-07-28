@@ -143,11 +143,13 @@ func SelectWindow(target string) error {
 	return tmuxRun("select-window", "-t", target)
 }
 
-// AttachSession attaches to the jeff tmux session and selects a window.
-// If already inside tmux, uses switch-client. Otherwise uses attach-session.
-func AttachSession(windowName string) error {
+// AttachSession attaches to a tmux session and selects a window.
+// The tmuxSession is the session hosting the worker (shared "jeff" session
+// or an orchestrator-owned "jeff-<suffix>" session). If already inside tmux,
+// uses switch-client. Otherwise uses attach-session.
+func AttachSession(tmuxSession, windowName string) error {
 	windowName = SanitizeWindowName(windowName)
-	target := TmuxSessionName + ":" + windowName
+	target := tmuxSession + ":" + windowName
 	if InsideTmux() {
 		// Already in tmux — switch to the jeff session + window.
 		return tmuxRun("switch-client", "-t", target)

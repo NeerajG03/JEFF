@@ -17,7 +17,7 @@ func statusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Overview of active tasks and their workspaces",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			store, err := openGigStore()
+			store, err := openGigStore(cfg)
 			if err != nil {
 				return err
 			}

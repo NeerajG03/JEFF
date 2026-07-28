@@ -23,7 +23,7 @@ func dashboardCmd() *cobra.Command {
 			}
 			defer crewStore.Close()
 
-			gigStore, err := openGigStore()
+			gigStore, err := openGigStore(cfg)
 			if err != nil {
 				return fmt.Errorf("open gig store: %w", err)
 			}

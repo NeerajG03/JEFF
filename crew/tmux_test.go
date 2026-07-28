@@ -373,6 +373,31 @@ func TestSendCommandForSessionGeminiRoutesToBuffer(t *testing.T) {
 		}
 	})
 
+	t.Run("opencode-uses-buffer-too", func(t *testing.T) {
+		calls := withFakeTmux(t)
+
+		if err := sendCommandForSession("jeff:test", "hello", "opencode"); err != nil {
+			t.Fatalf("sendCommandForSession opencode: %v", err)
+		}
+
+		all := calls()
+		hasPaste := false
+		for _, c := range pasteBufferCalls(all) {
+			if strings.Contains(c, "-p") {
+				hasPaste = true
+				break
+			}
+		}
+		if !hasPaste {
+			t.Errorf("opencode path: expected bracketed paste via paste-buffer; all calls: %v", all)
+		}
+		for _, c := range sendKeysCalls(all) {
+			if strings.Contains(c, " -l ") {
+				t.Errorf("opencode path: must not use send-keys -l, got: %q", c)
+			}
+		}
+	})
+
 	t.Run("empty-agent-uses-send-keys", func(t *testing.T) {
 		calls := withFakeTmux(t)
 

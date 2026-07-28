@@ -30,6 +30,7 @@ type Orchestrator struct {
 	Status      string    `json:"status"` // running, stopped
 	Agent       string    `json:"agent,omitempty"`
 	Model       string    `json:"model,omitempty"`
+	Dir         string    `json:"dir,omitempty"` // project directory (durable identities only)
 }
 
 // Session represents a worker agent running in a tmux window.
@@ -119,6 +120,7 @@ func migrate(db *sql.DB) error {
 	steps := []func(*sql.DB) error{
 		migrateV1,
 		migrateV2,
+		migrateV3,
 	}
 	for i := v; i < len(steps); i++ {
 		if err := steps[i](db); err != nil {
@@ -210,6 +212,14 @@ func migrateV2(db *sql.DB) error {
 		return fmt.Errorf("sanitize dotted window_name rows: %w", err)
 	}
 
+	return nil
+}
+
+func migrateV3(db *sql.DB) error {
+	_, err := db.Exec("ALTER TABLE orchestrators ADD COLUMN dir TEXT DEFAULT ''")
+	if err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
 	return nil
 }
 
@@ -383,18 +393,19 @@ func (s *Store) TouchSession(taskID string) error {
 // PutOrchestrator inserts or updates an orchestrator record.
 func (s *Store) PutOrchestrator(o *Orchestrator) error {
 	_, err := s.db.Exec(`
-		INSERT INTO orchestrators (id, tmux_session, tmux_window, tmux_pane, started_at, status, agent, model)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO orchestrators (id, tmux_session, tmux_window, tmux_pane, started_at, status, agent, model, dir)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			tmux_session = excluded.tmux_session,
 			tmux_window  = excluded.tmux_window,
 			tmux_pane    = excluded.tmux_pane,
 			status       = excluded.status,
 			agent        = excluded.agent,
-			model        = excluded.model`,
+			model        = excluded.model,
+			dir          = excluded.dir`,
 		o.ID, o.TmuxSession, o.TmuxWindow, o.TmuxPane,
 		o.StartedAt.UTC().Format(timeLayout), o.Status,
-		o.Agent, o.Model,
+		o.Agent, o.Model, o.Dir,
 	)
 	return err
 }
@@ -405,10 +416,10 @@ func (s *Store) GetOrchestrator(id string) (*Orchestrator, error) {
 	var startedAt string
 	err := s.db.QueryRow(`
 		SELECT id, tmux_session, tmux_window, tmux_pane, started_at, status,
-		       COALESCE(agent, ''), COALESCE(model, '')
+		       COALESCE(agent, ''), COALESCE(model, ''), COALESCE(dir, '')
 		FROM orchestrators WHERE id = ?`, id).Scan(
 		&o.ID, &o.TmuxSession, &o.TmuxWindow, &o.TmuxPane, &startedAt, &o.Status,
-		&o.Agent, &o.Model,
+		&o.Agent, &o.Model, &o.Dir,
 	)
 	if err != nil {
 		return nil, err
@@ -443,7 +454,7 @@ func (s *Store) OrchestratorByPane(paneID string) (string, error) {
 // ListOrchestrators returns orchestrators. If activeOnly, filters to status='running'.
 func (s *Store) ListOrchestrators(activeOnly bool) ([]*Orchestrator, error) {
 	query := `SELECT id, tmux_session, tmux_window, tmux_pane, started_at, status,
-	                 COALESCE(agent, ''), COALESCE(model, '') FROM orchestrators`
+	                 COALESCE(agent, ''), COALESCE(model, ''), COALESCE(dir, '') FROM orchestrators`
 	if activeOnly {
 		query += ` WHERE status = 'running'`
 	}
@@ -459,7 +470,7 @@ func (s *Store) ListOrchestrators(activeOnly bool) ([]*Orchestrator, error) {
 	for rows.Next() {
 		var o Orchestrator
 		var startedAt string
-		if err := rows.Scan(&o.ID, &o.TmuxSession, &o.TmuxWindow, &o.TmuxPane, &startedAt, &o.Status, &o.Agent, &o.Model); err != nil {
+		if err := rows.Scan(&o.ID, &o.TmuxSession, &o.TmuxWindow, &o.TmuxPane, &startedAt, &o.Status, &o.Agent, &o.Model, &o.Dir); err != nil {
 			return nil, err
 		}
 		o.StartedAt = parseTime(startedAt)

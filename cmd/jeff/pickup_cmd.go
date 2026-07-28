@@ -37,7 +37,7 @@ func pickupCmd() *cobra.Command {
 			// the whole interactive session — otherwise the SQLite DB stays
 			// locked for hours. Ordering: open → EnsureAttrs → Pickup → Close →
 			// launch (preserving the old pickupTask lifecycle).
-			store, err := openGigStore()
+			store, err := openGigStore(cfg)
 			if err != nil {
 				return err
 			}

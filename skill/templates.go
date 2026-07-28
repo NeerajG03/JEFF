@@ -10,6 +10,9 @@ import (
 
 //go:embed templates/crew-orchestrator/*.md
 //go:embed templates/curation/SKILL.md
+//go:embed templates/go-testing/SKILL.md
+//go:embed templates/pr-review/SKILL.md
+//go:embed templates/root-cause/SKILL.md
 var templateFS embed.FS
 
 // SeedDefaults seeds the built-in crew-orchestrator skill into jeffHome.
@@ -81,6 +84,54 @@ func SeedCuration(jeffHome string) error {
 	}
 
 	return SaveSkills(jeffHome, sc)
+}
+
+// SeedPersonaSkills seeds 3 persona-tagged embedded skills: go-testing→jenko,
+// pr-review→hardy, root-cause→schmidt. Each is a genuine, self-contained
+// SKILL.md that documents common workflows for that persona.
+//
+// Called by Worker E (jeff init / --update). Safe to call repeatedly.
+// Tags are set so these skills auto-inject when the matching persona picks
+// up a task (via jeff pickup --persona <name>).
+func SeedPersonaSkills(jeffHome string) error {
+	skills := []struct {
+		Name    string
+		Persona string
+	}{
+		{"go-testing", "jenko"},
+		{"pr-review", "hardy"},
+		{"root-cause", "schmidt"},
+	}
+
+	for _, s := range skills {
+		destDir := filepath.Join(DefaultSkillsDir(jeffHome), s.Name)
+		srcDir := "templates/" + s.Name
+
+		if err := writeEmbeddedSkill(templateFS, srcDir, destDir); err != nil {
+			return fmt.Errorf("seed %s: %w", s.Name, err)
+		}
+
+		sc, err := LoadSkills(jeffHome)
+		if err != nil {
+			return err
+		}
+
+		if entry, exists := sc.Skills[s.Name]; exists {
+			entry.Location = destDir
+			entry.Personas = []string{s.Persona}
+		} else {
+			sc.Skills[s.Name] = &SkillEntry{
+				Location: destDir,
+				Personas: []string{s.Persona},
+			}
+		}
+
+		if err := SaveSkills(jeffHome, sc); err != nil {
+			return fmt.Errorf("save skills after seeding %s: %w", s.Name, err)
+		}
+	}
+
+	return nil
 }
 
 // CurationSkillContent returns the embedded curation SKILL.md content.

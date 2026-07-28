@@ -27,6 +27,7 @@ func crewCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(
+		crewUpCmd(),
 		crewStartCmd(),
 		crewResumeCmd(),
 		crewSessionIDCmd(),
@@ -48,6 +49,97 @@ func crewCmd() *cobra.Command {
 		crewCheckStallsCmd(),
 	)
 
+	return cmd
+}
+
+func crewUpCmd() *cobra.Command {
+	var name string
+
+	cmd := &cobra.Command{
+		Use:   "up [--name work]",
+		Short: "Initialize project identity and start orchestrator in one step",
+		Long: `Create a durable orchestrator identity for this directory (if none exists)
+and start the orchestrator session in one command. No separate orchestration
+init step is needed — this is the fastest way to get a working crew session.
+
+  jeff crew up                      init identity (if needed) + start orchestrator
+  jeff crew up --name work          set a custom session name (jeff-work)
+
+After this, use jeff crew start <id> "<prompt>" to launch workers under this
+orchestrator.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
+
+			// Step 1: detect or create orchestrator identity.
+			existingID, source, err := detectOrchestratorID()
+			if err != nil {
+				return err
+			}
+
+			if existingID == "" {
+				// No identity exists — run silent init (no adopt prompt).
+				wd, err := os.Getwd()
+				if err != nil {
+					return fmt.Errorf("get cwd: %w", err)
+				}
+				path := identity.ProjectFilePath(wd)
+
+				tmuxPane, tmuxSession := "", ""
+				if os.Getenv("TMUX") != "" {
+					tmuxPane = os.Getenv("TMUX_PANE")
+					tmuxSession = currentTmuxSessionName(tmuxPane)
+				}
+
+				resolvedName := name
+				if resolvedName == "" {
+					if tmuxSession != "" {
+						resolvedName = tmuxSession
+					} else {
+						resolvedName = filepath.Base(wd)
+					}
+				}
+
+				idObj := identity.Generate(identity.GenerateOpts{
+					Name:     resolvedName,
+					Dir:      wd,
+					TmuxPane: tmuxPane,
+				})
+				if err := identity.Write(path, idObj); err != nil {
+					return err
+				}
+
+				cs, err := crew.Open(cfg.Home)
+				if err != nil {
+					return fmt.Errorf("open crew store: %w", err)
+				}
+				orch := &crew.Orchestrator{
+					ID:          idObj.ID,
+					Dir:         wd,
+					TmuxSession: "",
+					TmuxWindow:  "",
+					TmuxPane:    tmuxPane,
+					StartedAt:   time.Now().UTC(),
+					Status:      "running",
+				}
+				if err := cs.PutOrchestrator(orch); err != nil {
+					cs.Close()
+					return fmt.Errorf("register orchestrator identity: %w", err)
+				}
+				cs.Close()
+
+				fmt.Fprintf(os.Stderr, "✓ Created identity %s (%s)\n", idObj.ID, resolvedName)
+			} else {
+				fmt.Fprintf(os.Stderr, "✓ Using existing identity %s (via %s)\n", existingID, source)
+			}
+
+			// Step 2: start orchestrator session.
+			fmt.Fprintln(os.Stderr, "Starting orchestrator...")
+			return doOrchestratorStart(name, "", "")
+		},
+	}
+
+	cmd.Flags().StringVar(&name, "name", "", "human-readable name (default: tmux session name or basename of cwd)")
 	return cmd
 }
 
@@ -159,7 +251,7 @@ func crewStartCmd() *cobra.Command {
 			// Open a dedicated gig store for pickup and close it before the
 			// worker launches, so the DB isn't held for the session. The crew
 			// store (cs) is a separate DB and stays open for StartWorker.
-			gs, err := openGigStore()
+			gs, err := openGigStore(cfg)
 			if err != nil {
 				return err
 			}
@@ -225,6 +317,7 @@ func crewStartCmd() *cobra.Command {
 				Prompt:          promptOverride,
 				LaunchCmd:       launchCmd,
 				SkipPermissions: skip,
+				JeffHome:        cfg.Home,
 			}
 			// Single worker-start path: the identity was validated above, so the
 			// worker always binds to a non-empty orchestrator_id. The worker's
@@ -366,6 +459,7 @@ func crewResumeCmd() *cobra.Command {
 				Model:           model,
 				ResumeSessionID: resumeSessionID,
 				LaunchCmd:       launchCmd,
+				JeffHome:        cfg.Home,
 			}
 
 			// Resume requires an orchestrator identity just like start: no
@@ -427,7 +521,7 @@ func crewListCmd() *cobra.Command {
 			defer cs.Close()
 
 			// Refresh state from tmux.
-			gigStore, _ := openGigStore()
+			gigStore, _ := openGigStore(cfg)
 			if gigStore != nil {
 				defer gigStore.Close()
 			}
@@ -564,7 +658,7 @@ func crewStatusCmd() *cobra.Command {
 			}
 
 			// Detailed output.
-			gigStore, _ := openGigStore()
+			gigStore, _ := openGigStore(cfg)
 			if gigStore != nil {
 				defer gigStore.Close()
 			}
@@ -1008,7 +1102,7 @@ func crewEventsCmd() *cobra.Command {
 		Short: "Poll gig events from active crew sessions",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			gigStore, err := openGigStore()
+			gigStore, err := openGigStore(cfg)
 			if err != nil {
 				return err
 			}
@@ -1075,7 +1169,9 @@ func crewCleanupCmd() *cobra.Command {
 		Short: "Reconcile tmux windows with crew DB, remove orphans",
 		Long: `Reconcile tmux windows with the crew database:
 
-  1. Kill orphaned tmux windows (no matching DB session)
+  1. Kill orphaned tmux windows (no matching DB session) whose pane has
+     exited. Windows with a live pane are never killed — they are only
+     reported, so a DB/tmux mismatch can't take down running workers.
   2. Mark stale DB sessions as failed (tmux window gone)
   3. Mark stale orchestrators as stopped (tmux session gone)
 
@@ -1103,14 +1199,26 @@ Use --dry-run to preview what would be cleaned up without making changes.`,
 				prefix = "[dry-run] "
 			}
 
+			if result.SkippedNoState {
+				fmt.Fprintln(os.Stderr, "WARNING: crew DB has no sessions or orchestrators but jeff tmux windows exist —")
+				fmt.Fprintln(os.Stderr, "  refusing to kill windows (is JEFF_HOME pointing at the right home?)")
+			}
+
 			if len(result.OrphanedWindows) > 0 {
-				fmt.Fprintf(os.Stderr, "%sOrphaned tmux windows:\n", prefix)
+				fmt.Fprintf(os.Stderr, "%sOrphaned tmux windows (pane dead):\n", prefix)
 				for _, tw := range result.OrphanedWindows {
 					action := "killed"
 					if dryRun {
 						action = "would kill"
 					}
 					fmt.Fprintf(os.Stderr, "  %s %s:%s\n", action, tw.Session, tw.Window)
+				}
+			}
+
+			if len(result.LiveOrphans) > 0 {
+				fmt.Fprintf(os.Stderr, "%sWindows with no DB session but a live pane (left alone):\n", prefix)
+				for _, tw := range result.LiveOrphans {
+					fmt.Fprintf(os.Stderr, "  kept %s:%s\n", tw.Session, tw.Window)
 				}
 			}
 

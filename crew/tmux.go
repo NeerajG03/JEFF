@@ -318,6 +318,46 @@ type TmuxWindow struct {
 	Window  string
 }
 
+// WindowInfo describes a tmux window with the state cleanup decisions need:
+// a stable window ID (safe kill target even when the display name has been
+// renamed or contains target-metacharacters like dots) and whether the
+// window's active pane has exited (a remain-on-exit leftover) or is live.
+type WindowInfo struct {
+	Session  string
+	Window   string
+	WindowID string // tmux window id, e.g. "@42"
+	PaneDead bool   // active pane exited (remain-on-exit keeps the window)
+}
+
+// listWindowInfoFormat orders window_name last so the two fixed-position
+// fields can be split off safely (window ids and pane_dead never contain
+// spaces; names may). Tabs are not usable as separators — tmux sanitizes
+// control characters in list-command output to "_".
+const listWindowInfoFormat = "#{window_id} #{pane_dead} #{window_name}"
+
+// ListSessionWindowInfo returns per-window info (id, active-pane liveness,
+// name) for a tmux session.
+func ListSessionWindowInfo(sessionName string) ([]WindowInfo, error) {
+	out, err := tmuxOutput("list-windows", "-t", sessionName, "-F", listWindowInfoFormat)
+	if err != nil {
+		return nil, err
+	}
+	var result []WindowInfo
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		parts := strings.SplitN(line, " ", 3)
+		if len(parts) != 3 || !strings.HasPrefix(parts[0], "@") {
+			continue
+		}
+		result = append(result, WindowInfo{
+			Session:  sessionName,
+			Window:   parts[2],
+			WindowID: parts[0],
+			PaneDead: strings.TrimSpace(parts[1]) == "1",
+		})
+	}
+	return result, nil
+}
+
 // ListSessionWindows returns all window names in the given tmux session.
 func ListSessionWindows(sessionName string) ([]string, error) {
 	out, err := tmuxOutput("list-windows", "-t", sessionName, "-F", "#{window_name}")

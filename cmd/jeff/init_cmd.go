@@ -366,6 +366,11 @@ func runInit(cmd *cobra.Command, opts *initOpts) error {
 		seedErrs = append(seedErrs, fmt.Errorf("seed skills: %w", err))
 	}
 
+	// Seed persona-tagged embedded skills.
+	if err := skill.SeedPersonaSkills(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: seed persona skills: %v\n", err)
+	}
+
 	// Install hooks.
 	if err := syncHomeHooks(home, &c); err != nil {
 		return fmt.Errorf("install hooks: %w", err)
@@ -507,6 +512,11 @@ func runUpdate() error {
 		fmt.Fprintf(os.Stderr, "Warning: seed skills: %v\n", err)
 	}
 
+	if err := skill.SeedPersonaSkills(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: seed persona skills: %v\n", err)
+	}
+
+	// Sync hooks.
 	if err := syncHomeHooks(home, c); err != nil {
 		return fmt.Errorf("sync hooks: %w", err)
 	}

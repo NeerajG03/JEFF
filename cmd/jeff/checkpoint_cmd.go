@@ -32,7 +32,7 @@ func checkpointCmd() *cobra.Command {
 				taskID = id
 			}
 
-			store, err := openGigStore()
+			store, err := openGigStore(cfg)
 			if err != nil {
 				return err
 			}

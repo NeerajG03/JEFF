@@ -109,11 +109,11 @@ func (o *opencodeProvider) BuildCurateArgs(prompt string, opts LaunchOpts) []str
 	return []string{"run", "--auto", prompt}
 }
 
-// SupportsInlinePrompt is true: opencode accepts `--prompt "<text>"` and stays
-// in the interactive TUI. jeff bakes the initial prompt into argv at launch
-// (see cmd/jeff/crew_cmd.go) instead of pasting it after launch — the
-// paste-after-launch path was unreliable for opencode's Ink-based TUI.
-func (o *opencodeProvider) SupportsInlinePrompt() bool { return true }
+// SupportsInlinePrompt is false: opencode's --prompt flag causes the process
+// to exit after completing the prompt (single-shot mode). Workers must launch
+// bare and receive the initial prompt via the post-start bracketed-paste
+// path (see crew/lifecycle.go:296-308).
+func (o *opencodeProvider) SupportsInlinePrompt() bool { return false }
 func (o *opencodeProvider) ConfigDir() string            { return ".opencode" }
 func (o *opencodeProvider) SkillsSubdir() string         { return "skills" }
 func (o *opencodeProvider) CommandsSubdir() string       { return "commands" }
@@ -126,9 +126,10 @@ func (o *opencodeProvider) MemorySuppressEnv() map[string]string {
 }
 func (o *opencodeProvider) SendTiming() SendTiming {
 	return SendTiming{
-		PasteDelay:        100 * time.Millisecond,
+		PasteDelay:        500 * time.Millisecond,
 		InterruptSettle:   2 * time.Second,
-		UseBracketedPaste: false,
+		UseBracketedPaste: true,
+		InitialPasteSleep: 6 * time.Second,
 	}
 }
 

@@ -17,7 +17,6 @@ func pickupCmd() *cobra.Command {
 	var (
 		personaName string
 		repos       []string
-		safeFlag bool
 		testFlag bool
 	)
 
@@ -72,7 +71,7 @@ starting the agent.`,
 			// Launch agent tool in task directory (foreground, blocks).
 			fmt.Fprintf(os.Stderr, "\nLaunching %s in %s...\n", agentTool, res.TaskDir)
 			model := persona.RegisteredModel(cfg.Home, personaName)
-			if err := launchAgent(res.TaskDir, agentTool, model, personaName, effectiveSkipPermissions(cfg, safeFlag)); err != nil {
+			if err := launchAgent(res.TaskDir, agentTool, model, personaName, effectiveSkipPermissions(cfg, false)); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: Agent launch failed: %v\n", err)
 				fmt.Fprintf(os.Stderr, "The workspace at %s was set up successfully — you can reopen it with: jeff open %s\n", res.TaskDir, taskID)
 				return &exitCode{code: 1}
@@ -83,7 +82,6 @@ starting the agent.`,
 
 	cmd.Flags().StringVar(&personaName, "persona", "", "Persona template to use ("+strings.Join(persona.Names(), ", ")+")")
 	cmd.Flags().StringSliceVar(&repos, "repos", nil, "Repos this task touches (creates worktrees)")
-	cmd.Flags().BoolVar(&safeFlag, "safe", false, "Launch the agent with its permission prompts enabled")
 	cmd.Flags().BoolVar(&testFlag, "test", false, "Prepare workspace, verify correctness, and skip agent launch")
 	cmd.ValidArgsFunction = readyTaskCompletion
 	_ = cmd.RegisterFlagCompletionFunc("persona", personaCompletion)

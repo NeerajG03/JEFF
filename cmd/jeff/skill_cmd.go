@@ -22,6 +22,7 @@ func skillCmd() *cobra.Command {
 		skillListCmd(),
 		skillShowCmd(),
 		skillAddCmd(),
+		skillNewCmd(),
 		skillRemoveCmd(),
 		skillTagCmd(),
 		skillInjectCmd(),
@@ -184,6 +185,69 @@ func skillAddCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&external, "external", false, "Register without copying (skill stays at original location)")
 	cmd.Flags().StringVar(&name, "name", "", "Skill name (defaults to directory name)")
 	return cmd
+}
+
+func skillNewCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "new <name>",
+		Short: "Scaffold a SKILL.md with frontmatter + worked example and register it",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			dir := name
+
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return fmt.Errorf("create skill dir: %w", err)
+			}
+
+			codeFence := "```"
+			content := fmt.Sprintf(`---
+name: %s
+description: TODO: describe what this skill does
+---
+
+# %s
+
+## Purpose
+
+TODO: one-paragraph description of when and why to load this skill.
+
+## Context
+
+What the agent should know before using this skill.
+
+## Instructions
+
+### Step 1
+
+### Step 2
+
+## Worked Example
+
+**Scenario:** TODO
+
+`+codeFence+`
+# Example commands, inputs, or outputs
+`+codeFence+`
+
+## Related
+
+- Related skills or references
+`, name, name)
+
+			skillPath := filepath.Join(dir, "SKILL.md")
+			if err := os.WriteFile(skillPath, []byte(content), 0o644); err != nil {
+				return fmt.Errorf("write SKILL.md: %w", err)
+			}
+
+			if _, err := skill.Add(cfg.Home, dir, name, false); err != nil {
+				return fmt.Errorf("register skill: %w", err)
+			}
+
+			fmt.Printf("Created and registered skill %s\n", name)
+			return nil
+		},
+	}
 }
 
 func skillRemoveCmd() *cobra.Command {

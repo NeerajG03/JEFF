@@ -22,6 +22,7 @@ func init() {
 	Cmd.AddCommand(addCmd)
 	Cmd.AddCommand(listCmd)
 	Cmd.AddCommand(showCmd)
+	Cmd.AddCommand(statusCmd)
 	Cmd.AddCommand(curateCmd)
 	Cmd.AddCommand(disableCmd)
 	// Worker A: hooks + injection + suppression.

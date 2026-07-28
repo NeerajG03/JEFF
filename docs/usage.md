@@ -224,6 +224,14 @@ cd "$DEST" && npm install
 JEFF manages a persistent memory store under `JEFF_HOME/memory/`. Workers propose
 new memories during sessions; the marlowe curator consolidates them periodically.
 
+**Promotion is human-triggered.** Workers write proposals via `jeff memory propose`;
+nothing auto-promotes to canonical. A human (or an orchestrator) runs
+`jeff memory curate` to invoke marlowe, who reviews each proposal against the
+curation rubric, deduplicates, resolves conflicts, and writes enriched canonical
+entries. This single-writer pattern (MINJA, arXiv:2503.03704) is a security
+measure — auto-promotion enables memory injection attacks. Run `jeff memory status`
+to see pending proposals, queue depth, and the last curation time.
+
 ```bash
 # Propose a new memory (for workers — writes to proposals/ for later curation)
 jeff memory propose --name <slug> --type <user|feedback|project|reference> \
@@ -237,6 +245,9 @@ jeff memory show <name|path>
 
 # Curate proposals into canonical memory (marlowe only — JEFF_MEMORY_CAN_ADD=1)
 jeff memory curate [--persona <p>]
+
+# Show memory subsystem status (proposals pending, last curation, counts)
+jeff memory status
 
 # Add a canonical entry directly (curator only)
 jeff memory add --name <slug> --type <t> --description "<summary>" \

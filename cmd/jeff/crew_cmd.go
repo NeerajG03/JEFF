@@ -851,7 +851,7 @@ func crewAttachCmd() *cobra.Command {
 			}
 
 			fmt.Fprintf(os.Stderr, "Attaching to %s:%s...\n", sess.TmuxSession, sess.WindowName)
-			return crew.AttachSession(sess.TmuxSession, sess.WindowName)
+			return crew.AttachToSession(sess.TmuxSession, sess.WindowName)
 		},
 	}
 }

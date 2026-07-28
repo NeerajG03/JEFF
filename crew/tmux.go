@@ -143,21 +143,6 @@ func SelectWindow(target string) error {
 	return tmuxRun("select-window", "-t", target)
 }
 
-// AttachSession attaches to a tmux session and selects a window.
-// The tmuxSession is the session hosting the worker (shared "jeff" session
-// or an orchestrator-owned "jeff-<suffix>" session). If already inside tmux,
-// uses switch-client. Otherwise uses attach-session.
-func AttachSession(tmuxSession, windowName string) error {
-	windowName = SanitizeWindowName(windowName)
-	target := tmuxSession + ":" + windowName
-	if InsideTmux() {
-		// Already in tmux — switch to the jeff session + window.
-		return tmuxRun("switch-client", "-t", target)
-	}
-	// Outside tmux — attach to session and select window.
-	return tmuxRun("attach-session", "-t", target)
-}
-
 // InsideTmux returns true if the current process is inside a tmux session.
 func InsideTmux() bool {
 	return os.Getenv("TMUX") != ""

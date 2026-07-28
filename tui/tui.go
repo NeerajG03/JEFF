@@ -49,10 +49,11 @@ type Model struct {
 	formActive bool // task form (create or edit) active
 	createForm taskFormModel
 
-	// Set before quitting to trigger tmux attach. Holds the full
-	// "session:window" target so the dashboard hands off to the correct
-	// tmux session (shared "jeff" or an orchestrator-owned "jeff-<suffix>").
-	AttachTarget string
+	// Set before quitting to trigger tmux attach. The dashboard calls
+	// crew.AttachToSession with these so workers in orchestrator-owned
+	// sessions ("jeff-<suffix>") resolve correctly, not just shared "jeff".
+	AttachSession string
+	AttachWindow  string
 }
 
 type tickMsg time.Time
@@ -219,7 +220,8 @@ func (m Model) updateCrew(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.sessions) > 0 {
 			sess := m.sessions[m.crewSel]
 			if crew.HasWindowInSession(sess.TmuxSession, sess.WindowName) {
-				m.AttachTarget = crew.SessionTarget(sess.TmuxSession, sess.WindowName)
+				m.AttachSession = sess.TmuxSession
+				m.AttachWindow = sess.WindowName
 				return m, tea.Quit
 			}
 			m.status = fmt.Sprintf("No tmux window for %s", sess.TaskID)
@@ -586,7 +588,7 @@ func (m Model) captureCmd() tea.Cmd {
 			return nil
 		}
 		sess := m.sessions[m.crewSel]
-		if !crew.HasWindow(sess.WindowName) {
+		if !crew.HasWindowInSession(sess.TmuxSession, sess.WindowName) {
 			return nil
 		}
 		target := crew.SessionTarget(sess.TmuxSession, sess.WindowName)

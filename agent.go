@@ -10,6 +10,7 @@ type SendTiming struct {
 	PasteDelay        time.Duration // between paste and Enter (0 = default 100ms)
 	InterruptSettle   time.Duration // after C-c before typing (divert)
 	UseBracketedPaste bool          // route via load-buffer/paste-buffer -p
+	InitialPasteSleep time.Duration // wait before pasting initial prompt after launch (0 = default 3s)
 }
 
 type DoctorDep struct {

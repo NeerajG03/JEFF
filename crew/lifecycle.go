@@ -121,6 +121,13 @@ type StartOpts struct {
 	// (LaunchCmd == ""). It is resolved at launch time by the caller (current
 	// config/flag), never persisted — a resumed worker re-resolves fresh.
 	SkipPermissions bool
+	// JeffHome, when set, is exported into the tmux session hosting the worker
+	// so every `jeff`/hook subprocess in the worker's shell resolves the SAME
+	// home (and therefore the same jeff.db) as the process that started it.
+	// Orchestrator sessions (jeff-N) already get this at session creation; the
+	// shared "jeff" session did not — a worker there could resolve a different
+	// JEFF_HOME and operate on a different crew DB.
+	JeffHome string
 }
 
 // StartOrchestrator creates a new tmux session (jeff-N or jeff-<name>) and launches the
@@ -245,6 +252,11 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 		if err = EnsureSession(); err != nil {
 			return nil, fmt.Errorf("ensure tmux session: %w", err)
 		}
+		// Pin JEFF_HOME on the shared session so panes created for workers
+		// resolve the same home (same jeff.db) as this process.
+		if opts.JeffHome != "" {
+			_ = tmuxRun("set-environment", "-t", TmuxSessionName, "JEFF_HOME", opts.JeffHome)
+		}
 		hostSession = TmuxSessionName
 		target, err = CreateWindow(windowName, taskDir)
 	}
@@ -300,7 +312,11 @@ func StartWorkerForOrchestrator(store *Store, orchestratorID, taskID, taskDir st
 		if prompt == "" {
 			prompt = DefaultPrompt
 		}
-		time.Sleep(3 * time.Second)
+		sleep := providerTiming(opts.Agent).InitialPasteSleep
+		if sleep == 0 {
+			sleep = 3 * time.Second
+		}
+		time.Sleep(sleep)
 		if err := sendCommandForSession(target, prompt, opts.Agent); err != nil {
 			_ = KillWindow(target) // best-effort cleanup on error path
 			return nil, fmt.Errorf("send initial prompt: %w", err)
@@ -522,6 +538,7 @@ func providerTiming(agent string) jeff.SendTiming {
 		PasteDelay:        100 * time.Millisecond,
 		InterruptSettle:   2 * time.Second,
 		UseBracketedPaste: false,
+		InitialPasteSleep: 3 * time.Second,
 	}
 }
 

@@ -404,7 +404,7 @@ func runDoctorFix(cmd *cobra.Command, platform platformInfo) error {
 			fmt.Fprintf(out, "hook sync: %s\n", colorize(cGreen, "done"))
 		}
 
-		store, err := openGigStore()
+		store, err := openGigStore(jeffCfg)
 		if err == nil {
 			if err := jeff.EnsureAttrs(store); err != nil {
 				fmt.Fprintf(out, "gig EnsureAttrs: %s\n", colorize(cRed, err.Error()))
@@ -496,7 +496,7 @@ func runEnvironmentChecks(cfg *jeff.Config) []envCheck {
 
 	checks = append(checks, envCheck{Name: "jeff_initialized", Status: envOK, Required: true})
 
-	checks = append(checks, checkGigInitialized())
+	checks = append(checks, checkGigInitialized(cfg))
 
 	checks = append(checks, checkAgentInstalled(cfg))
 
@@ -509,11 +509,11 @@ func runEnvironmentChecks(cfg *jeff.Config) []envCheck {
 	return checks
 }
 
-func checkGigInitialized() envCheck {
+func checkGigInitialized(cfg *jeff.Config) envCheck {
 	if _, err := os.Stat(gig.DefaultConfigPath()); os.IsNotExist(err) {
 		return envCheck{Name: "gig_initialized", Status: envFail, Fix: "gig init --prefix <name>", Required: true}
 	}
-	store, err := openGigStore()
+	store, err := openGigStore(cfg)
 	if err != nil {
 		return envCheck{Name: "gig_initialized", Status: envFail, Fix: "gig init --prefix <name>", Required: true}
 	}

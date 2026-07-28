@@ -129,6 +129,7 @@ func (o *opencodeProvider) SendTiming() SendTiming {
 		PasteDelay:        500 * time.Millisecond,
 		InterruptSettle:   2 * time.Second,
 		UseBracketedPaste: true,
+		InitialPasteSleep: 6 * time.Second,
 	}
 }
 

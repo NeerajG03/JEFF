@@ -91,12 +91,16 @@ func Teardown(store Store, cfg *jeff.Config, opts TeardownOpts) error {
 	}
 	fmt.Fprintf(os.Stderr, "Closed %s\n", opts.TaskID)
 
-	// 5. Run crew cleanup to reconcile tmux windows and worktrees.
+	// 5. Run crew cleanup to reconcile tmux windows and worktrees. Cleanup
+	// only ever kills windows whose pane is dead, so this cannot take down
+	// other live workers even if this process sees a diverged DB view.
 	if cs, err := crew.Open(cfg.Home); err == nil {
 		defer cs.Close()
-		if result, err := crew.Cleanup(cs, cfg.Home, false); err == nil && !result.IsClean() {
+		if result, err := crew.Cleanup(cs, cfg.Home, false); err == nil {
 			cleaned := len(result.OrphanedWindows) + len(result.StaleSessions) + len(result.StaleOrch)
-			fmt.Fprintf(os.Stderr, "Crew cleanup: reconciled %d items\n", cleaned)
+			if cleaned > 0 {
+				fmt.Fprintf(os.Stderr, "Crew cleanup: reconciled %d items\n", cleaned)
+			}
 		}
 	}
 

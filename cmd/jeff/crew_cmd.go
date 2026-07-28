@@ -317,6 +317,7 @@ func crewStartCmd() *cobra.Command {
 				Prompt:          promptOverride,
 				LaunchCmd:       launchCmd,
 				SkipPermissions: skip,
+				JeffHome:        cfg.Home,
 			}
 			// Single worker-start path: the identity was validated above, so the
 			// worker always binds to a non-empty orchestrator_id. The worker's
@@ -458,6 +459,7 @@ func crewResumeCmd() *cobra.Command {
 				Model:           model,
 				ResumeSessionID: resumeSessionID,
 				LaunchCmd:       launchCmd,
+				JeffHome:        cfg.Home,
 			}
 
 			// Resume requires an orchestrator identity just like start: no
@@ -1167,7 +1169,9 @@ func crewCleanupCmd() *cobra.Command {
 		Short: "Reconcile tmux windows with crew DB, remove orphans",
 		Long: `Reconcile tmux windows with the crew database:
 
-  1. Kill orphaned tmux windows (no matching DB session)
+  1. Kill orphaned tmux windows (no matching DB session) whose pane has
+     exited. Windows with a live pane are never killed — they are only
+     reported, so a DB/tmux mismatch can't take down running workers.
   2. Mark stale DB sessions as failed (tmux window gone)
   3. Mark stale orchestrators as stopped (tmux session gone)
 
@@ -1195,14 +1199,26 @@ Use --dry-run to preview what would be cleaned up without making changes.`,
 				prefix = "[dry-run] "
 			}
 
+			if result.SkippedNoState {
+				fmt.Fprintln(os.Stderr, "WARNING: crew DB has no sessions or orchestrators but jeff tmux windows exist —")
+				fmt.Fprintln(os.Stderr, "  refusing to kill windows (is JEFF_HOME pointing at the right home?)")
+			}
+
 			if len(result.OrphanedWindows) > 0 {
-				fmt.Fprintf(os.Stderr, "%sOrphaned tmux windows:\n", prefix)
+				fmt.Fprintf(os.Stderr, "%sOrphaned tmux windows (pane dead):\n", prefix)
 				for _, tw := range result.OrphanedWindows {
 					action := "killed"
 					if dryRun {
 						action = "would kill"
 					}
 					fmt.Fprintf(os.Stderr, "  %s %s:%s\n", action, tw.Session, tw.Window)
+				}
+			}
+
+			if len(result.LiveOrphans) > 0 {
+				fmt.Fprintf(os.Stderr, "%sWindows with no DB session but a live pane (left alone):\n", prefix)
+				for _, tw := range result.LiveOrphans {
+					fmt.Fprintf(os.Stderr, "  kept %s:%s\n", tw.Session, tw.Window)
 				}
 			}
 

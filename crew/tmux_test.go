@@ -23,6 +23,7 @@ package crew
 // pattern. These tests exist to catch any reintroduction of it.
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -594,6 +595,141 @@ func TestSendCommandWithDelayGeminiCase(t *testing.T) {
 			}
 
 			assertNoSingleCallCombinesTextAndEnter(t, got)
+		})
+	}
+}
+
+// withFakeTmuxSessionListing installs a stub tmux that returns different
+// window listings per session. The map keys are session names; the values
+// are the window names reported by `list-windows -t <session>`. Calls are
+// still logged to the returned reader. Sessions not in the map report no
+// windows. This lets us test that HasWindowInSession checks the correct
+// session rather than matching windows across sessions.
+func withFakeTmuxSessionListing(t *testing.T, sessions map[string][]string) func() []string {
+	t.Helper()
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "calls.log")
+	bin := filepath.Join(dir, "tmux")
+
+	var scriptLines []string
+	scriptLines = append(scriptLines, "#!/bin/sh")
+	scriptLines = append(scriptLines, `echo "$*" >> `+logFile)
+	scriptLines = append(scriptLines, `if [ "$1" = list-windows ]; then`)
+	for sess, windows := range sessions {
+		listing := strings.Join(windows, "\n")
+		scriptLines = append(scriptLines, fmt.Sprintf(`  if [ "$3" = %q ]; then printf '%%s\n' '%s'; fi`, sess, listing))
+	}
+	scriptLines = append(scriptLines, `fi`)
+	script := strings.Join(scriptLines, "\n") + "\n"
+
+	if err := os.WriteFile(bin, []byte(script), 0755); err != nil {
+		t.Fatalf("create fake tmux binary: %v", err)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+
+	return func() []string {
+		data, _ := os.ReadFile(logFile)
+		var lines []string
+		for _, l := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+			if l != "" {
+				lines = append(lines, l)
+			}
+		}
+		return lines
+	}
+}
+
+// TestHasWindowInSessionScoping verifies the gig-54d0 fix: HasWindowInSession
+// must only check windows in the specified session, not match windows that
+// exist in a different session. Before the fix, callers used HasWindow (shared
+// "jeff" session only), so a worker in an orchestrator-owned "jeff-<suffix>"
+// session was invisible to pane capture / attach checks.
+func TestHasWindowInSessionScoping(t *testing.T) {
+	withFakeTmuxSessionListing(t, map[string][]string{
+		"jeff":      {"gig-shared"},
+		"jeff-orch": {"gig-orch1"},
+	})
+
+	tests := []struct {
+		name    string
+		session string
+		window  string
+		want    bool
+	}{
+		{"window in shared jeff session", "jeff", "gig-shared", true},
+		{"window in orchestrator session", "jeff-orch", "gig-orch1", true},
+		{"orchestrator window not in shared session", "jeff", "gig-orch1", false},
+		{"shared window not in orchestrator session", "jeff-orch", "gig-shared", false},
+		{"nonexistent session", "jeff-other", "gig-orch1", false},
+		{"nonexistent window in existing session", "jeff-orch", "gig-nope", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := HasWindowInSession(tc.session, tc.window)
+			if got != tc.want {
+				t.Errorf("HasWindowInSession(%q, %q) = %v, want %v",
+					tc.session, tc.window, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestAttachToSessionCommandAndTarget verifies AttachToSession issues the
+// correct tmux subcommand (switch-client inside tmux, attach-session outside)
+// and builds the target as "session:window" with sanitized window names.
+func TestAttachToSessionCommandAndTarget(t *testing.T) {
+	tests := []struct {
+		name    string
+		inTmux  bool
+		session string
+		window  string
+		wantCmd string
+		wantTgt string
+	}{
+		{
+			name:    "inside tmux",
+			inTmux:  true,
+			session: "jeff-orch",
+			window:  "gig-1234",
+			wantCmd: "switch-client",
+			wantTgt: "jeff-orch:gig-1234",
+		},
+		{
+			name:    "outside tmux",
+			inTmux:  false,
+			session: "jeff",
+			window:  "gig-5678",
+			wantCmd: "attach-session",
+			wantTgt: "jeff:gig-5678",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := withFakeTmux(t)
+
+			if tc.inTmux {
+				t.Setenv("TMUX", "fake-session")
+			} else {
+				t.Setenv("TMUX", "")
+			}
+
+			if err := AttachToSession(tc.session, tc.window); err != nil {
+				t.Fatalf("AttachToSession: %v", err)
+			}
+
+			all := calls()
+			if len(all) != 1 {
+				t.Fatalf("want 1 tmux call, got %d: %v", len(all), all)
+			}
+			got := all[0]
+			if !strings.HasPrefix(got, tc.wantCmd+" ") {
+				t.Errorf("want command %q, got %q", tc.wantCmd, got)
+			}
+			if !strings.Contains(got, "-t "+tc.wantTgt) {
+				t.Errorf("want target %q in call, got %q", tc.wantTgt, got)
+			}
 		})
 	}
 }

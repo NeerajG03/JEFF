@@ -664,7 +664,7 @@ func crewStatusCmd() *cobra.Command {
 			}
 
 			fmt.Fprintf(os.Stdout, "Task:       %s\n", sess.TaskID)
-			fmt.Fprintf(os.Stdout, "Status:     %s (tmux: %s:%s)\n", sess.Status, sess.TmuxSession, sess.WindowName)
+			fmt.Fprintf(os.Stdout, "Status:     %s (tmux: %s:%s)\n", crewStatusLabel(sess.Status), sess.TmuxSession, sess.WindowName)
 			if sess.Persona != "" {
 				fmt.Fprintf(os.Stdout, "Persona:    %s\n", sess.Persona)
 			}
@@ -688,7 +688,7 @@ func crewStatusCmd() *cobra.Command {
 			fmt.Fprintf(os.Stdout, "Inbox:      %d pending\n", count)
 
 			// Pane capture.
-			if crew.HasWindow(sess.WindowName) {
+			if crew.HasWindowInSession(sess.TmuxSession, sess.WindowName) {
 				target := crew.SessionTarget(sess.TmuxSession, sess.WindowName)
 				if pane, err := crew.CapturePane(target, 5); err == nil && pane != "" {
 					fmt.Fprintf(os.Stdout, "Pane (last 5 lines):\n")
@@ -850,8 +850,8 @@ func crewAttachCmd() *cobra.Command {
 				return fmt.Errorf("session not found: %w", err)
 			}
 
-			fmt.Fprintf(os.Stderr, "Attaching to %s...\n", sess.WindowName)
-			return crew.AttachSession(sess.WindowName)
+			fmt.Fprintf(os.Stderr, "Attaching to %s:%s...\n", sess.TmuxSession, sess.WindowName)
+			return crew.AttachToSession(sess.TmuxSession, sess.WindowName)
 		},
 	}
 }
@@ -1137,6 +1137,7 @@ func crewEventsCmd() *cobra.Command {
 				}
 			}
 
+			headerPrinted := false
 			for _, ev := range events {
 				if filterIDs != nil && !filterIDs[ev.TaskID] {
 					continue
@@ -1148,6 +1149,11 @@ func crewEventsCmd() *cobra.Command {
 				}
 				if ev.Type == gig.EventStatusChanged {
 					summary = ev.OldValue + " → " + ev.NewValue
+				}
+				if !headerPrinted {
+					fmt.Fprintf(os.Stdout, "%-8s %-12s %-14s %s\n",
+						"AGE", "TASK", "TYPE", "SUMMARY")
+					headerPrinted = true
 				}
 				fmt.Fprintf(os.Stdout, "%-8s %-12s %-14s %s\n",
 					age, ev.TaskID, ev.Type, summary)

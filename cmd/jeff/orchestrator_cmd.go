@@ -52,6 +52,10 @@ terminal, CI). Workers started afterwards bind to this identity.
   jeff orchestrator init --global   write the machine-wide default (~/.jeff/default-orchestrator.json)
   jeff orchestrator init --force    overwrite an existing identity file
 
+IDENTITY IS PER-DIRECTORY: the identity file is written under the current
+working directory — each project should run init in its own root. List and
+info commands show the directory the identity is bound to.
+
 If run inside a tmux pane that hosts an existing jeff orchestrator, you are
 offered the chance to adopt its id so already-bound workers keep their
 orchestrator.`,
@@ -146,6 +150,7 @@ orchestrator.`,
 			if adoptID == "" {
 				orch := &crew.Orchestrator{
 					ID:          id.ID,
+					Dir:         dir, // record project directory for list/info visibility
 					TmuxSession: "", // durable identity: workers host in the shared session
 					TmuxWindow:  "",
 					TmuxPane:    tmuxPane, // enables direct notification routing when set
@@ -160,6 +165,7 @@ orchestrator.`,
 			fmt.Printf("Wrote %s\n", path)
 			fmt.Printf("  id:   %s\n", id.ID)
 			fmt.Printf("  name: %s\n", id.Name)
+			fmt.Printf("  dir:  %s\n", dir)
 			if id.TmuxPane != "" {
 				fmt.Printf("  tmux_pane: %s\n", id.TmuxPane)
 			}
@@ -215,66 +221,72 @@ func orchestratorStartCmd() *cobra.Command {
 		Short: "Launch a new orchestrator session",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cs, err := crew.Open(cfg.Home)
-			if err != nil {
-				return fmt.Errorf("open crew store: %w", err)
-			}
-			defer cs.Close()
-
-			// Resolve agent: --agent flag takes priority over global config.
-			agentTool := cfg.Agent
-			if agentOverride != "" {
-				agentTool = jeff.AgentTool(agentOverride)
-				if !agentTool.IsValid() {
-					return fmt.Errorf("unknown agent %q (valid: %s)", agentOverride, strings.Join(jeff.AgentTool("").ValidNames(), ", "))
-				}
-			}
-
-			// Resolve model: --model flag.
-			model := modelOverride
-
-			// Auto-route backend from model name when --model is explicitly supplied.
-			if modelOverride != "" {
-				if inferred := jeff.InferBackend(modelOverride); inferred != "" {
-					agentTool = inferred
-				} else if !jeff.IsValidModel(agentTool, modelOverride) {
-					return fmt.Errorf("%s", jeff.UnknownModelError(modelOverride))
-				}
-			}
-
-			provider := jeff.GetProvider(agentTool)
-			if provider == nil {
-				return fmt.Errorf("no provider registered for agent %q", agentTool)
-			}
-			// No --safe flag on orchestrator start (out of scope for this knob);
-			// resolve from config only so `skip_permissions: false` still applies.
-			launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{Model: model, SkipPermissions: effectiveSkipPermissions(cfg, false)})
-			launchCmd := provider.Command()
-			for _, arg := range launchArgs {
-				launchCmd += " " + shellQuote(arg)
-			}
-			orch, err := crew.StartOrchestratorWithLaunchCmd(cs, cfg.Home, string(agentTool), model, name, launchCmd)
-			if err != nil {
-				return err
-			}
-
-			fmt.Fprintf(os.Stderr, "Orchestrator %s started (tmux session: %s, agent: %s", orch.ID, orch.TmuxSession, orch.Agent)
-			if orch.Model != "" {
-				fmt.Fprintf(os.Stderr, ", model: %s", orch.Model)
-			}
-			fmt.Fprintf(os.Stderr, ")\n")
-			fmt.Fprintf(os.Stderr, "Attach with: jeff orchestrator attach %s\n", orch.ID)
-			fmt.Fprintf(os.Stderr, "Start workers with: jeff crew start <task-id> \"Work on this task\" --orchestrator %s\n", orch.ID)
-
-			data, _ := json.Marshal(orch)
-			fmt.Println(string(data))
-			return nil
+			return doOrchestratorStart(name, agentOverride, modelOverride)
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "custom name suffix for the session (e.g. --name work → jeff-work)")
 	cmd.Flags().StringVar(&agentOverride, "agent", "", "Agent backend (claude, gemini, opencode; default: config agent)")
 	cmd.Flags().StringVar(&modelOverride, "model", "", "Model name; auto-routes backend (sonnet/opus/haiku/claude-* → claude, pro/flash/flash-lite/auto/gemini-* → gemini, provider/model → opencode)")
 	return cmd
+}
+
+// doOrchestratorStart is the shared orchestrator start logic, extracted so it
+// can be reused by both orchestratorStartCmd and crewUpCmd.
+func doOrchestratorStart(name, agentOverride, modelOverride string) error {
+	cs, err := crew.Open(cfg.Home)
+	if err != nil {
+		return fmt.Errorf("open crew store: %w", err)
+	}
+	defer cs.Close()
+
+	// Resolve agent: --agent flag takes priority over global config.
+	agentTool := cfg.Agent
+	if agentOverride != "" {
+		agentTool = jeff.AgentTool(agentOverride)
+		if !agentTool.IsValid() {
+			return fmt.Errorf("unknown agent %q (valid: %s)", agentOverride, strings.Join(jeff.AgentTool("").ValidNames(), ", "))
+		}
+	}
+
+	// Resolve model: --model flag.
+	model := modelOverride
+
+	// Auto-route backend from model name when --model is explicitly supplied.
+	if modelOverride != "" {
+		if inferred := jeff.InferBackend(modelOverride); inferred != "" {
+			agentTool = inferred
+		} else if !jeff.IsValidModel(agentTool, modelOverride) {
+			return fmt.Errorf("%s", jeff.UnknownModelError(modelOverride))
+		}
+	}
+
+	provider := jeff.GetProvider(agentTool)
+	if provider == nil {
+		return fmt.Errorf("no provider registered for agent %q", agentTool)
+	}
+	// No --safe flag on orchestrator start (out of scope for this knob);
+	// resolve from config only so `skip_permissions: false` still applies.
+	launchArgs := provider.BuildLaunchArgs(jeff.LaunchOpts{Model: model, SkipPermissions: effectiveSkipPermissions(cfg, false)})
+	launchCmd := provider.Command()
+	for _, arg := range launchArgs {
+		launchCmd += " " + shellQuote(arg)
+	}
+	orch, err := crew.StartOrchestratorWithLaunchCmd(cs, cfg.Home, string(agentTool), model, name, launchCmd)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "Orchestrator %s started (tmux session: %s, agent: %s", orch.ID, orch.TmuxSession, orch.Agent)
+	if orch.Model != "" {
+		fmt.Fprintf(os.Stderr, ", model: %s", orch.Model)
+	}
+	fmt.Fprintf(os.Stderr, ")\n")
+	fmt.Fprintf(os.Stderr, "Attach with: jeff orchestrator attach %s\n", orch.ID)
+	fmt.Fprintf(os.Stderr, "Start workers with: jeff crew start <task-id> \"Work on this task\" --orchestrator %s\n", orch.ID)
+
+	data, _ := json.Marshal(orch)
+	fmt.Println(string(data))
+	return nil
 }
 
 func orchestratorListCmd() *cobra.Command {
@@ -314,7 +326,7 @@ func orchestratorListCmd() *cobra.Command {
 				return nil
 			}
 
-			fmt.Fprintf(os.Stdout, "%-12s %-12s %-10s %-10s %-24s %s\n", "ID", "SESSION", "STATUS", "AGENT", "MODEL", "STARTED")
+			fmt.Fprintf(os.Stdout, "%-12s %-12s %-10s %-10s %-24s %-24s %s\n", "ID", "SESSION", "STATUS", "AGENT", "MODEL", "DIR", "STARTED")
 			for _, o := range orchs {
 				started := relativeTime(o.StartedAt)
 				agent := o.Agent
@@ -325,7 +337,11 @@ func orchestratorListCmd() *cobra.Command {
 				if model == "" {
 					model = "-"
 				}
-				fmt.Fprintf(os.Stdout, "%-12s %-12s %-10s %-10s %-24s %s\n", o.ID, o.TmuxSession, o.Status, agent, model, started)
+				dir := o.Dir
+				if dir == "" {
+					dir = "-"
+				}
+				fmt.Fprintf(os.Stdout, "%-12s %-12s %-10s %-10s %-24s %-24s %s\n", o.ID, o.TmuxSession, o.Status, agent, model, dir, started)
 			}
 			return nil
 		},
@@ -372,8 +388,12 @@ func orchestratorInfoCmd() *cobra.Command {
 			if model == "" {
 				model = "-"
 			}
-			fmt.Fprintf(os.Stdout, "Orchestrator: %s (session: %s, status: %s, agent: %s, model: %s, started: %s)\n\n",
-				orch.ID, orch.TmuxSession, orch.Status, agent, model, relativeTime(orch.StartedAt))
+			dir := orch.Dir
+			if dir == "" {
+				dir = "-"
+			}
+			fmt.Fprintf(os.Stdout, "Orchestrator: %s (session: %s, status: %s, agent: %s, model: %s, dir: %s, started: %s)\n\n",
+				orch.ID, orch.TmuxSession, orch.Status, agent, model, dir, relativeTime(orch.StartedAt))
 
 			gigStore, _ := openGigStore(cfg)
 			if gigStore != nil {

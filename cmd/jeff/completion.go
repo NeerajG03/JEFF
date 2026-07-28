@@ -53,7 +53,7 @@ To load completions:
 
 // readyTaskCompletion completes gig task IDs that are open and unblocked (ready for pickup).
 func readyTaskCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	store, err := openGigStore()
+	store, err := openGigStore(cfg)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
@@ -81,7 +81,7 @@ func activeTaskCompletion(cmd *cobra.Command, args []string, toComplete string) 
 	}
 
 	// Optionally enrich with task title from gig.
-	store, _ := openGigStore()
+	store, _ := openGigStore(cfg)
 	if store != nil {
 		defer store.Close()
 	}

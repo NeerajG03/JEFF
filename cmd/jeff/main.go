@@ -76,6 +76,7 @@ func main() {
 		dashboardCmd(),
 		notifyCmd(),
 		doctorCmd(),
+		taskCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

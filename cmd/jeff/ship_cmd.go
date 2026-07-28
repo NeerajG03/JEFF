@@ -44,7 +44,7 @@ func shipCmd() *cobra.Command {
 				}
 			}
 
-			store, err := openGigStore()
+			store, err := openGigStore(cfg)
 			if err != nil {
 				return err
 			}

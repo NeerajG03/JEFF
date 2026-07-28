@@ -52,7 +52,7 @@ func openTask(taskID string, ide jeff.IDE) error {
 	}
 
 	// Check gig status — must be in_progress (or open, for tasks not yet claimed).
-	store, err := openGigStore()
+	store, err := openGigStore(cfg)
 	if err == nil {
 		defer store.Close()
 		task, err := store.Get(taskID)
@@ -111,7 +111,7 @@ func openableTaskCompletion(cmd *cobra.Command, args []string, toComplete string
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 
-	store, _ := openGigStore()
+	store, _ := openGigStore(cfg)
 	if store != nil {
 		defer store.Close()
 	}

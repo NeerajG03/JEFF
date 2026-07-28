@@ -52,7 +52,7 @@ func syncTaskHooks(cfg *jeff.Config, targetDir, taskID, persona string, repos []
 	hctx := hooks.HookContext{
 		JeffHome:           cfg.Home,
 		TargetDir:          targetDir,
-		GigHome:            cfg.GigHome,
+		GigHome:            resolveGigHome(cfg),
 		TaskID:             taskID,
 		OrchestratorID:     orchestratorID,
 		CheckpointPatterns: cfg.CheckpointPatterns,

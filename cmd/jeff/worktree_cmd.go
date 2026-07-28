@@ -60,7 +60,7 @@ func worktreeAddCmd() *cobra.Command {
 				// Refresh task CLAUDE.md so it reflects the new worktree.
 				taskID := workspace.ExtractTaskID(taskDir)
 				if taskID != "" {
-					store, err := openGigStore()
+					store, err := openGigStore(cfg)
 					if err == nil {
 						defer store.Close()
 						if err := task.RefreshClaudeMD(store, cfg, taskID, taskDir); err != nil {

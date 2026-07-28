@@ -33,6 +33,7 @@ func configCmd() *cobra.Command {
 
 	cmd.AddCommand(configAgentCmd())
 	cmd.AddCommand(configIDECmd())
+	cmd.AddCommand(configGigHomeCmd())
 	cmd.AddCommand(configHooksCmd())
 	cmd.AddCommand(configResetClaudeMDCmd())
 	cmd.AddCommand(configOpenCodeCmd())
@@ -169,6 +170,40 @@ func configIDECmd() *cobra.Command {
 		},
 		func(v string) { cfg.IDE = jeff.IDE(v) },
 	)
+}
+
+func configGigHomeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "gig-home [path]",
+		Short: "Get or set the gig home directory",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				fmt.Println(resolveGigHome(cfg))
+				return nil
+			}
+			val := args[0]
+			fi, err := os.Stat(val)
+			if err != nil {
+				return fmt.Errorf("invalid path %q: %w", val, err)
+			}
+			if !fi.IsDir() {
+				return fmt.Errorf("invalid path %q: not a directory", val)
+			}
+			cfg.GigHome = val
+			if err := jeff.SaveConfig(cfg); err != nil {
+				return fmt.Errorf("save config: %w", err)
+			}
+			if !isGigStoreInitialized(cfg) {
+				fmt.Fprintf(os.Stderr, "Warning: %s does not contain a gig store — run `gig init --prefix <name>` first\n", val)
+			}
+			fmt.Printf("gig-home set to %s\n", val)
+			return nil
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			return nil, cobra.ShellCompDirectiveFilterDirs
+		},
+	}
 }
 
 func configHooksCmd() *cobra.Command {
@@ -308,7 +343,7 @@ func configResetClaudeMDCmd() *cobra.Command {
 func syncHomeHooks(home string, c *jeff.Config) error {
 	reg := hooks.DefaultRegistry()
 	mgr := hooks.NewManager(reg)
-	ctx := hooks.HookContext{JeffHome: home, TargetDir: home, GigHome: c.GigHome}
+	ctx := hooks.HookContext{JeffHome: home, TargetDir: home, GigHome: resolveGigHome(c)}
 	enabled := hooks.EnabledForSource(c.Hooks, hooks.SourceHome, reg)
 	// Sync hooks for ALL registered agents so home is ready for any agent.
 	for _, agent := range jeff.RegisteredAgents() {

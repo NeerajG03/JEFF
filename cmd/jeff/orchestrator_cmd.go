@@ -290,7 +290,7 @@ func orchestratorListCmd() *cobra.Command {
 			defer cs.Close()
 
 			// Refresh state from tmux before listing.
-			gigStore, _ := openGigStore()
+			gigStore, _ := openGigStore(cfg)
 			if gigStore != nil {
 				defer gigStore.Close()
 			}
@@ -375,7 +375,7 @@ func orchestratorInfoCmd() *cobra.Command {
 			fmt.Fprintf(os.Stdout, "Orchestrator: %s (session: %s, status: %s, agent: %s, model: %s, started: %s)\n\n",
 				orch.ID, orch.TmuxSession, orch.Status, agent, model, relativeTime(orch.StartedAt))
 
-			gigStore, _ := openGigStore()
+			gigStore, _ := openGigStore(cfg)
 			if gigStore != nil {
 				defer gigStore.Close()
 			}

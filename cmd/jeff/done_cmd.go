@@ -19,7 +19,7 @@ func doneCmd() *cobra.Command {
 				return err
 			}
 
-			store, err := openGigStore()
+			store, err := openGigStore(cfg)
 			if err != nil {
 				return err
 			}

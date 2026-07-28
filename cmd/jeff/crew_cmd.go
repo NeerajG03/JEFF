@@ -159,7 +159,7 @@ func crewStartCmd() *cobra.Command {
 			// Open a dedicated gig store for pickup and close it before the
 			// worker launches, so the DB isn't held for the session. The crew
 			// store (cs) is a separate DB and stays open for StartWorker.
-			gs, err := openGigStore()
+			gs, err := openGigStore(cfg)
 			if err != nil {
 				return err
 			}
@@ -427,7 +427,7 @@ func crewListCmd() *cobra.Command {
 			defer cs.Close()
 
 			// Refresh state from tmux.
-			gigStore, _ := openGigStore()
+			gigStore, _ := openGigStore(cfg)
 			if gigStore != nil {
 				defer gigStore.Close()
 			}
@@ -564,7 +564,7 @@ func crewStatusCmd() *cobra.Command {
 			}
 
 			// Detailed output.
-			gigStore, _ := openGigStore()
+			gigStore, _ := openGigStore(cfg)
 			if gigStore != nil {
 				defer gigStore.Close()
 			}
@@ -1008,7 +1008,7 @@ func crewEventsCmd() *cobra.Command {
 		Short: "Poll gig events from active crew sessions",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			gigStore, err := openGigStore()
+			gigStore, err := openGigStore(cfg)
 			if err != nil {
 				return err
 			}

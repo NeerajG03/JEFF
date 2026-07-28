@@ -26,7 +26,7 @@ func workCmd() *cobra.Command {
 				return fmt.Errorf("no workspace found for %s", taskID)
 			}
 
-			store, err := openGigStore()
+			store, err := openGigStore(cfg)
 			if err != nil {
 				return err
 			}

@@ -263,3 +263,123 @@ func TestRunUpdate_PreservesConfig(t *testing.T) {
 		t.Errorf("agent = %s, want opencode (config was overwritten)", reloaded.Agent)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// C2: Agent CLI detection tests
+// ---------------------------------------------------------------------------
+
+// writeFakeBinary writes a tiny shell script at dir/name so exec.LookPath finds it.
+func writeFakeBinary(t *testing.T, dir, name string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDetectInstalledAgents_None(t *testing.T) {
+	isolated := t.TempDir()
+	t.Setenv("PATH", isolated)
+
+	got := detectInstalledAgents()
+	for _, a := range jeff.RegisteredAgents() {
+		if got[a] {
+			t.Errorf("%s reported as installed but PATH has no binaries", a)
+		}
+	}
+}
+
+func TestDetectInstalledAgents_ClaudeOnly(t *testing.T) {
+	binDir := t.TempDir()
+	writeFakeBinary(t, binDir, "claude")
+	t.Setenv("PATH", binDir)
+
+	got := detectInstalledAgents()
+	if !got[jeff.AgentClaudeCode] {
+		t.Error("claude should be installed")
+	}
+	// opencode and gemini binaries don't exist in our PATH.
+	for _, a := range []jeff.AgentTool{jeff.AgentOpenCode, jeff.AgentGemini} {
+		if got[a] {
+			t.Errorf("%s should not be installed", a)
+		}
+	}
+}
+
+func TestDetectInstalledAgents_AllRegistered(t *testing.T) {
+	binDir := t.TempDir()
+	for _, a := range jeff.RegisteredAgents() {
+		p := jeff.GetProvider(a)
+		if p != nil {
+			writeFakeBinary(t, binDir, p.Command())
+		}
+	}
+	t.Setenv("PATH", binDir)
+
+	got := detectInstalledAgents()
+	for _, a := range jeff.RegisteredAgents() {
+		if !got[a] {
+			t.Errorf("%s should be installed", a)
+		}
+	}
+}
+
+func TestDefaultAgentFromInstalled_None(t *testing.T) {
+	isolated := t.TempDir()
+	t.Setenv("PATH", isolated)
+
+	got := defaultAgentFromInstalled()
+	if got != "" {
+		t.Errorf("expected empty when no agents installed, got %q", got)
+	}
+}
+
+func TestDefaultAgentFromInstalled_Claude(t *testing.T) {
+	binDir := t.TempDir()
+	writeFakeBinary(t, binDir, "claude")
+	t.Setenv("PATH", binDir)
+
+	got := defaultAgentFromInstalled()
+	if got != jeff.AgentClaudeCode {
+		t.Errorf("expected claude, got %q", got)
+	}
+}
+
+func TestDefaultAgentFromInstalled_OpenCodeBeforeGemini(t *testing.T) {
+	binDir := t.TempDir()
+	// Only put opencode and gemini — claude missing.
+	writeFakeBinary(t, binDir, "opencode")
+	writeFakeBinary(t, binDir, "gemini")
+	t.Setenv("PATH", binDir)
+
+	got := defaultAgentFromInstalled()
+	if got != jeff.AgentOpenCode {
+		t.Errorf("expected opencode (preferred over gemini), got %q", got)
+	}
+}
+
+func TestDefaultAgentFromInstalled_GeminiOnly(t *testing.T) {
+	binDir := t.TempDir()
+	writeFakeBinary(t, binDir, "gemini")
+	t.Setenv("PATH", binDir)
+
+	got := defaultAgentFromInstalled()
+	if got != jeff.AgentGemini {
+		t.Errorf("expected gemini (only installed), got %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// C1: Flag wiring test
+// ---------------------------------------------------------------------------
+
+func TestInitCmd_HasGigPrefixFlag(t *testing.T) {
+	cmd := initCmd()
+	f := cmd.Flags().Lookup("gig-prefix")
+	if f == nil {
+		t.Fatal("--gig-prefix flag not registered")
+	}
+	if f.DefValue != "" {
+		t.Errorf("default value = %q, want empty", f.DefValue)
+	}
+}

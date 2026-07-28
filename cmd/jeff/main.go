@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -79,6 +80,13 @@ func main() {
 	)
 
 	if err := rootCmd.Execute(); err != nil {
+		var ece *exitCode
+		if errors.As(err, &ece) {
+			if ece.msg != "" {
+				fmt.Fprintln(os.Stderr, ece.msg)
+			}
+			os.Exit(ece.code)
+		}
 		os.Exit(1)
 	}
 }

@@ -114,6 +114,11 @@ func runInit(here bool) error {
 		fmt.Fprintf(os.Stderr, "Warning: seed skills: %v\n", err)
 	}
 
+	// Seed persona-tagged embedded skills.
+	if err := skill.SeedPersonaSkills(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: seed persona skills: %v\n", err)
+	}
+
 	// Install hooks.
 	if err := syncHomeHooks(home, &c); err != nil {
 		return fmt.Errorf("install hooks: %w", err)
@@ -187,6 +192,11 @@ func runUpdate() error {
 	// Refresh built-in skills (updates files, clears persona injection tags).
 	if err := skill.SeedDefaults(home); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: seed skills: %v\n", err)
+	}
+
+	// Refresh persona-tagged embedded skills.
+	if err := skill.SeedPersonaSkills(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: seed persona skills: %v\n", err)
 	}
 
 	// Sync hooks.

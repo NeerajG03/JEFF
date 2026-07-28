@@ -8,6 +8,7 @@ JEFF manages agent skills — SKILL.md files that provide reusable instructions 
 jeff skill list                              # list all skills
 jeff skill list --persona jenko               # filter by persona
 jeff skill show <name>                       # show details + SKILL.md
+jeff skill new <name>                        # scaffold SKILL.md + register
 jeff skill add <path>                        # copy skill into .skills/
 jeff skill add <path> --external             # register without copying
 jeff skill remove <name>                     # unregister

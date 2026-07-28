@@ -135,8 +135,10 @@ func TestOrchestratorInit_Global(t *testing.T) {
 	if err := runOrchestratorInit(t, "--global"); err != nil {
 		t.Fatalf("init --global: %v", err)
 	}
-	// Global file written under home, not the project dir.
-	if _, err := identity.Read(identity.GlobalFilePath(home)); err != nil {
+	// Global file is written inside JEFF_HOME (resolved as home/.jeff/ when no
+	// JEFF_HOME env var is set), not under the project dir.
+	jeffHome := filepath.Join(home, ".jeff")
+	if _, err := identity.Read(identity.GlobalFilePath(jeffHome)); err != nil {
 		t.Fatalf("global identity not written: %v", err)
 	}
 	if _, err := os.Stat(identity.ProjectFilePath(project)); !os.IsNotExist(err) {

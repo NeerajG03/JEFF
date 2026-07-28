@@ -49,7 +49,7 @@ terminal, CI). Workers started afterwards bind to this identity.
 
   jeff orchestrator init            write .jeff/orchestrator.json in the current directory
   jeff orchestrator init --name X   set a human-readable name (default: tmux session name or basename of cwd)
-  jeff orchestrator init --global   write the machine-wide default (~/.jeff/default-orchestrator.json)
+  jeff orchestrator init --global   write the machine-wide default (inside JEFF_HOME, default-orchestrator.json)
   jeff orchestrator init --force    overwrite an existing identity file
 
 IDENTITY IS PER-DIRECTORY: the identity file is written under the current
@@ -63,18 +63,17 @@ orchestrator.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
 
-			// Resolve where the identity file lives. The global default lives
-			// under the OS home (~/.jeff/default-orchestrator.json) — the same
-			// location identity.Detect consults — NOT under JEFF_HOME, which may
-			// differ from $HOME.
+			// Resolve where the identity file lives. The global default is written
+			// inside JEFF_HOME (resolved via jeff.ResolveHome), not under $HOME,
+			// so JEFF_HOME env var / pointer file is honored.
 			var dir, path string
 			if global {
-				osHome, err := os.UserHomeDir()
+				jeffHome, err := jeff.ResolveHome()
 				if err != nil {
-					return fmt.Errorf("resolve home: %w", err)
+					return fmt.Errorf("resolve JEFF_HOME: %w", err)
 				}
-				dir = osHome
-				path = identity.GlobalFilePath(osHome)
+				dir = jeffHome
+				path = identity.GlobalFilePath(jeffHome)
 			} else {
 				wd, err := os.Getwd()
 				if err != nil {
@@ -178,7 +177,7 @@ orchestrator.`,
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "human-readable name (default: tmux session name or basename of cwd)")
-	cmd.Flags().BoolVar(&global, "global", false, "write the machine-wide default (~/.jeff/default-orchestrator.json)")
+	cmd.Flags().BoolVar(&global, "global", false, "write the machine-wide default inside JEFF_HOME (default-orchestrator.json)")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite an existing identity file")
 	return cmd
 }

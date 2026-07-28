@@ -49,9 +49,12 @@ func ProjectFilePath(dir string) string {
 	return filepath.Join(dir, DirName, FileName)
 }
 
-// GlobalFilePath returns <home>/.jeff/default-orchestrator.json.
+// GlobalFilePath returns <jeffHome>/default-orchestrator.json.
+// jeffHome should be JEFF_HOME (resolved via jeff.ResolveHome), not $HOME.
+// DirName (.jeff) is intentionally NOT appended — JEFF_HOME already IS the
+// jeff data directory (e.g. ~/.jeff/ or a custom JEFF_HOME path).
 func GlobalFilePath(home string) string {
-	return filepath.Join(home, DirName, GlobalFileName)
+	return filepath.Join(home, GlobalFileName)
 }
 
 // Read loads and validates an identity file. A parse error or a missing id is

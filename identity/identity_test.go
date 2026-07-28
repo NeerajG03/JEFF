@@ -16,12 +16,13 @@ func writeProjectIdentity(t *testing.T, dir, id string) {
 	}
 }
 
-func detect(t *testing.T, env map[string]string, startDir, home string) (string, Source, error) {
+func detect(t *testing.T, env map[string]string, startDir, home, jeffHome string) (string, Source, error) {
 	t.Helper()
 	return detectWith(detectParams{
 		getenv:   func(k string) string { return env[k] },
 		startDir: startDir,
 		home:     home,
+		jeffHome: jeffHome,
 	})
 }
 
@@ -30,7 +31,7 @@ func TestDetect_EnvVarWinsOverFiles(t *testing.T) {
 	home := t.TempDir()
 	writeProjectIdentity(t, dir, "from-file")
 
-	id, src, err := detect(t, map[string]string{EnvVar: "from-env"}, dir, home)
+	id, src, err := detect(t, map[string]string{EnvVar: "from-env"}, dir, home, home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +41,7 @@ func TestDetect_EnvVarWinsOverFiles(t *testing.T) {
 }
 
 func TestDetect_LegacyEnvVarHonored(t *testing.T) {
-	id, src, err := detect(t, map[string]string{EnvVarLegacy: "jeff-DM20"}, t.TempDir(), t.TempDir())
+	id, src, err := detect(t, map[string]string{EnvVarLegacy: "jeff-DM20"}, t.TempDir(), t.TempDir(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +54,7 @@ func TestDetect_CWDFile(t *testing.T) {
 	dir := t.TempDir()
 	writeProjectIdentity(t, dir, "cwd-id")
 
-	id, src, err := detect(t, nil, dir, t.TempDir())
+	id, src, err := detect(t, nil, dir, t.TempDir(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func TestDetect_ParentFile(t *testing.T) {
 	}
 	writeProjectIdentity(t, parent, "parent-id")
 
-	id, src, err := detect(t, nil, child, home)
+	id, src, err := detect(t, nil, child, home, home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +91,7 @@ func TestDetect_CWDWinsOverParent(t *testing.T) {
 	writeProjectIdentity(t, parent, "parent-id")
 	writeProjectIdentity(t, child, "child-id")
 
-	id, src, err := detect(t, nil, child, home)
+	id, src, err := detect(t, nil, child, home, home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +112,7 @@ func TestDetect_ParentWalkStopsAtHome(t *testing.T) {
 	// Place an identity ABOVE home (at root). The walk must not reach it.
 	writeProjectIdentity(t, root, "above-home")
 
-	id, src, err := detect(t, nil, project, home)
+	id, src, err := detect(t, nil, project, home, home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,7 @@ func TestDetect_HomeFileMatched(t *testing.T) {
 	}
 	writeProjectIdentity(t, home, "home-id")
 
-	id, src, err := detect(t, nil, project, home)
+	id, src, err := detect(t, nil, project, home, home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +148,7 @@ func TestDetect_GlobalFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id, src, err := detect(t, nil, project, home)
+	id, src, err := detect(t, nil, project, home, home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +168,7 @@ func TestDetect_PerProjectWinsOverGlobal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id, _, err := detect(t, nil, project, home)
+	id, _, err := detect(t, nil, project, home, home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +178,7 @@ func TestDetect_PerProjectWinsOverGlobal(t *testing.T) {
 }
 
 func TestDetect_NoIdentityFound(t *testing.T) {
-	id, src, err := detect(t, nil, t.TempDir(), t.TempDir())
+	id, src, err := detect(t, nil, t.TempDir(), t.TempDir(), t.TempDir())
 	if err != nil {
 		t.Fatalf("expected nil err for not-found, got %v", err)
 	}
@@ -199,7 +200,7 @@ func TestDetect_MalformedFileFailsLoud(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id, _, err := detect(t, nil, dir, t.TempDir())
+	id, _, err := detect(t, nil, dir, t.TempDir(), t.TempDir())
 	if err == nil {
 		t.Fatalf("malformed file returned id=%q, nil err; want error", id)
 	}
@@ -215,7 +216,7 @@ func TestDetect_EmptyIDIsMalformed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, _, err := detect(t, nil, dir, t.TempDir()); err == nil {
+	if _, _, err := detect(t, nil, dir, t.TempDir(), t.TempDir()); err == nil {
 		t.Fatal("identity file with empty id should be treated as malformed")
 	}
 }

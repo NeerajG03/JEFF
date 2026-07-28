@@ -30,15 +30,23 @@ const EnvVarLegacy = "JEFF_ORCHESTRATOR_SESSION"
 type detectParams struct {
 	getenv   func(string) string
 	startDir string
-	home     string
+	home     string   // $HOME — for stopping the parent walk
+	jeffHome string   // JEFF_HOME — for the global default lookup
 }
 
 // Detect resolves the orchestrator identity id for the current process. It is a
 // thin wrapper over detectWith that fills in the ambient os inputs.
-func Detect() (string, Source, error) {
+// jeffHome must be JEFF_HOME (resolved via jeff.ResolveHome) for the global
+// default lookup; pass "" if unknown (falls back to $HOME/.jeff/).
+func Detect(jeffHome string) (string, Source, error) {
 	home, _ := os.UserHomeDir()
 	wd, _ := os.Getwd()
-	return detectWith(detectParams{getenv: os.Getenv, startDir: wd, home: home})
+	// Fallback: if caller doesn't know JEFF_HOME, use $HOME/.jeff/ so old
+	// installs still resolve the global default.
+	if jeffHome == "" {
+		jeffHome = filepath.Join(home, ".jeff")
+	}
+	return detectWith(detectParams{getenv: os.Getenv, startDir: wd, home: home, jeffHome: jeffHome})
 }
 
 // detectWith implements the five-step resolution chain, most explicit/durable
@@ -79,9 +87,9 @@ func detectWith(p detectParams) (string, Source, error) {
 		return id.ID, SourceParentFile, nil
 	}
 
-	// 4. Machine-wide default.
-	if p.home != "" {
-		if id, err := readIfExists(GlobalFilePath(p.home)); err != nil {
+	// 4. Machine-wide default (resolved via JEFF_HOME, not $HOME).
+	if p.jeffHome != "" {
+		if id, err := readIfExists(GlobalFilePath(p.jeffHome)); err != nil {
 			return "", "", err
 		} else if id != nil {
 			return id.ID, SourceGlobalFile, nil

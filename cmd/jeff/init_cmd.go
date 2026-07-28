@@ -108,6 +108,11 @@ func defaultAgentFromInstalled() jeff.AgentTool {
 // ---------------------------------------------------------------------------
 
 func resolveHome(here bool) (string, error) {
+	// JEFF_HOME env var takes priority — if already configured, init uses it.
+	if env := os.Getenv("JEFF_HOME"); env != "" {
+		return env, nil
+	}
+
 	if here {
 		cwd, err := os.Getwd()
 		if err != nil {

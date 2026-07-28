@@ -354,14 +354,26 @@ func crewStartCmd() *cobra.Command {
 
 // detectOrchestratorID resolves the durable orchestrator identity for the
 // current process via the identity file chain (env override → cwd file → parent
-// walk → global default). It is a thin wrapper over identity.Detect.
+// walk → global default). It passes JEFF_HOME to identity.Detect so the
+// global default is looked up inside the resolved home, not under $HOME/.jeff/.
 //
 // Returns an empty id with a nil error when no identity is configured, so
 // callers decide whether that is fatal (crew start) or tolerable (crew list
 // --all). A non-nil error means a genuine I/O failure or a malformed identity
 // file — those must propagate and fail loud, never degrade to a shared default.
 func detectOrchestratorID() (string, identity.Source, error) {
-	return identity.Detect()
+	var home string
+	if cfg != nil {
+		home = cfg.Home
+	}
+	if home == "" {
+		var err error
+		home, err = jeff.ResolveHome()
+		if err != nil {
+			return "", "", err
+		}
+	}
+	return identity.Detect(home)
 }
 
 // currentTmuxSessionName returns the tmux session name owning the given pane, or

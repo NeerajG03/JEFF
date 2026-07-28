@@ -22,6 +22,10 @@
       "type": "string",
       "description": "Override gig home directory. Empty uses default (~/.gig/)."
     },
+    "gig_prefix": {
+      "type": "string",
+      "description": "Override gig task ID prefix. Empty uses default."
+    },
     "repos": {
       "type": "object",
       "description": "Registered codebases. Keys are short names (e.g. 'backend').",

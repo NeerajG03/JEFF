@@ -115,6 +115,9 @@ func resolveHome(here bool) (string, error) {
 		}
 		return filepath.Join(cwd, "jeff"), nil
 	}
+	if env := os.Getenv("JEFF_HOME"); env != "" {
+		return env, nil
+	}
 	h, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("get home: %w", err)

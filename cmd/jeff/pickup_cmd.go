@@ -17,9 +17,8 @@ func pickupCmd() *cobra.Command {
 	var (
 		personaName string
 		repos       []string
-		safeFlag    bool
-		noLaunch    bool
-		testFlag    bool
+		safeFlag bool
+		testFlag bool
 	)
 
 	cmd := &cobra.Command{
@@ -28,8 +27,8 @@ func pickupCmd() *cobra.Command {
 		Long: `Claim a gig task, set up its workspace with worktrees, hooks, skills,
 and memory, then launch the configured agent.
 
-Use --no-launch to prepare the workspace without starting the agent.
-Use --test to prepare the workspace and verify everything is correct.`,
+Use --test to prepare the workspace and verify everything is correct without
+starting the agent.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			taskID := args[0]
@@ -65,16 +64,9 @@ Use --test to prepare the workspace and verify everything is correct.`,
 				return err
 			}
 
-			// --test mode: verify workspace and exit.
+			// --test mode: verify workspace and exit (implies no launch).
 			if testFlag {
 				return verifyPickup(res.TaskDir, agentTool)
-			}
-
-			// --no-launch mode: skip agent launch.
-			if noLaunch {
-				fmt.Fprintf(os.Stderr, "\nWorkspace ready at %s\n", res.TaskDir)
-				fmt.Fprintf(os.Stderr, "Run: jeff open %s\n", taskID)
-				return nil
 			}
 
 			// Launch agent tool in task directory (foreground, blocks).
@@ -92,8 +84,7 @@ Use --test to prepare the workspace and verify everything is correct.`,
 	cmd.Flags().StringVar(&personaName, "persona", "", "Persona template to use ("+strings.Join(persona.Names(), ", ")+")")
 	cmd.Flags().StringSliceVar(&repos, "repos", nil, "Repos this task touches (creates worktrees)")
 	cmd.Flags().BoolVar(&safeFlag, "safe", false, "Launch the agent with its permission prompts enabled")
-	cmd.Flags().BoolVar(&noLaunch, "no-launch", false, "Prepare workspace without launching the agent")
-	cmd.Flags().BoolVar(&testFlag, "test", false, "Prepare workspace and verify correctness (implies --no-launch)")
+	cmd.Flags().BoolVar(&testFlag, "test", false, "Prepare workspace, verify correctness, and skip agent launch")
 	cmd.ValidArgsFunction = readyTaskCompletion
 	_ = cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
 	_ = cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)

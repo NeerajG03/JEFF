@@ -27,6 +27,7 @@ func crewCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(
+		crewUpCmd(),
 		crewStartCmd(),
 		crewResumeCmd(),
 		crewSessionIDCmd(),
@@ -48,6 +49,97 @@ func crewCmd() *cobra.Command {
 		crewCheckStallsCmd(),
 	)
 
+	return cmd
+}
+
+func crewUpCmd() *cobra.Command {
+	var name string
+
+	cmd := &cobra.Command{
+		Use:   "up [--name work]",
+		Short: "Initialize project identity and start orchestrator in one step",
+		Long: `Create a durable orchestrator identity for this directory (if none exists)
+and start the orchestrator session in one command. No separate orchestration
+init step is needed — this is the fastest way to get a working crew session.
+
+  jeff crew up                      init identity (if needed) + start orchestrator
+  jeff crew up --name work          set a custom session name (jeff-work)
+
+After this, use jeff crew start <id> "<prompt>" to launch workers under this
+orchestrator.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
+
+			// Step 1: detect or create orchestrator identity.
+			existingID, source, err := detectOrchestratorID()
+			if err != nil {
+				return err
+			}
+
+			if existingID == "" {
+				// No identity exists — run silent init (no adopt prompt).
+				wd, err := os.Getwd()
+				if err != nil {
+					return fmt.Errorf("get cwd: %w", err)
+				}
+				path := identity.ProjectFilePath(wd)
+
+				tmuxPane, tmuxSession := "", ""
+				if os.Getenv("TMUX") != "" {
+					tmuxPane = os.Getenv("TMUX_PANE")
+					tmuxSession = currentTmuxSessionName(tmuxPane)
+				}
+
+				resolvedName := name
+				if resolvedName == "" {
+					if tmuxSession != "" {
+						resolvedName = tmuxSession
+					} else {
+						resolvedName = filepath.Base(wd)
+					}
+				}
+
+				idObj := identity.Generate(identity.GenerateOpts{
+					Name:     resolvedName,
+					Dir:      wd,
+					TmuxPane: tmuxPane,
+				})
+				if err := identity.Write(path, idObj); err != nil {
+					return err
+				}
+
+				cs, err := crew.Open(cfg.Home)
+				if err != nil {
+					return fmt.Errorf("open crew store: %w", err)
+				}
+				orch := &crew.Orchestrator{
+					ID:          idObj.ID,
+					Dir:         wd,
+					TmuxSession: "",
+					TmuxWindow:  "",
+					TmuxPane:    tmuxPane,
+					StartedAt:   time.Now().UTC(),
+					Status:      "running",
+				}
+				if err := cs.PutOrchestrator(orch); err != nil {
+					cs.Close()
+					return fmt.Errorf("register orchestrator identity: %w", err)
+				}
+				cs.Close()
+
+				fmt.Fprintf(os.Stderr, "✓ Created identity %s (%s)\n", idObj.ID, resolvedName)
+			} else {
+				fmt.Fprintf(os.Stderr, "✓ Using existing identity %s (via %s)\n", existingID, source)
+			}
+
+			// Step 2: start orchestrator session.
+			fmt.Fprintln(os.Stderr, "Starting orchestrator...")
+			return doOrchestratorStart(name, "", "")
+		},
+	}
+
+	cmd.Flags().StringVar(&name, "name", "", "human-readable name (default: tmux session name or basename of cwd)")
 	return cmd
 }
 

@@ -13,17 +13,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type statusCounts struct {
-	proposals int
-	canonical int
-	queue     int
-}
-
-type scopeCount struct {
-	label string
-	count int
-}
-
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show memory subsystem status — proposals, canonical entries, last curation",

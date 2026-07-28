@@ -34,7 +34,7 @@ func withCleanupFakeTmux(t *testing.T, layout map[string][]fakeWin, order []stri
 	// list-sessions
 	sb.WriteString("list-sessions)\n")
 	for _, sess := range order {
-		sb.WriteString(fmt.Sprintf("  echo '%s'\n", sess))
+		fmt.Fprintf(&sb, "  echo '%s'\n", sess)
 	}
 	sb.WriteString("  ;;\n")
 
@@ -47,7 +47,7 @@ func withCleanupFakeTmux(t *testing.T, layout map[string][]fakeWin, order []stri
 	}
 	sb.WriteString(`  case "$sess" in` + "\n")
 	for _, sess := range order {
-		sb.WriteString(fmt.Sprintf("  '%s')\n", sess))
+		fmt.Fprintf(&sb, "  '%s')\n", sess)
 		if fail[sess] {
 			sb.WriteString("    echo 'server busy' >&2; exit 1\n")
 		} else {
@@ -58,12 +58,12 @@ func withCleanupFakeTmux(t *testing.T, layout map[string][]fakeWin, order []stri
 				if w.PaneDead {
 					dead = "1"
 				}
-				sb.WriteString(fmt.Sprintf("      echo '%s %s %s'\n", w.ID, dead, w.Name))
+				fmt.Fprintf(&sb, "      echo '%s %s %s'\n", w.ID, dead, w.Name)
 			}
 			sb.WriteString("      ;;\n")
 			sb.WriteString("    *)\n")
 			for _, w := range layout[sess] {
-				sb.WriteString(fmt.Sprintf("      echo '%s'\n", w.Name))
+				fmt.Fprintf(&sb, "      echo '%s'\n", w.Name)
 			}
 			sb.WriteString("      ;;\n")
 			sb.WriteString("    esac\n")

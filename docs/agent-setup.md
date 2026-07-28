@@ -60,7 +60,8 @@ Interpret:
 | Observation | What it means |
 |---|---|
 | `~/.config/jeff/home` exists and points at a dir with `jeff.json` | JEFF is **already initialized**. Skip to Step 3 in `--update` mode. |
-| `JEFF_HOME` is set | It wins over the pointer file. Use it as the home for every later step. |
+| `~/.config/jeff/home` exists but target dir is missing | **Dangling pointer.** The pointer references a deleted dir. Confirm with the human, then `jeff init` to create a fresh home. |
+| `JEFF_HOME` is set | It wins over the pointer file. Use it as the home for every later step. (`jeff init` also respects `JEFF_HOME`.) |
 | No agent CLI found | Step 4 must install one, or JEFF has nothing to launch. |
 | No `tmux` | Solo mode works fine. Crew mode (Step 10) does not. |
 | No `gh` | `jeff ship` will fail (it fast-fails unless `--dry-run`). Note it; don't block. |
@@ -69,8 +70,9 @@ Interpret:
 
 ## Step 1 — Install gig (the task database)
 
-JEFF cannot function without a gig store. `jeff doctor` does **not** currently check
-for gig, so you must.
+JEFF cannot function without a gig store. `jeff doctor` checks for gig in its
+dependency and environment sections, but run it explicitly here so you see the
+gig configuration before the rest of the setup.
 
 **macOS / Linux with Homebrew:**
 ```bash
@@ -160,7 +162,9 @@ ls "$(cat ~/.config/jeff/home)"
 ```
 
 Expected directories: `repos/ tasks/ worktrees/ exports/ scripts/ projects/ .skills/
-.personas/` plus `CLAUDE.md`, `jeff.json`, and per-agent dirs (`.claude/`, `.opencode/`).
+.personas/` plus `hooks/`, `memory/`, `personas/`, `proposals/`, `queue/`,
+`transcripts/`, `archive/`, `CLAUDE.md`, `jeff.json`, and per-agent dirs
+(`.claude/`, `.opencode/`, `.gemini/`).
 
 ---
 
@@ -170,11 +174,10 @@ Expected directories: `repos/ tasks/ worktrees/ exports/ scripts/ projects/ .ski
 jeff doctor
 ```
 
-`jeff doctor` reports `tmux`, `git`, `jq`, `gh`, `terminal-notifier`, and the agent
-CLIs. Two things you must correct for, because the current version does not:
-
-1. **It does not check gig.** You handled that in Step 1.
-2. **Its install hints are Homebrew-only.** On Linux, translate:
+`jeff doctor` reports `gig`, `tmux`, `git`, `jq`, `gh`, `terminal-notifier`, and the
+agent CLIs in its dependency section, plus environment checks including gig
+initialization. One thing you must correct for — its install hints are Homebrew-only.
+On Linux, translate:
 
 | Dep | Debian/Ubuntu | Fedora | Arch |
 |---|---|---|---|
@@ -231,7 +234,7 @@ jeff config          # agent line matches the answer
 ## Step 6 — Choose the IDE
 
 > **ASK:** "Which editor should `jeff open` launch? `vscode`, `cursor`, `windsurf`,
-> or `nvim`?"
+> `nvim`, or `zed`?"
 
 ```bash
 jeff config ide cursor
@@ -349,8 +352,10 @@ jeff skill doc            # how to author a skill
 ```
 
 Skills are `SKILL.md` directories symlinked into task workspaces when they match the
-task's persona or tags. `crew-orchestrator` is embedded in the binary and installed by
-`jeff init`.
+task's persona or tags. Five skills are embedded in the binary and installed by
+`jeff init`: `crew-orchestrator`, `curation`, `go-testing`, `pr-review`, `root-cause`.
+The last three are persona-tagged (`jenko`, `hardy`, `schmidt`) so they auto-inject
+when the matching persona picks up a task.
 
 ```bash
 jeff skill add ./my-skill                 # register
@@ -461,7 +466,8 @@ If `jeff crew start` errors with *"no orchestrator identity found"*, you skipped
 
 Shell completions:
 ```bash
-jeff completion zsh  > "${fpath[1]}/_jeff"     # zsh
+jeff completion zsh  > "${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/completions/_jeff"  # zsh (oh-my-zsh)
+jeff completion zsh  > /opt/homebrew/share/zsh/site-functions/_jeff            # zsh (Homebrew)
 jeff completion bash > /etc/bash_completion.d/jeff
 jeff completion fish > ~/.config/fish/completions/jeff.fish
 ```
@@ -499,7 +505,7 @@ mode is worse than one that names the gap.
 | Symptom | Cause | Fix |
 |---|---|---|
 | `JEFF is not initialized. Run: jeff init` | No home pointer and no `JEFF_HOME` | `jeff init` |
-| `JEFF is already initialized at <path>` | Pointer points elsewhere | `jeff init --update`, or `rm ~/.config/jeff/home` only if the human confirms that home is dead |
+| `JEFF is already initialized at <path>` | Pointer points elsewhere | `JEFF_HOME=<path> jeff init --update` to update the right home, or `rm ~/.config/jeff/home` only if the human confirms that home is dead |
 | `resolve JEFF_HOME` / `load config` errors | `JEFF_HOME` points at a dir with no `jeff.json` | Fix the env var, or `jeff init` at that path |
 | `jeff pickup` can't find the repo | Name mismatch | `jeff repo list` — use the short name, not the URL |
 | `jeff ship` fails immediately | `gh` missing or unauthenticated | Install `gh`, `gh auth login`; `--dry-run` needs neither |

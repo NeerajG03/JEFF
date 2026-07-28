@@ -160,7 +160,7 @@ func configAgentCmd() *cobra.Command {
 
 func configIDECmd() *cobra.Command {
 	return configEnumCmd[jeff.IDE](
-		"ide [vscode|cursor|windsurf|nvim]", "Get or set the preferred IDE",
+		"ide [vscode|cursor|windsurf|nvim|zed]", "Get or set the preferred IDE",
 		jeff.IDE("").ValidNames(),
 		func() string {
 			if cfg.IDE == "" {

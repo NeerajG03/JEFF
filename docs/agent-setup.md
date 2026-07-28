@@ -395,9 +395,29 @@ jeff pickup myapp-7c1e --persona jenko --repos backend
 worktree branched from the repo's base branch, symlinks matching skills, writes a
 task `CLAUDE.md` with persona + task context, and launches the agent.
 
-> **Note:** `jeff pickup` launches an interactive agent session. If you are running in
-> a non-interactive context, stop here, hand the command to the human, and let them
-> run it. Then continue verifying with the commands below.
+> **Note:** In a non-interactive context (CI, agent-driven setup), add `--test` to
+> prepare the workspace and verify its structure without launching the agent:
+>
+> ```bash
+> jeff pickup myapp-7c1e --persona jenko --repos backend --test
+> ```
+>
+> `--test` claims the task, creates the workspace and worktrees, wires skills, writes
+> the task CLAUDE.md, then prints the paths and exits so you can inspect them:
+>
+> ```
+> Test mode — workspace ready at /path/to/tasks/gig-fd55-...
+> Verify:
+>   • Task dir:   /path/to/tasks/gig-fd55-...
+>   • CLAUDE.md:  /path/to/tasks/gig-fd55-.../CLAUDE.md
+>   • Worktrees:  ls /path/to/tasks/gig-fd55-.../
+>   • Skills:     ls /path/to/tasks/gig-fd55-.../.claude/skills/
+> ```
+>
+> After verifying, continue with the commands below as normal.
+>
+> If you do want the interactive session, omit `--test` — and if you are running in a
+> terminal, `jeff pickup` opens the agent directly.
 
 ```bash
 # 3. From anywhere, inspect state.
@@ -513,6 +533,7 @@ mode is worse than one that names the gap.
 | Agent launches without task context | Hooks out of sync | `jeff config hooks sync --tasks` |
 | Tasks appear under the wrong ID prefix | gig store initialized after tasks existed, or two stores | `gig config` / check `GIG_HOME`; JEFF's own store resolution ignores `jeff.json`'s `gig_home` today, so prefer `GIG_HOME` |
 | Skills not appearing in a workspace | Not tagged for that persona | `jeff skill tag <name> --persona <persona>`, then re-run pickup |
+| `jeff pickup` exits with a usage block after claiming the task | Agent tool failed to launch (e.g. no stdin in non-interactive shell) | Workspace was created successfully. Use `jeff pickup <id> --test` to verify structure, or `jeff work <id>` to resume without re-launch |
 | Stale worker/tmux state | Crashed workers | `jeff crew cleanup` |
 
 ---
@@ -529,7 +550,7 @@ jeff config opencode add <n> <p/m>
 jeff repo add <url> [--name]     jeff repo list|sync         jeff repo describe|post-setup
 jeff persona list|show|add|tag   jeff skill list|doc|add|tag|inject
 jeff memory list|propose|curate
-jeff pickup <id> [--persona] [--repos] [--safe]              jeff work [id]
+jeff pickup <id> [--persona] [--repos] [--safe] [--test]     jeff work [id]
 jeff status [--all]              jeff open [id]              jeff checkpoint --done "..."
 jeff ship [--dry-run|--draft]    jeff done <id> [--reason] [--force]
 jeff orchestrator init|start|list|info|attach|stop

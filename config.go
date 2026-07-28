@@ -32,6 +32,7 @@ type Config struct {
 	Agent              AgentTool              `json:"agent" yaml:"agent"`
 	IDE                IDE                    `json:"ide,omitempty" yaml:"ide,omitempty"`
 	GigHome            string                 `json:"gig_home,omitempty" yaml:"gig_home"`
+	GigPrefix          string                 `json:"gig_prefix,omitempty" yaml:"gig_prefix,omitempty"`
 	Repos              map[string]*RepoConfig `json:"repos" yaml:"repos"`
 	Hooks              map[string]bool        `json:"hooks,omitempty" yaml:"hooks,omitempty"`
 	CheckpointPatterns []string               `json:"checkpoint_patterns,omitempty" yaml:"checkpoint_patterns,omitempty"`

@@ -12,6 +12,7 @@ Cobra commands that wrap SDK packages. All business logic lives in packages — 
 | `orchestrator_cmd.go` | `jeff orchestrator start/attach/stop/info/list` |
 | `ship_cmd.go` | `jeff ship` |
 | `done_cmd.go` | `jeff done` |
+| `cleanup_cmd.go` | `jeff cleanup` — collects retired workspaces + orphaned worktrees |
 | `dashboard_cmd.go` | `jeff dashboard` |
 | `taskctx.go` | `detectTaskContext()` — resolve task ID from CWD |
 

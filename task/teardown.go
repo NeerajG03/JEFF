@@ -17,6 +17,11 @@ type TeardownOpts struct {
 	TaskID string
 	Reason string
 	Force  bool // discard uncommitted worktree changes instead of refusing
+	// Purge deletes the task workspace directory outright instead of retiring
+	// it. Off by default: the invoking session is usually anchored to that
+	// directory and its hook scripts live inside it, so deleting it breaks every
+	// subsequent hook and Bash spawn in that session (#94).
+	Purge bool
 }
 
 // worktreeCleanup is a repo's resolved worktree path, ready for a dirty
@@ -66,21 +71,34 @@ func Teardown(store Store, cfg *jeff.Config, opts TeardownOpts) error {
 		}
 	}
 
-	// 2. Remove worktrees now that the preflight has cleared (or --force).
+	// 2. Remove worktrees now that the preflight has cleared (or --force). This
+	// is the actual reclamation — a checkout is hundreds of MB.
 	for _, c := range cleanups {
+		// Note if the caller is standing inside this worktree. Unlike the task
+		// dir, this one genuinely has to go, so the honest thing is to say so and
+		// point at what survives: the branch is untouched by `git worktree
+		// remove`, so committed work is still in the repo.
+		insideThis := workspace.CwdInside(c.wtPath)
 		if err := workspace.WorktreeRemoveByPath(cfg.Home, c.repoName, c.wtPath, opts.Force); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: worktree cleanup %s: %v\n", c.wtPath, err)
-		} else {
-			fmt.Fprintf(os.Stderr, "Removed worktree %s\n", c.wtPath)
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "Removed worktree %s\n", c.wtPath)
+		if insideThis {
+			fmt.Fprintf(os.Stderr, "  You were inside it — run `cd %s`. Commits are safe on the branch:\n", cfg.Home)
+			fmt.Fprintf(os.Stderr, "    jeff worktree add %s <branch>   # to get the checkout back\n", c.repoName)
 		}
 	}
 
-	// 3. Remove task workspace directory.
-	if err := workspace.Remove(cfg.Home, opts.TaskID); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: remove workspace: %v\n", err)
-	} else {
-		fmt.Fprintf(os.Stderr, "Removed workspace for %s\n", opts.TaskID)
-	}
+	// 3. Retire the task workspace — do NOT delete it by default.
+	//
+	// The worktrees removed above are where the disk cost lives (hundreds of MB
+	// each); a task dir is ~20 KB of hook scripts, settings.json and symlinks.
+	// It is also the running session's life support: its cwd, the hook scripts
+	// themselves, and the settings.json naming them absolutely. Deleting it to
+	// reclaim 20 KB broke every hook in the invoking session (#94), so it is
+	// retired instead and collected later by `jeff cleanup`.
+	retireWorkspace(cfg, td, tdErr, opts)
 
 	// 4. Close the gig task (the only hard-fail step).
 	if err := store.SetAttr(opts.TaskID, jeff.AttrOutcome, opts.Reason); err != nil {
@@ -105,6 +123,40 @@ func Teardown(store Store, cfg *jeff.Config, opts TeardownOpts) error {
 	}
 
 	return nil
+}
+
+// retireWorkspace marks the task workspace closed (default) or deletes it
+// (--purge). Deleting is the old behavior and is kept only as an explicit opt-in;
+// it warns first when the caller is standing inside the directory, since that is
+// the case that breaks the session.
+func retireWorkspace(cfg *jeff.Config, td *workspace.TaskDir, tdErr error, opts TeardownOpts) {
+	if tdErr != nil || td == nil {
+		// No workspace resolved (already gone, or never created) — nothing to do.
+		return
+	}
+
+	if opts.Purge {
+		if workspace.CwdInside(td.Path) {
+			fmt.Fprintf(os.Stderr, "Warning: --purge is deleting %s, which you are currently inside.\n", td.Path)
+			fmt.Fprintf(os.Stderr, "  Hooks and shell commands in this session will fail until you: cd %s\n", cfg.Home)
+		}
+		if err := workspace.Remove(cfg.Home, opts.TaskID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: remove workspace: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "Purged workspace for %s\n", opts.TaskID)
+		}
+		return
+	}
+
+	res, err := workspace.Retire(td.Path, opts.TaskID, opts.Reason)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: retire workspace: %v\n", err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "Retired workspace %s (kept — `jeff cleanup` collects it)\n", td.Path)
+	if len(res.DanglingRemoved) > 0 {
+		fmt.Fprintf(os.Stderr, "  removed dangling symlink(s): %s\n", strings.Join(res.DanglingRemoved, ", "))
+	}
 }
 
 // resolveWorktreeCleanups resolves the worktree path for each repo attached to

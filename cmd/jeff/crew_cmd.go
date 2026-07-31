@@ -398,6 +398,14 @@ func crewResumeCmd() *cobra.Command {
 				return fmt.Errorf("workspace not found for %s: %w", taskID, err)
 			}
 
+			// Resuming makes this workspace live again — clear a retirement marker
+			// left by a previous `jeff done` so `jeff cleanup` cannot collect the
+			// directory under the resumed worker.
+			if gs, gerr := openGigStore(cfg); gerr == nil {
+				task.Reactivate(gs, taskID, td.Path)
+				gs.Close()
+			}
+
 			cs, err := crew.Open(cfg.Home)
 			if err != nil {
 				return fmt.Errorf("open crew store: %w", err)

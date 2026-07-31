@@ -37,6 +37,11 @@ func taskWorkspaces(home string) []taskWorkspace {
 		if !strings.HasPrefix(taskID, "gig-") {
 			continue
 		}
+		// Retired workspaces are closed work kept only until `jeff cleanup`
+		// collects them; re-syncing hooks into them is pointless churn.
+		if workspace.IsRetired(filepath.Join(tasksDir, entry.Name())) {
+			continue
+		}
 		out = append(out, taskWorkspace{
 			Name:   entry.Name(),
 			Dir:    filepath.Join(tasksDir, entry.Name()),

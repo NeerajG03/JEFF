@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -56,51 +55,8 @@ func DefaultConfig() Config {
 	}
 }
 
-// globalPointerPath returns ~/.config/jeff/home which stores the JEFF_HOME path.
-func globalPointerPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("get home dir: %w", err)
-	}
-	return filepath.Join(home, ".config", "jeff", "home"), nil
-}
-
-// ResolveHome determines the JEFF_HOME directory.
-// Resolution order: JEFF_HOME env var → global pointer file → ~/.jeff/
-func ResolveHome() (string, error) {
-	if env := os.Getenv("JEFF_HOME"); env != "" {
-		return env, nil
-	}
-
-	ptr, err := globalPointerPath()
-	if err == nil {
-		data, err := os.ReadFile(ptr)
-		if err == nil {
-			p := strings.TrimSpace(string(data))
-			if p != "" {
-				return p, nil
-			}
-		}
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("get home dir: %w", err)
-	}
-	return filepath.Join(home, ".jeff"), nil
-}
-
-// WriteHomePointer writes the JEFF_HOME path to the global pointer file.
-func WriteHomePointer(jeffHome string) error {
-	ptr, err := globalPointerPath()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(ptr), 0o755); err != nil {
-		return fmt.Errorf("create pointer dir: %w", err)
-	}
-	return os.WriteFile(ptr, []byte(jeffHome+"\n"), 0o644)
-}
+// Home lifecycle (ResolveHome, SelectHomeForInit, WriteHomePointer, PointerPath)
+// lives in home.go. Nothing in this file may derive a home path on its own.
 
 // ConfigPath returns the jeff.json path within a JEFF_HOME.
 func ConfigPath(jeffHome string) string {

@@ -19,12 +19,17 @@ import (
 )
 
 const (
-	// DirName is the per-project identity directory (holds FileName).
-	DirName = ".jeff"
-	// FileName is the per-project identity file within DirName.
+	// ProjectDirName is the per-project identity directory (holds FileName). It
+	// is a per-directory marker in the manner of .git — deliberately NOT the JEFF
+	// home. The two used to share the name `DirName`, and the collision is what
+	// sent `orchestrator init --global` into a stray ~/.jeff beside a real home
+	// (#85): "<home>/.jeff/..." reads as "inside the home" but meant "the marker
+	// dir in $HOME".
+	ProjectDirName = ".jeff"
+	// FileName is the per-project identity file within ProjectDirName.
 	FileName = "orchestrator.json"
-	// GlobalFileName is the machine-wide default identity file, stored under
-	// the JEFF home's DirName (~/.jeff/default-orchestrator.json).
+	// GlobalFileName is the machine-wide default identity file. It lives directly
+	// in the resolved JEFF home — see GlobalFilePathIn.
 	GlobalFileName = "default-orchestrator.json"
 )
 
@@ -44,14 +49,22 @@ type Identity struct {
 	TmuxPane string `json:"tmux_pane,omitempty"`
 }
 
-// ProjectFilePath returns <dir>/.jeff/orchestrator.json.
+// ProjectFilePath returns <dir>/.jeff/orchestrator.json — the per-directory
+// marker for a project root.
 func ProjectFilePath(dir string) string {
-	return filepath.Join(dir, DirName, FileName)
+	return filepath.Join(dir, ProjectDirName, FileName)
 }
 
-// GlobalFilePath returns <home>/.jeff/default-orchestrator.json.
-func GlobalFilePath(home string) string {
-	return filepath.Join(home, DirName, GlobalFileName)
+// GlobalFilePathIn returns <jeffHome>/default-orchestrator.json — the machine-wide
+// default identity, inside the resolved JEFF home.
+//
+// The parameter is the JEFF home, NOT $HOME. For a default install the two produce
+// the same path (~/.jeff/default-orchestrator.json), so existing installs are
+// unaffected; for a relocated home the file now follows the home instead of being
+// stranded in a stray ~/.jeff (#85). The name says "In" precisely so a caller
+// cannot pass $HOME by accident and get a silently wrong path.
+func GlobalFilePathIn(jeffHome string) string {
+	return filepath.Join(jeffHome, GlobalFileName)
 }
 
 // Read loads and validates an identity file. A parse error or a missing id is

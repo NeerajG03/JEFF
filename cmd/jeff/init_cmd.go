@@ -19,6 +19,7 @@ import (
 )
 
 type initOpts struct {
+	home      string
 	here      bool
 	yes       bool
 	agent     string
@@ -60,6 +61,7 @@ func initCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVar(&opts.home, "home", "", "Initialize the home at this exact path (highest precedence)")
 	cmd.Flags().BoolVar(&opts.here, "here", false, "Initialize in current directory instead of ~/.jeff/")
 	cmd.Flags().BoolVar(&update, "update", false, "Sync existing home (create missing dirs, hooks, settings)")
 	cmd.Flags().BoolVarP(&opts.yes, "yes", "y", false, "Skip wizard, accept defaults (escape hatch for CI)")
@@ -107,22 +109,16 @@ func defaultAgentFromInstalled() jeff.AgentTool {
 // C1: Interactive wizard + silent flag-driven mode
 // ---------------------------------------------------------------------------
 
-func resolveHome(here bool) (string, error) {
-	if here {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return "", fmt.Errorf("get cwd: %w", err)
-		}
-		return filepath.Join(cwd, "jeff"), nil
-	}
-	if env := os.Getenv("JEFF_HOME"); env != "" {
-		return env, nil
-	}
-	h, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("get home: %w", err)
-	}
-	return filepath.Join(h, ".jeff"), nil
+// resolveHome delegates to the SDK selection path rather than reimplementing the
+// precedence chain. It used to keep its own copy, which is how `jeff init` drifted
+// out of agreement with every other command about where the home is (#82): the
+// copy grew a `--here` branch and a $HOME/.jeff default but never learned about
+// the pointer file. One selector, one precedence, no drift.
+func resolveHome(opts *initOpts) (string, jeff.HomeSource, error) {
+	return jeff.SelectHomeForInit(jeff.SelectHomeOpts{
+		Explicit: opts.home,
+		Here:     opts.here,
+	})
 }
 
 func checkExisting(home string) error {
@@ -138,11 +134,17 @@ func checkExisting(home string) error {
 	return nil
 }
 
-func homePathLabel(here bool) string {
+// homePathLabel renders the home for the generated CLAUDE.md. It reports the
+// path actually selected instead of guessing from flags, so a home placed by
+// $JEFF_HOME or --home is not documented as "~/.jeff/".
+func homePathLabel(home string, here bool) string {
 	if here {
 		return "jeff/"
 	}
-	return "~/.jeff/"
+	if def, err := jeff.DefaultHome(); err == nil && home == def {
+		return "~/.jeff/"
+	}
+	return home
 }
 
 // runInitWizard prompts the user interactively to pick agent, IDE, and repos.
@@ -255,9 +257,12 @@ func runInitWizard(cmd *cobra.Command, opts *initOpts) {
 }
 
 func runInit(cmd *cobra.Command, opts *initOpts) error {
-	home, err := resolveHome(opts.here)
+	home, homeSource, err := resolveHome(opts)
 	if err != nil {
 		return err
+	}
+	if opts.verbose {
+		fmt.Fprintf(os.Stderr, "home: %s (from %s)\n", home, homeSource.Describe())
 	}
 
 	if err := checkExisting(home); err != nil {
@@ -327,7 +332,7 @@ func runInit(cmd *cobra.Command, opts *initOpts) error {
 	}
 
 	// Write CLAUDE.md.
-	homePath := homePathLabel(opts.here)
+	homePath := homePathLabel(home, opts.here)
 	if err := jeffembed.WriteClaudeMD(home, homePath, false); err != nil {
 		return fmt.Errorf("write CLAUDE.md: %w", err)
 	}

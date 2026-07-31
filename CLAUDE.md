@@ -55,6 +55,53 @@ go vet ./...
 ## JEFF_HOME
 
 Resolved via: `JEFF_HOME` env var → `~/.config/jeff/home` pointer → `~/.jeff/` default.
+All of it lives in `home.go`. **Read that file's header before touching anything
+home-related** — the rules below are load-bearing, and four shipped bugs came from
+breaking them.
+
+### Two operations, never conflated
+
+| | Question | Who asks | May write the pointer? |
+|---|---|---|---|
+| **Selection** | "where should a home *live*?" | `jeff init`, `jeff home use` — once | **yes** |
+| **Resolution** | "where *is* my home?" | every other command, every run | **never** |
+
+- `ResolveHome()` / `ResolveHomeWithSource()` — resolution. **Read-only by contract.**
+- `SelectHomeForInit(SelectHomeOpts{...})` — selection. `--home` → `--here` → env → pointer → default.
+- `WriteHomePointer()` — selection path only.
+
+`ResolveHomeWithSource` also returns a `HomeSource` (`flag`/`env`/`pointer`/`default`).
+Surface it in anything user-facing — `jeff home` and `jeff doctor` both print it. Every
+bug here was hard to see because the provenance was invisible.
+
+### The three layers are three scopes, not three ways to do one thing
+
+| Layer | Lifetime | Why it must exist |
+|---|---|---|
+| `$JEFF_HOME` | one process / one tmux session | `crew.Start` does `tmux set-environment JEFF_HOME` so every pane inherits one home and workers can't drift onto a different `jeff.db` |
+| `~/.config/jeff/home` | per user, persistent | the install record — the only thing that knows a non-default home exists |
+| `~/.jeff` | bootstrap | the very first run, before any pointer |
+
+### Rules
+
+1. **Never write the pointer from a read path.** It used to "self-heal" on every
+   command, so one throwaway `JEFF_HOME=/tmp/x jeff status` permanently repointed the
+   pointer for every future shell — the most transient layer promoting itself to the
+   most durable. Pinned by `TestResolveHomeNeverWrites`.
+2. **Never derive a home yourself.** No `os.UserHomeDir()` + `".jeff"`, no second
+   `ResolveHome()` inside a process that already has `cfg.Home`. A duplicate resolver
+   drifts from the real one (`jeff init` did, → #82; `--global` did, → #85). Inside
+   `cmd/jeff`, prefer `cfg.Home`; `resolvedJeffHome()` encodes that preference.
+3. **Store paths inside the home as home-relative** via `internal/homepath` — `Rel` on
+   write, `Abs` on read. Absolute paths are what made the home non-relocatable (#84).
+   Paths genuinely outside the home stay absolute; they aren't the home's to move.
+4. **`$JEFF_HOME` is not `$HOME`.** `identity.ProjectDirName` (`.jeff`) is a
+   per-directory marker like `.git`; the home is a different thing that merely
+   defaults to `~/.jeff`. `identity.GlobalFilePathIn` takes the **JEFF home**.
+5. **Relocating a home** is `mv` + `jeff home use <path>`. Registries travel on their
+   own; `home use` repairs leftovers and regenerates the per-agent settings, whose
+   hook commands must be absolute to be executable. `jeff doctor` flags stored paths
+   that escape the resolved home (`home_paths_relative`).
 
 ```
 JEFF_HOME/
@@ -116,7 +163,10 @@ Each package has a `CLAUDE.md` with types, file roles, and extension patterns:
 
 - Don't store task state in JEFF — use gig SDK.
 - Don't shell out to `gig` CLI — use `import "github.com/NeerajG03/gig"`.
-- Don't hardcode JEFF_HOME paths — use `ResolveHome()`.
+- Don't hardcode JEFF_HOME paths — use `ResolveHome()` (or `cfg.Home` in `cmd/jeff`).
+- Don't write the home pointer outside `jeff init` / `jeff home use` — see JEFF_HOME above.
+- Don't persist absolute paths inside the home — use `internal/homepath`.
+- Don't pass `$HOME` where a JEFF home is wanted — they are different things.
 - Don't re-tag released versions — Go module proxy caches checksums.
 
 ## Personas

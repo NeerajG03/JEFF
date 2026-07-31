@@ -90,7 +90,8 @@ func writeSettingsFile(path string, settings map[string]any) error {
 }
 
 // addHookToSettings adds a hook entry to settings under the given event.
-// Idempotent: skips if the script is already present.
+// Idempotent: an existing entry for the same script has its command refreshed to
+// the given path rather than being duplicated.
 func addHookToSettings(settings map[string]any, event, matcher, scriptPath string, timeout int) {
 	hooksRaw := settings["hooks"]
 	hooksMap, _ := hooksRaw.(map[string]any)
@@ -104,9 +105,17 @@ func addHookToSettings(settings map[string]any, event, matcher, scriptPath strin
 		eventBlocks = arr
 	}
 
-	// Check if already present.
+	// An entry for this script may already exist. Dedup is by script BASENAME, so
+	// an entry whose command still names a previous JEFF home matches and used to
+	// short-circuit this function — leaving the stale absolute path in place
+	// forever, unfixable by any sync (part of #84). Refresh the command instead of
+	// returning: idempotent when the path is already right, self-healing when the
+	// home moved.
 	scriptName := filepath.Base(scriptPath)
 	if hasHook(eventBlocks, scriptName) {
+		refreshHookCommand(eventBlocks, scriptName, scriptPath)
+		hooksMap[event] = eventBlocks
+		settings["hooks"] = hooksMap
 		return
 	}
 
@@ -156,6 +165,73 @@ func removeHookFromSettings(settings map[string]any, scriptName string) {
 	if len(hooksMap) == 0 {
 		delete(settings, "hooks")
 	}
+}
+
+// refreshHookCommand repairs DANGLING references to a jeff-managed hook script so
+// they point at scriptPath, preserving any surrounding argv (the command is matched
+// per whitespace-separated token, as hasHook does).
+//
+// This is what lets a relocated home repair its own hooks: `jeff home use` re-syncs
+// and each stale absolute command is corrected instead of silently skipped.
+//
+// It is deliberately narrow, because settings.json is user-editable and dedup is by
+// basename alone. A user's own hook can legitimately share a basename with one of
+// ours, and rewriting it would be a silent mutation of their content — strictly
+// worse than the old skip. So a token is only rewritten when ALL hold:
+//
+//   - the basename matches, and the path differs from ours
+//   - the path is absolute
+//   - the path does NOT exist on disk — the decisive test. A live hook, whoever owns
+//     it, is never touched; only a reference to something already gone is repaired.
+//   - its parent directory is named "hooks", matching jeff's <dir>/hooks/<name>.sh layout
+//
+// timeout is left alone: the old dedup path never updated it, and it may have been
+// customized by hand.
+func refreshHookCommand(blocks []any, scriptName, scriptPath string) {
+	for _, b := range blocks {
+		bMap, ok := b.(map[string]any)
+		if !ok {
+			continue
+		}
+		hooksList, _ := bMap["hooks"].([]any)
+		for _, hk := range hooksList {
+			hkMap, ok := hk.(map[string]any)
+			if !ok {
+				continue
+			}
+			cmd, _ := hkMap["command"].(string)
+			fields := strings.Fields(cmd)
+			changed := false
+			for i, p := range fields {
+				if isRepairableHookRef(p, scriptName, scriptPath) {
+					fields[i] = scriptPath
+					changed = true
+				}
+			}
+			if changed {
+				hkMap["command"] = strings.Join(fields, " ")
+			}
+		}
+	}
+}
+
+// isRepairableHookRef reports whether a command token is a dangling reference to a
+// jeff-managed hook script that should be repointed at scriptPath. See
+// refreshHookCommand for why each condition is required.
+func isRepairableHookRef(token, scriptName, scriptPath string) bool {
+	if filepath.Base(token) != scriptName || token == scriptPath {
+		return false
+	}
+	if !filepath.IsAbs(token) {
+		return false
+	}
+	if filepath.Base(filepath.Dir(token)) != "hooks" {
+		return false // not jeff's <dir>/hooks/<name>.sh layout
+	}
+	if _, err := os.Stat(token); err == nil {
+		return false // still exists — someone owns it; never clobber a live hook
+	}
+	return true
 }
 
 // hasHook checks if a script is already present in event blocks.

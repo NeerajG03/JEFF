@@ -16,12 +16,25 @@ func writeProjectIdentity(t *testing.T, dir, id string) {
 	}
 }
 
+// detect drives the chain with $HOME only; the machine-wide default therefore
+// falls back to <home>/.jeff, matching a default install.
 func detect(t *testing.T, env map[string]string, startDir, home string) (string, Source, error) {
 	t.Helper()
 	return detectWith(detectParams{
 		getenv:   func(k string) string { return env[k] },
 		startDir: startDir,
 		home:     home,
+	})
+}
+
+// detectIn drives the chain with an explicit JEFF home, as the CLI does.
+func detectIn(t *testing.T, env map[string]string, startDir, home, jeffHome string) (string, Source, error) {
+	t.Helper()
+	return detectWith(detectParams{
+		getenv:   func(k string) string { return env[k] },
+		startDir: startDir,
+		home:     home,
+		jeffHome: jeffHome,
 	})
 }
 
@@ -143,7 +156,7 @@ func TestDetect_GlobalFallback(t *testing.T) {
 	home := t.TempDir()
 	// Project dir on a path that is NOT under home (the real-world repro).
 	project := t.TempDir()
-	if err := Write(GlobalFilePath(home), &Identity{ID: "global-id", Name: "g", CreatedAt: "x"}); err != nil {
+	if err := Write(GlobalFilePathIn(filepath.Join(home, ".jeff")), &Identity{ID: "global-id", Name: "g", CreatedAt: "x"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -163,7 +176,7 @@ func TestDetect_PerProjectWinsOverGlobal(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeProjectIdentity(t, project, "project-id")
-	if err := Write(GlobalFilePath(home), &Identity{ID: "global-id", Name: "g", CreatedAt: "x"}); err != nil {
+	if err := Write(GlobalFilePathIn(filepath.Join(home, ".jeff")), &Identity{ID: "global-id", Name: "g", CreatedAt: "x"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -286,5 +299,52 @@ func TestWrite_OverwriteReplacesContent(t *testing.T) {
 	}
 	if got.ID != "new" {
 		t.Errorf("id = %q, want new", got.ID)
+	}
+}
+
+// TestDetect_GlobalLivesInJeffHome pins step 4 of the chain against #85: the
+// machine-wide default is looked up inside the resolved JEFF home, not in
+// $HOME/.jeff. With the two set to different directories, an identity written to
+// the JEFF home must be found and one written to $HOME/.jeff must be ignored.
+func TestDetect_GlobalLivesInJeffHome(t *testing.T) {
+	osHome := t.TempDir()
+	jeffHome := t.TempDir()
+	project := t.TempDir() // not under either home
+
+	if err := Write(GlobalFilePathIn(jeffHome), &Identity{ID: "in-jeff-home", Name: "g", CreatedAt: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	// A stale file in the old location must NOT win.
+	if err := Write(GlobalFilePathIn(filepath.Join(osHome, ".jeff")), &Identity{ID: "stray-in-os-home", Name: "g", CreatedAt: "x"}); err != nil {
+		t.Fatal(err)
+	}
+
+	id, src, err := detectIn(t, nil, project, osHome, jeffHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "in-jeff-home" {
+		t.Errorf("id = %q, want in-jeff-home (a stray ~/.jeff must not shadow the resolved home)", id)
+	}
+	if src != SourceGlobalFile {
+		t.Errorf("source = %q, want %q", src, SourceGlobalFile)
+	}
+}
+
+// TestDetect_GlobalFallsBackToOSHomeDefault covers a caller with no resolved home
+// (jeffHome == ""), where the default install location is the right guess.
+func TestDetect_GlobalFallsBackToOSHomeDefault(t *testing.T) {
+	osHome := t.TempDir()
+	project := t.TempDir()
+	if err := Write(GlobalFilePathIn(filepath.Join(osHome, ".jeff")), &Identity{ID: "default-install", Name: "g", CreatedAt: "x"}); err != nil {
+		t.Fatal(err)
+	}
+
+	id, src, err := detectIn(t, nil, project, osHome, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "default-install" || src != SourceGlobalFile {
+		t.Errorf("got (%q, %q), want (default-install, global-file)", id, src)
 	}
 }

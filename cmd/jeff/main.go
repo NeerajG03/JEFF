@@ -41,9 +41,12 @@ func main() {
 			cfg = c
 			jeff.SetOpenCodeModelAliases(cfg.OpenCodeModels)
 
-			// Self-heal: ensure the home pointer exists so it survives
-			// upgrades, cache clears, or accidental deletion.
-			_ = jeff.WriteHomePointer(home)
+			// NOTE: this path must never write the home pointer. It used to
+			// "self-heal" it on every command, which meant a one-shot
+			// `JEFF_HOME=/tmp/x jeff status` permanently repointed the pointer
+			// file for every future shell — a transient override promoting
+			// itself to the persistent default. The pointer is written only by
+			// the selection path: `jeff init` and `jeff home use`.
 
 			return nil
 		},
@@ -58,6 +61,7 @@ func main() {
 
 	rootCmd.AddCommand(
 		initCmd(),
+		homeCmd(),
 		pickupCmd(),
 		workCmd(),
 		doneCmd(),

@@ -35,6 +35,21 @@ func orchestratorCmd() *cobra.Command {
 	return cmd
 }
 
+// resolvedJeffHome returns the home this process already resolved, falling back to
+// the resolution chain only when no config has been loaded (a command exempt from
+// PersistentPreRunE).
+//
+// Preferring cfg.Home matters: resolving a second time inside one process is the
+// same duplicate-resolver pattern that produced these bugs, and it can disagree
+// with the first resolution — an ambient $JEFF_HOME would send a write somewhere
+// the rest of the process is not looking.
+func resolvedJeffHome() (string, error) {
+	if cfg != nil && cfg.Home != "" {
+		return cfg.Home, nil
+	}
+	return jeff.ResolveHome()
+}
+
 func orchestratorInitCmd() *cobra.Command {
 	var name string
 	var global bool
@@ -49,7 +64,7 @@ terminal, CI). Workers started afterwards bind to this identity.
 
   jeff orchestrator init            write .jeff/orchestrator.json in the current directory
   jeff orchestrator init --name X   set a human-readable name (default: tmux session name or basename of cwd)
-  jeff orchestrator init --global   write the machine-wide default (~/.jeff/default-orchestrator.json)
+  jeff orchestrator init --global   write the machine-wide default ($JEFF_HOME/default-orchestrator.json)
   jeff orchestrator init --force    overwrite an existing identity file
 
 IDENTITY IS PER-DIRECTORY: the identity file is written under the current
@@ -64,17 +79,17 @@ orchestrator.`,
 			cmd.SilenceUsage = true
 
 			// Resolve where the identity file lives. The global default lives
-			// under the OS home (~/.jeff/default-orchestrator.json) — the same
-			// location identity.Detect consults — NOT under JEFF_HOME, which may
-			// differ from $HOME.
+			// inside the resolved JEFF home — the same location identity.Detect
+			// consults. It used to be hardcoded to $HOME/.jeff, which planted a
+			// stray ~/.jeff next to any relocated home (#85).
 			var dir, path string
 			if global {
-				osHome, err := os.UserHomeDir()
+				jeffHome, err := resolvedJeffHome()
 				if err != nil {
-					return fmt.Errorf("resolve home: %w", err)
+					return fmt.Errorf("resolve JEFF home: %w", err)
 				}
-				dir = osHome
-				path = identity.GlobalFilePath(osHome)
+				dir = jeffHome
+				path = identity.GlobalFilePathIn(jeffHome)
 			} else {
 				wd, err := os.Getwd()
 				if err != nil {
@@ -82,6 +97,10 @@ orchestrator.`,
 				}
 				dir = wd
 				path = identity.ProjectFilePath(wd)
+			}
+
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				return fmt.Errorf("create identity dir: %w", err)
 			}
 
 			// Refuse on an existing file unless --force (write is atomic below,
@@ -178,7 +197,7 @@ orchestrator.`,
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "human-readable name (default: tmux session name or basename of cwd)")
-	cmd.Flags().BoolVar(&global, "global", false, "write the machine-wide default (~/.jeff/default-orchestrator.json)")
+	cmd.Flags().BoolVar(&global, "global", false, "write the machine-wide default inside the resolved JEFF home")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite an existing identity file")
 	return cmd
 }

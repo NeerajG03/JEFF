@@ -68,10 +68,58 @@ type GCResult struct {
 	BytesRecoverable int64 // what the skipped-dirty worktrees would free
 }
 
-// taskIDInPath finds a gig task id in any segment of a path. Worktrees live at
-// worktrees/<repo>/<branch>/ and a branch may itself contain slashes
-// (e.g. jeff/gig-ab12-some-slug), so the id can appear at any depth.
-var taskIDInPath = regexp.MustCompile(`(gig-[a-z0-9]+(?:\.[0-9]+)*)`)
+// taskIDPattern matches a gig task id. It is applied ONLY to the branch portion of
+// a worktree path (see taskIDForWorktree) — never the whole path.
+var taskIDPattern = regexp.MustCompile(`(gig-[a-z0-9]+(?:\.[0-9]+)*)`)
+
+// taskIDForWorktree recovers the task id a worktree belongs to, from the BRANCH
+// portion of its path only.
+//
+// Scoping matters for deletion safety. Worktrees live at
+// worktrees/<repo>/<branch>/ and a branch may contain slashes, so the id can sit
+// at any depth *within the branch* — but matching the whole path lets the repo
+// name win: a repo legitimately named "gig-app" made
+// worktrees/gig-app/jeff/gig-b222-real-task resolve to "gig-app". If that
+// spurious id happened to be a closed task, the GC would delete a clean worktree
+// belonging to a genuinely open one. Found in review of #96.
+func taskIDForWorktree(jeffHome, wtPath string) string {
+	rel, err := filepath.Rel(filepath.Join(jeffHome, "worktrees"), wtPath)
+	if err != nil {
+		return ""
+	}
+	// A path outside the worktrees root is not ours to attribute; Rel happily
+	// returns a ../.. walk, which would otherwise still match an id.
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+	if len(parts) < 2 {
+		return "" // no branch portion at all — not a worktree we can attribute
+	}
+	branch := filepath.Join(parts[1:]...) // drop the <repo> segment
+	return taskIDPattern.FindString(branch)
+}
+
+// Reactivate clears a workspace's retirement marker when its task is live again.
+//
+// Retirement is written by `jeff done`, but a task dir can be brought back to life
+// by more than one path: `jeff pickup` (via workspace.Create), `jeff work`, and
+// `jeff crew resume`. A marker left behind on a live workspace hides it from
+// `jeff status` and from hook sync, and — worst — `jeff cleanup` eventually deletes
+// it out from under the running session, which is the very failure #94 was about.
+// Found in review of #96: only the Create path was wired.
+//
+// A workspace whose task is still terminal keeps its marker: poking at a closed
+// task must not resurrect its directory into the live set.
+func Reactivate(store Store, taskID, taskDir string) {
+	if taskDir == "" || !workspace.IsRetired(taskDir) {
+		return
+	}
+	if taskIsTerminal(store, taskID) {
+		return
+	}
+	workspace.Unretire(taskDir)
+}
 
 // GC collects retired task workspaces and orphaned worktrees. It is safe to run
 // at any time and reports everything it chose not to touch.
@@ -135,7 +183,7 @@ func GC(store Store, cfg *jeff.Config, opts GCOpts) (*GCResult, error) {
 
 	// --- Orphaned worktrees (the expensive garbage) ---
 	for _, wt := range orphanWorktrees(cfg.Home) {
-		taskID := taskIDInPath.FindString(wt)
+		taskID := taskIDForWorktree(cfg.Home, wt)
 		item := GCItem{Path: wt, TaskID: taskID, Bytes: workspace.DirSize(wt)}
 
 		if taskID == "" || !taskIsTerminal(store, taskID) {

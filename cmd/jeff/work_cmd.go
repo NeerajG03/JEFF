@@ -32,6 +32,11 @@ func workCmd() *cobra.Command {
 			}
 			defer store.Close()
 
+			// Resuming makes this workspace live again: clear any retirement marker
+			// left by a previous `jeff done`, or `jeff cleanup` would collect the
+			// directory out from under this session.
+			task.Reactivate(store, taskID, taskDir)
+
 			// Regenerate CLAUDE.md (injects latest checkpoint + current memory/worktrees).
 			if err := task.RefreshClaudeMD(store, cfg, taskID, taskDir); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: refresh task context: %v\n", err)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	jeff "github.com/NeerajG03/JEFF"
+	"github.com/NeerajG03/JEFF/crew"
 	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/NeerajG03/gig"
 )
@@ -195,4 +196,191 @@ func TestGC_UnreachableStoreDeletesNothing(t *testing.T) {
 	if _, err := os.Stat(res.TaskDir); err != nil {
 		t.Errorf("workspace deleted while the store was unusable: %v", err)
 	}
+}
+
+// TestTaskIDForWorktree pins the attribution used to decide whether an orphaned
+// worktree may be deleted. From review of #96: matching a gig id anywhere in the
+// full path let a REPO name win over the branch, so a repo named "gig-app" could
+// misattribute a worktree — and if that spurious id resolved to a closed task, a
+// clean worktree belonging to an OPEN task would be deleted.
+func TestTaskIDForWorktree(t *testing.T) {
+	home := filepath.FromSlash("/home/.jeff")
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{
+			name: "plain branch",
+			path: filepath.Join(home, "worktrees", "frontend", "gig-ab12-some-slug"),
+			want: "gig-ab12",
+		},
+		{
+			name: "branch with slashes",
+			path: filepath.Join(home, "worktrees", "frontend", "jeff", "gig-ab12-some-slug"),
+			want: "gig-ab12",
+		},
+		{
+			name: "subtask id",
+			path: filepath.Join(home, "worktrees", "backend", "gig-ab12.3-sub"),
+			want: "gig-ab12.3",
+		},
+		{
+			name: "repo name must NOT win over the branch",
+			path: filepath.Join(home, "worktrees", "gig-app", "jeff", "gig-b222-real-task"),
+			want: "gig-b222",
+		},
+		{
+			name: "repo name alone is not an attribution",
+			path: filepath.Join(home, "worktrees", "gig-app", "main"),
+			want: "",
+		},
+		{
+			name: "no branch portion",
+			path: filepath.Join(home, "worktrees", "frontend"),
+			want: "",
+		},
+		{
+			name: "outside the worktrees root",
+			path: filepath.FromSlash("/elsewhere/gig-ab12"),
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := taskIDForWorktree(home, tt.path); got != tt.want {
+				t.Errorf("taskIDForWorktree(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestGC_SkipsWorkspaceWithLiveAnchoredWorker covers rule #1 of the GC — "never
+// remove a workspace a live worker is anchored to" — which review of #96 found had
+// zero coverage despite being the most safety-critical rule in the change.
+//
+// The workspace is retired and well past the grace period, so ONLY the anchor check
+// stands between it and deletion. If the path keying between crew's stored TaskDir
+// and workspace.List ever drifts, this fails.
+func TestGC_SkipsWorkspaceWithLiveAnchoredWorker(t *testing.T) {
+	store, cfg, repo := fixture(t, true)
+	task := newOpenTask(t, store, "GC live anchor")
+
+	res, err := Pickup(store, cfg, PickupOpts{TaskID: task.ID, Repos: []string{repo}})
+	if err != nil {
+		t.Fatalf("Pickup: %v", err)
+	}
+	retireAged(t, store, cfg, task.ID, res.TaskDir, 72*time.Hour)
+
+	// Register a running worker anchored to this workspace, as `jeff crew start` does.
+	cs, err := crew.Open(cfg.Home)
+	if err != nil {
+		t.Fatalf("crew.Open: %v", err)
+	}
+	if err := cs.PutSession(&crew.Session{
+		TaskID:      task.ID,
+		TmuxSession: "jeff-test",
+		WindowName:  "w",
+		TaskDir:     res.TaskDir,
+		Status:      "running",
+		StartedAt:   time.Now().UTC(),
+		LastSeen:    time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+	cs.Close()
+
+	gcRes, err := GC(store, cfg, GCOpts{})
+	if err != nil {
+		t.Fatalf("GC: %v", err)
+	}
+
+	if len(gcRes.Workspaces) != 0 {
+		t.Errorf("collected %d workspace(s) with a LIVE worker anchored — that session loses its hooks and cwd", len(gcRes.Workspaces))
+	}
+	if len(gcRes.SkippedLive) != 1 {
+		t.Errorf("SkippedLive = %d, want 1; the anchor check did not match. Path keying between crew.Session.TaskDir and workspace.List may have drifted", len(gcRes.SkippedLive))
+	}
+	if _, err := os.Stat(res.TaskDir); err != nil {
+		t.Errorf("workspace with a live worker was deleted: %v", err)
+	}
+}
+
+// TestGC_CollectsAfterWorkerStops: the same workspace becomes collectable once its
+// worker reaches a terminal status, so the anchor check protects rather than leaks.
+func TestGC_CollectsAfterWorkerStops(t *testing.T) {
+	store, cfg, repo := fixture(t, true)
+	task := newOpenTask(t, store, "GC anchor released")
+
+	res, err := Pickup(store, cfg, PickupOpts{TaskID: task.ID, Repos: []string{repo}})
+	if err != nil {
+		t.Fatalf("Pickup: %v", err)
+	}
+	retireAged(t, store, cfg, task.ID, res.TaskDir, 72*time.Hour)
+
+	cs, err := crew.Open(cfg.Home)
+	if err != nil {
+		t.Fatalf("crew.Open: %v", err)
+	}
+	sess := &crew.Session{
+		TaskID: task.ID, TmuxSession: "jeff-test", WindowName: "w",
+		TaskDir: res.TaskDir, Status: "stopped",
+		StartedAt: time.Now().UTC(), LastSeen: time.Now().UTC(),
+	}
+	if err := cs.PutSession(sess); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+	cs.Close()
+
+	gcRes, err := GC(store, cfg, GCOpts{})
+	if err != nil {
+		t.Fatalf("GC: %v", err)
+	}
+	if len(gcRes.Workspaces) != 1 {
+		t.Errorf("collected %d workspaces after the worker stopped, want 1 (live=%d)", len(gcRes.Workspaces), len(gcRes.SkippedLive))
+	}
+}
+
+// TestReactivate covers the paths that bring a retired workspace back to life
+// (`jeff work`, `jeff crew resume`) and the one case that must NOT: a task that is
+// still closed.
+func TestReactivate(t *testing.T) {
+	store, cfg, repo := fixture(t, true)
+
+	t.Run("reopened task un-retires", func(t *testing.T) {
+		task := newOpenTask(t, store, "Reactivate reopened")
+		res, err := Pickup(store, cfg, PickupOpts{TaskID: task.ID, Repos: []string{repo}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := Teardown(store, cfg, TeardownOpts{TaskID: task.ID, Reason: "done"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.UpdateStatus(task.ID, gig.StatusInProgress, "test"); err != nil {
+			t.Fatal(err)
+		}
+
+		Reactivate(store, task.ID, res.TaskDir)
+
+		if workspace.IsRetired(res.TaskDir) {
+			t.Error("workspace still retired after Reactivate on a live task; cleanup would delete it under the session")
+		}
+	})
+
+	t.Run("still-closed task keeps its marker", func(t *testing.T) {
+		task := newOpenTask(t, store, "Reactivate closed")
+		res, err := Pickup(store, cfg, PickupOpts{TaskID: task.ID, Repos: []string{repo}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := Teardown(store, cfg, TeardownOpts{TaskID: task.ID, Reason: "done"}); err != nil {
+			t.Fatal(err)
+		}
+
+		Reactivate(store, task.ID, res.TaskDir)
+
+		if !workspace.IsRetired(res.TaskDir) {
+			t.Error("Reactivate resurrected a workspace whose task is still closed; it would never be collected")
+		}
+	})
 }

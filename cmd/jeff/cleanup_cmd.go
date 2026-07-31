@@ -45,6 +45,26 @@ sweep as ` + "`jeff crew cleanup`" + `.`,
 			}
 			defer store.Close()
 
+			out := cmd.OutOrStdout()
+
+			// Reconcile crew state FIRST. A worker whose tmux pane already died
+			// still has a "running" session row until this runs, and the GC counts
+			// such a row as a live anchor — so reconciling first lets one invocation
+			// both release the anchor and collect the workspace, instead of needing
+			// a second run.
+			if cs, cerr := crew.Open(cfg.Home); cerr == nil {
+				if cr, cerr := crew.Cleanup(cs, cfg.Home, dryRun); cerr == nil {
+					n := len(cr.OrphanedWindows) + len(cr.StaleSessions) + len(cr.StaleOrch)
+					if n > 0 {
+						fmt.Fprintf(out, "Crew: reconciled %d item(s).\n", n)
+					}
+					if cr.SkippedNoState {
+						fmt.Fprintln(out, "Crew: orphan sweep skipped — the crew DB has no state while worker windows exist (likely a different JEFF_HOME).")
+					}
+				}
+				cs.Close()
+			}
+
 			res, err := task.GC(store, cfg, task.GCOpts{
 				DryRun: dryRun,
 				Force:  force,
@@ -54,7 +74,6 @@ sweep as ` + "`jeff crew cleanup`" + `.`,
 				return err
 			}
 
-			out := cmd.OutOrStdout()
 			verb := "Removed"
 			if dryRun {
 				verb = "Would remove"
@@ -78,19 +97,6 @@ sweep as ` + "`jeff crew cleanup`" + `.`,
 					humanBytes(res.BytesRecoverable))
 			}
 
-			// Crew reconciliation, so one command leaves the whole home tidy.
-			if cs, err := crew.Open(cfg.Home); err == nil {
-				defer cs.Close()
-				if cr, err := crew.Cleanup(cs, cfg.Home, dryRun); err == nil {
-					n := len(cr.OrphanedWindows) + len(cr.StaleSessions) + len(cr.StaleOrch)
-					if n > 0 {
-						fmt.Fprintf(out, "Crew: reconciled %d item(s).\n", n)
-					}
-					if cr.SkippedNoState {
-						fmt.Fprintln(out, "Crew: orphan sweep skipped — the crew DB has no state while worker windows exist (likely a different JEFF_HOME).")
-					}
-				}
-			}
 			return nil
 		},
 	}

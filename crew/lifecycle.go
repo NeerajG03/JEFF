@@ -2,6 +2,7 @@ package crew
 
 import (
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -679,6 +680,14 @@ func SignalWorkerFailed(store *Store, taskID, reason string) error {
 // same type already exists for the task.
 func signalOrchestrator(store *Store, taskID, message, msgType string, dedupe bool) error {
 	sess, err := store.GetSession(taskID)
+	if errors.Is(err, sql.ErrNoRows) {
+		// No crew session row at all — a task picked up solo (`jeff pickup`) was
+		// never registered as a worker, so there is no orchestrator to signal.
+		// Same outcome as the empty-OrchestratorID case below, and not an error:
+		// otherwise every solo `jeff done` reports "get session: sql: no rows in
+		// result set" from Teardown's best-effort signal.
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("get session: %w", err)
 	}

@@ -109,6 +109,14 @@ func TestExtractTaskID(t *testing.T) {
 		{"gig-ab12.1-sub-task", "gig-ab12.1"},
 		{"gig-ab12", "gig-ab12"},
 		{"random-dir", "random-dir"},
+		// Absolute paths work — only the base name is inspected.
+		{"/home/u/.jeff/tasks/gig-ab12-refactor-auth", "gig-ab12"},
+		// A RELATIVE dir does not: Base(".") is "." and the fallback returns it
+		// verbatim, so the caller gets a task id of "." and the lookup fails with
+		// "task not found". Callers taking a user-supplied directory (e.g.
+		// `jeff worktree add --task-dir .`) must resolve it to an absolute path
+		// before calling this.
+		{".", "."},
 	}
 	for _, tt := range tests {
 		got := ExtractTaskID(tt.slug)

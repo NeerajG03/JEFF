@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/NeerajG03/JEFF/internal/homepath"
 )
 
 //go:embed skill_mgmt.md
@@ -64,15 +66,31 @@ func LoadSkills(jeffHome string) (*SkillConfig, error) {
 	if sc.Skills == nil {
 		sc.Skills = make(map[string]*SkillEntry)
 	}
+	// Locations are stored home-relative so the home stays relocatable; callers
+	// always see absolute paths. Pre-existing absolute entries pass through
+	// unchanged and are rewritten to relative form on the next save.
+	for _, entry := range sc.Skills {
+		entry.Location = homepath.Abs(jeffHome, entry.Location)
+	}
 	return &sc, nil
 }
 
-// SaveSkills writes skills.json with pretty formatting.
+// SaveSkills writes skills.json with pretty formatting. Locations inside the home
+// are persisted home-relative (see internal/homepath); the in-memory config keeps
+// its absolute paths so callers can keep using it after a save.
 func SaveSkills(jeffHome string, sc *SkillConfig) error {
 	if sc.Schema == "" {
 		sc.Schema = schemaURL
 	}
-	data, err := json.MarshalIndent(sc, "", "  ")
+
+	onDisk := &SkillConfig{Schema: sc.Schema, Skills: make(map[string]*SkillEntry, len(sc.Skills))}
+	for name, entry := range sc.Skills {
+		copied := *entry
+		copied.Location = homepath.Rel(jeffHome, entry.Location)
+		onDisk.Skills[name] = &copied
+	}
+
+	data, err := json.MarshalIndent(onDisk, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal skills.json: %w", err)
 	}

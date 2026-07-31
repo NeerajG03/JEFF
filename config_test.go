@@ -204,7 +204,7 @@ func TestWriteAndResolveHomePointer(t *testing.T) {
 		t.Errorf("expected %s, got %s", customHome, home)
 	}
 
-	ptr, _ := globalPointerPath()
+	ptr, _ := PointerPath()
 	os.Remove(ptr)
 }
 

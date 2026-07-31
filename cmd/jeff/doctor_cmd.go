@@ -14,6 +14,9 @@ import (
 
 	"github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/hooks"
+	"github.com/NeerajG03/JEFF/internal/homepath"
+	"github.com/NeerajG03/JEFF/persona"
+	"github.com/NeerajG03/JEFF/skill"
 	"github.com/NeerajG03/gig"
 	"github.com/spf13/cobra"
 )
@@ -56,6 +59,9 @@ type envCheck struct {
 	Status   envStatus
 	Fix      string
 	Required bool
+	// Detail is an optional explanation printed under the row, for checks whose
+	// failure is not self-explanatory from the name alone.
+	Detail string
 }
 
 type platformInfo struct {
@@ -464,6 +470,47 @@ func checkDep(d dep) depResult {
 	return r
 }
 
+// checkStoredPathsInsideHome verifies that the registries do not name paths
+// outside the resolved home. A home that was moved without `jeff home use` lands
+// in exactly that state, and it used to be invisible: `jeff config` reported the
+// new path as healthy while personas, skills, and every agent hook still pointed
+// at the old one (#84).
+func checkStoredPathsInsideHome(home string) envCheck {
+	const name = "home_paths_relative"
+
+	var escaped []string
+	if pc, err := persona.LoadPersonas(home); err == nil {
+		for n, entry := range pc.Personas {
+			if !homepath.Inside(home, entry.Location) {
+				if _, statErr := os.Stat(entry.Location); statErr != nil {
+					escaped = append(escaped, "persona "+n)
+				}
+			}
+		}
+	}
+	if sc, err := skill.LoadSkills(home); err == nil {
+		for n, entry := range sc.Skills {
+			if !homepath.Inside(home, entry.Location) {
+				if _, statErr := os.Stat(entry.Location); statErr != nil {
+					escaped = append(escaped, "skill "+n)
+				}
+			}
+		}
+	}
+
+	if len(escaped) > 0 {
+		sort.Strings(escaped)
+		return envCheck{
+			Name:     name,
+			Status:   envFail,
+			Fix:      "jeff home use " + home,
+			Required: false,
+			Detail:   "registry entries point outside the home and do not exist: " + strings.Join(escaped, ", "),
+		}
+	}
+	return envCheck{Name: name, Status: envOK, Required: false}
+}
+
 func runEnvironmentChecks(cfg *jeff.Config) []envCheck {
 	var checks []envCheck
 
@@ -495,6 +542,8 @@ func runEnvironmentChecks(cfg *jeff.Config) []envCheck {
 	}
 
 	checks = append(checks, envCheck{Name: "jeff_initialized", Status: envOK, Required: true})
+
+	checks = append(checks, checkStoredPathsInsideHome(home))
 
 	checks = append(checks, checkGigInitialized(cfg))
 
@@ -735,6 +784,14 @@ func printEnvironmentTable(cmd *cobra.Command, results []envCheck) {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, colorize(cBold, "ENVIRONMENT"))
 
+	// Show which layer chose the home. Every home-resolution bug in this area was
+	// hard to see precisely because the provenance was invisible: two commands
+	// could disagree about the home and nothing said why.
+	if home, source, err := jeff.ResolveHomeWithSource(); err == nil {
+		fmt.Fprintf(out, "  home: %s (from %s)\n", home, source.Describe())
+	}
+
+
 	for _, e := range results {
 		statusStr := formatEnvStatus(e.Status)
 		fmt.Fprintf(out, "  %s  %s  %s\n",
@@ -742,6 +799,9 @@ func printEnvironmentTable(cmd *cobra.Command, results []envCheck) {
 			padRight(e.Name, 24),
 			e.Fix,
 		)
+		if e.Detail != "" {
+			fmt.Fprintf(out, "  %s  %s\n", padRight("", 16), e.Detail)
+		}
 	}
 }
 

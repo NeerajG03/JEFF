@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/NeerajG03/JEFF/internal/homepath"
 )
 
 const schemaURL = "https://raw.githubusercontent.com/NeerajG03/JEFF/main/schemas/personas.json"
@@ -59,15 +61,31 @@ func LoadPersonas(jeffHome string) (*PersonaConfig, error) {
 	if pc.Personas == nil {
 		pc.Personas = make(map[string]*PersonaEntry)
 	}
+	// Locations are stored home-relative so the home stays relocatable; callers
+	// always see absolute paths. Pre-existing absolute entries pass through
+	// unchanged and are rewritten to relative form on the next save.
+	for _, entry := range pc.Personas {
+		entry.Location = homepath.Abs(jeffHome, entry.Location)
+	}
 	return &pc, nil
 }
 
-// SavePersonas writes personas.json with pretty formatting.
+// SavePersonas writes personas.json with pretty formatting. Locations inside the
+// home are persisted home-relative (see internal/homepath); the in-memory config
+// keeps its absolute paths so callers can keep using it after a save.
 func SavePersonas(jeffHome string, pc *PersonaConfig) error {
 	if pc.Schema == "" {
 		pc.Schema = schemaURL
 	}
-	data, err := json.MarshalIndent(pc, "", "  ")
+
+	onDisk := &PersonaConfig{Schema: pc.Schema, Personas: make(map[string]*PersonaEntry, len(pc.Personas))}
+	for name, entry := range pc.Personas {
+		copied := *entry
+		copied.Location = homepath.Rel(jeffHome, entry.Location)
+		onDisk.Personas[name] = &copied
+	}
+
+	data, err := json.MarshalIndent(onDisk, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal personas.json: %w", err)
 	}

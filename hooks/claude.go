@@ -90,7 +90,8 @@ func writeSettingsFile(path string, settings map[string]any) error {
 }
 
 // addHookToSettings adds a hook entry to settings under the given event.
-// Idempotent: skips if the script is already present.
+// Idempotent: an existing entry for the same script has its command refreshed to
+// the given path rather than being duplicated.
 func addHookToSettings(settings map[string]any, event, matcher, scriptPath string, timeout int) {
 	hooksRaw := settings["hooks"]
 	hooksMap, _ := hooksRaw.(map[string]any)
@@ -104,9 +105,17 @@ func addHookToSettings(settings map[string]any, event, matcher, scriptPath strin
 		eventBlocks = arr
 	}
 
-	// Check if already present.
+	// An entry for this script may already exist. Dedup is by script BASENAME, so
+	// an entry whose command still names a previous JEFF home matches and used to
+	// short-circuit this function — leaving the stale absolute path in place
+	// forever, unfixable by any sync (part of #84). Refresh the command instead of
+	// returning: idempotent when the path is already right, self-healing when the
+	// home moved.
 	scriptName := filepath.Base(scriptPath)
 	if hasHook(eventBlocks, scriptName) {
+		refreshHookCommand(eventBlocks, scriptName, scriptPath, timeout)
+		hooksMap[event] = eventBlocks
+		settings["hooks"] = hooksMap
 		return
 	}
 
@@ -155,6 +164,41 @@ func removeHookFromSettings(settings map[string]any, scriptName string) {
 
 	if len(hooksMap) == 0 {
 		delete(settings, "hooks")
+	}
+}
+
+// refreshHookCommand rewrites the command of every entry referencing scriptName so
+// it points at scriptPath, preserving any surrounding argv the user may have added
+// (the command is matched per whitespace-separated token, as hasHook does).
+//
+// This is what lets a relocated home repair its own hooks: `jeff home use` re-syncs,
+// and each hook's absolute command is corrected in place rather than skipped.
+func refreshHookCommand(blocks []any, scriptName, scriptPath string, timeout int) {
+	for _, b := range blocks {
+		bMap, ok := b.(map[string]any)
+		if !ok {
+			continue
+		}
+		hooksList, _ := bMap["hooks"].([]any)
+		for _, hk := range hooksList {
+			hkMap, ok := hk.(map[string]any)
+			if !ok {
+				continue
+			}
+			cmd, _ := hkMap["command"].(string)
+			fields := strings.Fields(cmd)
+			changed := false
+			for i, p := range fields {
+				if filepath.Base(p) == scriptName && p != scriptPath {
+					fields[i] = scriptPath
+					changed = true
+				}
+			}
+			if changed {
+				hkMap["command"] = strings.Join(fields, " ")
+				hkMap["timeout"] = timeout
+			}
+		}
 	}
 }
 

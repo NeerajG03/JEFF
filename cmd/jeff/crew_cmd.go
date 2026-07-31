@@ -361,7 +361,13 @@ func crewStartCmd() *cobra.Command {
 // --all). A non-nil error means a genuine I/O failure or a malformed identity
 // file — those must propagate and fail loud, never degrade to a shared default.
 func detectOrchestratorID() (string, identity.Source, error) {
-	return identity.Detect()
+	// cfg.Home is the resolved JEFF home; the machine-wide default identity lives
+	// inside it, not in $HOME.
+	var jeffHome string
+	if cfg != nil {
+		jeffHome = cfg.Home
+	}
+	return identity.Detect(jeffHome)
 }
 
 // currentTmuxSessionName returns the tmux session name owning the given pane, or

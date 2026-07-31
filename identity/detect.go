@@ -30,15 +30,24 @@ const EnvVarLegacy = "JEFF_ORCHESTRATOR_SESSION"
 type detectParams struct {
 	getenv   func(string) string
 	startDir string
-	home     string
+	// home is $HOME. It bounds the parent walk (step 3) and nothing else.
+	home string
+	// jeffHome is the resolved JEFF home, where the machine-wide default identity
+	// lives (step 4). It is a DIFFERENT thing from home: conflating the two is
+	// what produced #85. Empty falls back to $HOME/.jeff for a caller that has no
+	// resolved home yet.
+	jeffHome string
 }
 
 // Detect resolves the orchestrator identity id for the current process. It is a
 // thin wrapper over detectWith that fills in the ambient os inputs.
-func Detect() (string, Source, error) {
+//
+// jeffHome is the resolved JEFF home (callers pass cfg.Home). Pass "" only when no
+// home has been resolved; the machine-wide default then falls back to $HOME/.jeff.
+func Detect(jeffHome string) (string, Source, error) {
 	home, _ := os.UserHomeDir()
 	wd, _ := os.Getwd()
-	return detectWith(detectParams{getenv: os.Getenv, startDir: wd, home: home})
+	return detectWith(detectParams{getenv: os.Getenv, startDir: wd, home: home, jeffHome: jeffHome})
 }
 
 // detectWith implements the five-step resolution chain, most explicit/durable
@@ -79,9 +88,9 @@ func detectWith(p detectParams) (string, Source, error) {
 		return id.ID, SourceParentFile, nil
 	}
 
-	// 4. Machine-wide default.
-	if p.home != "" {
-		if id, err := readIfExists(GlobalFilePath(p.home)); err != nil {
+	// 4. Machine-wide default, inside the resolved JEFF home.
+	if gh := p.globalHome(); gh != "" {
+		if id, err := readIfExists(GlobalFilePathIn(gh)); err != nil {
 			return "", "", err
 		} else if id != nil {
 			return id.ID, SourceGlobalFile, nil
@@ -90,6 +99,19 @@ func detectWith(p detectParams) (string, Source, error) {
 
 	// 5. No identity found.
 	return "", "", nil
+}
+
+// globalHome returns the directory holding the machine-wide default identity: the
+// resolved JEFF home when known, else the $HOME/.jeff default. Never bare $HOME —
+// that was the #85 bug.
+func (p detectParams) globalHome() string {
+	if p.jeffHome != "" {
+		return p.jeffHome
+	}
+	if p.home == "" {
+		return ""
+	}
+	return filepath.Join(p.home, ".jeff")
 }
 
 // walkParents checks each ancestor of startDir for a per-project identity file,

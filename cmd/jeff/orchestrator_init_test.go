@@ -136,7 +136,7 @@ func TestOrchestratorInit_Global(t *testing.T) {
 		t.Fatalf("init --global: %v", err)
 	}
 	// Global file written under home, not the project dir.
-	if _, err := identity.Read(identity.GlobalFilePath(home)); err != nil {
+	if _, err := identity.Read(identity.GlobalFilePathIn(home)); err != nil {
 		t.Fatalf("global identity not written: %v", err)
 	}
 	if _, err := os.Stat(identity.ProjectFilePath(project)); !os.IsNotExist(err) {
@@ -192,5 +192,67 @@ func TestPromptAdopt(t *testing.T) {
 		if got := promptAdopt(cmd, "jeff-DM20"); got != want {
 			t.Errorf("promptAdopt(%q) = %v, want %v", in, got, want)
 		}
+	}
+}
+
+// initHomeApartFromOSHome sets up a JEFF home that is NOT $HOME, which is the
+// configuration #85 required and the reason initHome (where the two are equal)
+// could not catch it. Returns (jeffHome, osHome).
+func initHomeApartFromOSHome(t *testing.T) (string, string) {
+	t.Helper()
+	base := t.TempDir()
+	jeffHome := filepath.Join(base, "elsewhere", "jeff-home")
+	osHome := filepath.Join(base, "user")
+	for _, d := range []string{jeffHome, osHome} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg = &jeff.Config{Home: jeffHome}
+	t.Setenv("HOME", osHome)
+	t.Setenv(jeff.EnvHome, jeffHome)
+	t.Setenv(identity.EnvVar, "")
+	t.Setenv(identity.EnvVarLegacy, "")
+	t.Setenv("TMUX", "")
+	t.Setenv("TMUX_PANE", "")
+	t.Cleanup(func() { cfg = nil })
+	return jeffHome, osHome
+}
+
+// TestOrchestratorInit_GlobalGoesToJeffHomeNotOSHome is the regression test for
+// #85. `--global` used to resolve its target with os.UserHomeDir(), so on any
+// install whose home is not ~/.jeff it wrote to a stray ~/.jeff/ that nothing else
+// reads — "a half-populated ~/.jeff is an active hazard", per the report.
+//
+// The invariant, which must not be expressible in terms of the path helper being
+// tested: the identity lands INSIDE the resolved JEFF home, and no ~/.jeff appears.
+func TestOrchestratorInit_GlobalGoesToJeffHomeNotOSHome(t *testing.T) {
+	jeffHome, osHome := initHomeApartFromOSHome(t)
+	project := t.TempDir()
+	defer chdir(t, project)()
+
+	if err := runOrchestratorInit(t, "--global"); err != nil {
+		t.Fatalf("init --global: %v", err)
+	}
+
+	// Written inside the resolved JEFF home.
+	want := filepath.Join(jeffHome, "default-orchestrator.json")
+	if _, err := os.Stat(want); err != nil {
+		t.Errorf("global identity not written inside the JEFF home (%s): %v", want, err)
+	}
+
+	// And nothing stray under $HOME.
+	if entries, err := os.ReadDir(filepath.Join(osHome, ".jeff")); err == nil {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("--global created a stray %s containing %v; the machine-wide default must follow the JEFF home",
+			filepath.Join(osHome, ".jeff"), names)
+	}
+
+	// The per-project marker is a different thing and must not be touched.
+	if _, err := os.Stat(identity.ProjectFilePath(project)); !os.IsNotExist(err) {
+		t.Error("--global should not write a per-project identity file")
 	}
 }

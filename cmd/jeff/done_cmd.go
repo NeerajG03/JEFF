@@ -8,6 +8,7 @@ import (
 func doneCmd() *cobra.Command {
 	var reason string
 	var force bool
+	var purge bool
 
 	cmd := &cobra.Command{
 		Use:   "done [gig-id]",
@@ -29,12 +30,14 @@ func doneCmd() *cobra.Command {
 				TaskID: taskID,
 				Reason: reason,
 				Force:  force,
+				Purge:  purge,
 			})
 		},
 	}
 
 	cmd.Flags().StringVar(&reason, "reason", "done", "Close reason")
 	cmd.Flags().BoolVar(&force, "force", false, "Discard uncommitted worktree changes instead of refusing to close")
+	cmd.Flags().BoolVar(&purge, "purge", false, "Delete the task workspace dir too (breaks hooks in a session anchored to it)")
 	cmd.ValidArgsFunction = activeTaskCompletion
 	return cmd
 }

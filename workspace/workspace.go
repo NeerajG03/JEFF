@@ -26,6 +26,13 @@ func Create(jeffHome, taskID, title string) (*TaskDir, error) {
 		return nil, fmt.Errorf("create task dir: %w", err)
 	}
 
+	// MkdirAll reuses an existing directory, so a task closed and then picked up
+	// again lands back in its RETIRED workspace. Clear the marker: leaving it
+	// would hide a live workspace from `jeff status` and hook sync, and would let
+	// `jeff cleanup` delete it out from under the session once the grace period
+	// elapsed. Creating a workspace means it is live.
+	Unretire(dir)
+
 	return &TaskDir{
 		Path:   dir,
 		TaskID: taskID,
@@ -93,6 +100,27 @@ func List(jeffHome string) ([]*TaskDir, error) {
 		})
 	}
 	return dirs, nil
+}
+
+// ListActive returns task workspaces that have not been retired by `jeff done`.
+//
+// Since `done` keeps a task dir instead of deleting it (#94), "a directory exists"
+// no longer means "the task is live". Anything presenting workspaces as current
+// work — status, completions, hook sync — must filter on this rather than on List,
+// or closed tasks keep showing up as active.
+func ListActive(jeffHome string) ([]*TaskDir, error) {
+	all, err := List(jeffHome)
+	if err != nil {
+		return nil, err
+	}
+	var out []*TaskDir
+	for _, td := range all {
+		if IsRetired(td.Path) {
+			continue
+		}
+		out = append(out, td)
+	}
+	return out, nil
 }
 
 // makeSlug creates a filesystem-safe directory name from task ID and title.

@@ -186,6 +186,7 @@ jeff crew resume myapp-ab12              # resume stopped worker (restores agent
 jeff crew stop myapp-ab12                # graceful stop
 jeff crew stop --all                     # stop all workers
 jeff crew cleanup                        # reconcile tmux vs DB state
+jeff cleanup                             # collect retired workspaces + orphaned worktrees
 jeff orchestrator info                   # show all tasks under orchestrator
 jeff orchestrator stop jeff-work         # stop orchestrator + all workers
 ```
@@ -210,7 +211,8 @@ jeff dashboard                          # interactive TUI (auto-refreshes every 
 | `jeff work [id] [--safe]` | Resume work in an existing task workspace |
 | `jeff checkpoint --done "..."` | Save a structured progress snapshot |
 | `jeff ship [--repo] [--draft] [--dry-run]` | Push branches and create PRs |
-| `jeff done [id] [--reason] [--force]` | Close task and clean up workspace |
+| `jeff done [id] [--reason] [--force] [--purge]` | Close task, remove its worktrees, retire the workspace |
+| `jeff cleanup [--dry-run] [--force] [--older-than]` | Collect retired workspaces + orphaned worktrees, reclaim disk |
 | `jeff status [--all]` | Overview of active tasks and workspaces |
 | `jeff stats [--since 30d] [--persona] [--repo] [--outcome] [--json]` | Observability over gig events and attributes |
 | `jeff open [id]` | Open workspace in IDE |
@@ -332,7 +334,9 @@ JEFF is configured via `jeff.json`, with a [JSON schema](https://raw.githubuserc
 }
 ```
 
-`jeff done` and `jeff worktree rm` refuse to discard a worktree with uncommitted changes unless `--force` is passed.
+`jeff done`, `jeff worktree rm` and `jeff cleanup` refuse to discard a worktree with uncommitted changes unless `--force` is passed.
+
+`jeff done` removes the task's worktrees (the disk cost) but **keeps the task directory**, marking it `.closed`. That directory holds the running session's hook scripts and working directory, so deleting it on close broke every hook in that session. `jeff cleanup` collects retired directories once no worker is anchored to them.
 
 See [docs/config.md](docs/config.md) for the full reference.
 

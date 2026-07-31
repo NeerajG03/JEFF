@@ -62,6 +62,7 @@ func main() {
 	rootCmd.AddCommand(
 		initCmd(),
 		homeCmd(),
+		cleanupCmd(),
 		pickupCmd(),
 		workCmd(),
 		doneCmd(),

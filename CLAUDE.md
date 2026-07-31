@@ -120,6 +120,45 @@ JEFF_HOME/
 └── exports/            # generated artifacts
 ```
 
+## Task workspaces vs worktrees — the cost asymmetry
+
+```
+worktrees/<repo>/<branch>/   ~200 MB–1 GB   a full checkout
+tasks/<slug>/                ~20 KB         hook scripts, .claude/settings.json, symlinks
+```
+
+A task dir is **not just where a task's files live — it is the running session's
+life support**: its cwd, the hook SCRIPTS themselves, and the `settings.json` that
+names those scripts by absolute path. `jeff done` used to `RemoveAll` it, which
+killed every subsequent hook and Bash spawn in the invoking session (#94) — and
+silently dropped the SessionEnd memory/transcript capture with it.
+
+So the two are treated by cost, not symmetry:
+
+| | `jeff done` | `jeff cleanup` |
+|---|---|---|
+| worktree | **removes it** — this is the reclamation | removes orphans (clean; dirty needs `--force`) |
+| task dir | **retires it**: drops dangling symlinks, writes `.closed` | collects it (no live worker, past `--older-than`) |
+
+`--purge` on `done` restores the old delete-everything behavior.
+
+Rules:
+
+1. **Never delete a task dir on close.** The fix works *by construction* — no cwd
+   detection needed, and it holds however the task was closed, including from
+   another terminal, which cwd inspection can never see.
+2. **Anything presenting workspaces as current work must use `workspace.ListActive`,
+   not `List`** — a directory existing no longer means the task is live. Same for
+   the `.closed` check in `taskWorkspaces` (hook sync).
+3. **Creating a workspace un-retires it** (`workspace.Create` → `Unretire`). A closed
+   task can be reopened and picked up into the very dir it was retired in; a stale
+   marker would hide it from `status`, skip its hook sync, and let the GC delete it
+   under a live session.
+4. **The GC never guesses.** It skips a workspace with a live anchored worker, a
+   non-terminal task, or one inside the grace period, and never discards a dirty
+   worktree without `--force`. An unreachable gig store means "not terminal", so a
+   store failure can never cause a deletion.
+
 ## Config (jeff.json)
 
 ```json
@@ -167,6 +206,8 @@ Each package has a `CLAUDE.md` with types, file roles, and extension patterns:
 - Don't write the home pointer outside `jeff init` / `jeff home use` — see JEFF_HOME above.
 - Don't persist absolute paths inside the home — use `internal/homepath`.
 - Don't pass `$HOME` where a JEFF home is wanted — they are different things.
+- Don't delete a task workspace on close — retire it (see above); a live session lives there.
+- Don't use `workspace.List` to show active work — use `ListActive`.
 - Don't re-tag released versions — Go module proxy caches checksums.
 
 ## Personas

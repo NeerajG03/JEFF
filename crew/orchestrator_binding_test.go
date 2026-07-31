@@ -344,3 +344,19 @@ func TestAskErrorsForUnboundWorker(t *testing.T) {
 		t.Errorf("Ask error = %q, want 'no orchestrator'", err)
 	}
 }
+
+// TestSignalOrchestratorNoopForMissingSession covers a task that was never
+// registered as a crew worker at all — `jeff pickup` writes no sessions row, so
+// GetSession returns sql.ErrNoRows. That is not a failure: there is simply no
+// orchestrator to signal, exactly as for a session with an empty
+// OrchestratorID. Before this was handled, Teardown's best-effort signal made
+// every solo `jeff done` print
+// "Warning: signal orchestrator: get session: sql: no rows in result set".
+func TestSignalOrchestratorNoopForMissingSession(t *testing.T) {
+	withFakeTmux(t)
+	store := tempStore(t) // empty — no session row for this task at all
+
+	if err := SignalOrchestrator(store, "gig-never-registered", "done"); err != nil {
+		t.Errorf("SignalOrchestrator (no session row) = %v, want nil (no-op)", err)
+	}
+}

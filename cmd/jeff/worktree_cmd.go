@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/NeerajG03/JEFF/task"
 	"github.com/NeerajG03/JEFF/workspace"
@@ -58,7 +59,16 @@ func worktreeAddCmd() *cobra.Command {
 				fmt.Printf("Symlinked into: %s/%s\n", taskDir, repoName)
 
 				// Refresh task CLAUDE.md so it reflects the new worktree.
-				taskID := workspace.ExtractTaskID(taskDir)
+				// ExtractTaskID reads the id off the directory's BASE name, so a
+				// relative --task-dir (notably `.`, run from inside the task dir)
+				// has to be resolved first: Base(".") is "." and ExtractTaskID
+				// falls through to returning it verbatim, which then fails the
+				// lookup with "task not found" and skips the refresh entirely.
+				idSource := taskDir
+				if abs, err := filepath.Abs(taskDir); err == nil {
+					idSource = abs
+				}
+				taskID := workspace.ExtractTaskID(idSource)
 				if taskID != "" {
 					store, err := openGigStore(cfg)
 					if err == nil {

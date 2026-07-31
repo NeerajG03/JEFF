@@ -107,6 +107,12 @@ func DefaultHome() (string, error) {
 // that guarantee.
 func ResolveHomeWithSource() (string, HomeSource, error) {
 	if env := strings.TrimSpace(os.Getenv(EnvHome)); env != "" {
+		// Normalize: a relative $JEFF_HOME would otherwise be re-anchored to
+		// whatever the cwd happens to be at each use, and homepath.Abs would join
+		// registry entries onto a relative base. Absolute here, once.
+		if abs, err := filepath.Abs(env); err == nil {
+			return abs, HomeSourceEnv, nil
+		}
 		return env, HomeSourceEnv, nil
 	}
 

@@ -61,6 +61,23 @@ func TestResolveHomePrecedence(t *testing.T) {
 		}
 	})
 
+	t.Run("relative env is normalized to absolute", func(t *testing.T) {
+		sandboxHome(t)
+		dir := t.TempDir()
+		t.Chdir(dir)
+		t.Setenv(EnvHome, "relative-home")
+		home, source, err := ResolveHomeWithSource()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !filepath.IsAbs(home) {
+			t.Errorf("home = %q, want an absolute path — a relative $%s would re-anchor to whatever cwd is current", home, EnvHome)
+		}
+		if filepath.Base(home) != "relative-home" || source != HomeSourceEnv {
+			t.Errorf("got (%q, %q), want (<cwd>/relative-home, env)", home, source)
+		}
+	})
+
 	t.Run("blank env is ignored", func(t *testing.T) {
 		sandboxHome(t)
 		if err := WriteHomePointer("/somewhere/custom"); err != nil {

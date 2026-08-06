@@ -173,6 +173,164 @@ func TestTeardown_DropsDanglingRepoSymlink(t *testing.T) {
 	}
 }
 
+// TestTeardown_RemovesMidTaskSymlinkedWorktree is the main regression test for
+// #98: a repo attached after pickup (as `jeff worktree add <repo> <branch>
+// --task-dir .` does — worktree + symlink, historically WITHOUT registering the
+// repo on the task) must still have its worktree removed by teardown. The
+// branch deliberately does not carry the task id, so only the task-dir symlink
+// can attribute it.
+func TestTeardown_RemovesMidTaskSymlinkedWorktree(t *testing.T) {
+	store, cfg, repo := fixture(t, true)
+	task := newOpenTask(t, store, "Teardown mid-task repo")
+
+	res, err := Pickup(store, cfg, PickupOpts{TaskID: task.ID, Repos: []string{repo}})
+	if err != nil {
+		t.Fatalf("Pickup: %v", err)
+	}
+	registeredWT := filepath.Join(cfg.Home, "worktrees", repo, task.ID)
+	if _, err := os.Stat(registeredWT); err != nil {
+		t.Fatalf("precondition: pickup worktree missing: %v", err)
+	}
+
+	setupRepo(t, cfg.Home, "frontend")
+	midTaskWT, err := workspace.WorktreeAdd(workspace.WorktreeOpts{
+		JeffHome:   cfg.Home,
+		RepoName:   "frontend",
+		Branch:     "feature-x",
+		BaseBranch: "main",
+		TaskDir:    res.TaskDir,
+	})
+	if err != nil {
+		t.Fatalf("WorktreeAdd: %v", err)
+	}
+
+	if err := Teardown(store, cfg, TeardownOpts{TaskID: task.ID, Reason: "done"}); err != nil {
+		t.Fatalf("Teardown: %v", err)
+	}
+
+	if _, err := os.Stat(registeredWT); !os.IsNotExist(err) {
+		t.Errorf("registered repo's worktree should be removed, stat err: %v", err)
+	}
+	if _, err := os.Stat(midTaskWT); !os.IsNotExist(err) {
+		t.Errorf("mid-task repo's worktree should be removed (#98), stat err: %v", err)
+	}
+}
+
+// TestTeardown_RemovesUnlinkedTaskBranchWorktree covers the discovery half that
+// symlinks can't: a worktree created WITHOUT --task-dir has no symlink in the
+// task dir and no attribute entry, but its branch carries the task id, so
+// teardown attributes it from disk (#98).
+func TestTeardown_RemovesUnlinkedTaskBranchWorktree(t *testing.T) {
+	store, cfg, repo := fixture(t, true)
+	task := newOpenTask(t, store, "Teardown unlinked worktree")
+
+	if _, err := Pickup(store, cfg, PickupOpts{TaskID: task.ID, Repos: []string{repo}}); err != nil {
+		t.Fatalf("Pickup: %v", err)
+	}
+
+	setupRepo(t, cfg.Home, "frontend")
+	unlinkedWT, err := workspace.WorktreeAdd(workspace.WorktreeOpts{
+		JeffHome:   cfg.Home,
+		RepoName:   "frontend",
+		Branch:     task.ID,
+		BaseBranch: "main",
+		// no TaskDir — nothing links this worktree to the task but its branch
+	})
+	if err != nil {
+		t.Fatalf("WorktreeAdd: %v", err)
+	}
+
+	if err := Teardown(store, cfg, TeardownOpts{TaskID: task.ID, Reason: "done"}); err != nil {
+		t.Fatalf("Teardown: %v", err)
+	}
+
+	if _, err := os.Stat(unlinkedWT); !os.IsNotExist(err) {
+		t.Errorf("unlinked task-branch worktree should be removed (#98), stat err: %v", err)
+	}
+}
+
+// TestTeardown_DirtyMidTaskWorktreeRefusesClose: the dirty preflight must cover
+// discovered worktrees too, or teardown would discard uncommitted mid-task work
+// that the pre-#98 code at least left on disk.
+func TestTeardown_DirtyMidTaskWorktreeRefusesClose(t *testing.T) {
+	store, cfg, repo := fixture(t, true)
+	task := newOpenTask(t, store, "Teardown dirty mid-task repo")
+
+	res, err := Pickup(store, cfg, PickupOpts{TaskID: task.ID, Repos: []string{repo}})
+	if err != nil {
+		t.Fatalf("Pickup: %v", err)
+	}
+
+	setupRepo(t, cfg.Home, "frontend")
+	midTaskWT, err := workspace.WorktreeAdd(workspace.WorktreeOpts{
+		JeffHome:   cfg.Home,
+		RepoName:   "frontend",
+		Branch:     "feature-x",
+		BaseBranch: "main",
+		TaskDir:    res.TaskDir,
+	})
+	if err != nil {
+		t.Fatalf("WorktreeAdd: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(midTaskWT, "wip.txt"), []byte("uncommitted\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Teardown(store, cfg, TeardownOpts{TaskID: task.ID, Reason: "done"}); err == nil {
+		t.Fatal("expected Teardown to refuse while a mid-task worktree is dirty")
+	}
+
+	if _, err := os.Stat(midTaskWT); err != nil {
+		t.Errorf("dirty worktree must survive a refused teardown: %v", err)
+	}
+	if got, _ := store.Get(task.ID); got.Status == gig.StatusClosed {
+		t.Error("task must not close when teardown refuses")
+	}
+}
+
+// TestTeardown_LeavesOtherTasksWorktreesAlone: disk discovery is scoped to
+// branches carrying THIS task's id — a sibling task's worktree (including a
+// subtask's, whose id merely extends the parent's) must survive.
+func TestTeardown_LeavesOtherTasksWorktreesAlone(t *testing.T) {
+	store, cfg, repo := fixture(t, true)
+	task := newOpenTask(t, store, "Teardown scoping")
+	other := newOpenTask(t, store, "Unrelated task")
+
+	if _, err := Pickup(store, cfg, PickupOpts{TaskID: task.ID, Repos: []string{repo}}); err != nil {
+		t.Fatalf("Pickup: %v", err)
+	}
+
+	otherWT, err := workspace.WorktreeAdd(workspace.WorktreeOpts{
+		JeffHome:   cfg.Home,
+		RepoName:   repo,
+		Branch:     other.ID,
+		BaseBranch: "main",
+	})
+	if err != nil {
+		t.Fatalf("WorktreeAdd: %v", err)
+	}
+	subtaskWT, err := workspace.WorktreeAdd(workspace.WorktreeOpts{
+		JeffHome:   cfg.Home,
+		RepoName:   repo,
+		Branch:     task.ID + ".1",
+		BaseBranch: "main",
+	})
+	if err != nil {
+		t.Fatalf("WorktreeAdd: %v", err)
+	}
+
+	if err := Teardown(store, cfg, TeardownOpts{TaskID: task.ID, Reason: "done"}); err != nil {
+		t.Fatalf("Teardown: %v", err)
+	}
+
+	if _, err := os.Stat(otherWT); err != nil {
+		t.Errorf("another task's worktree must survive this teardown: %v", err)
+	}
+	if _, err := os.Stat(subtaskWT); err != nil {
+		t.Errorf("a subtask's worktree must survive its parent's teardown: %v", err)
+	}
+}
+
 // TestTeardown_RepickupUnretiresWorkspace: a closed task can be reopened and
 // picked up again, and workspace.Create reuses the existing directory. If the
 // .closed marker survived that, the live workspace would be hidden from

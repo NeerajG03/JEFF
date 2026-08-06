@@ -182,7 +182,7 @@ func GC(store Store, cfg *jeff.Config, opts GCOpts) (*GCResult, error) {
 	}
 
 	// --- Orphaned worktrees (the expensive garbage) ---
-	for _, wt := range orphanWorktrees(cfg.Home) {
+	for _, wt := range allWorktrees(cfg.Home) {
 		taskID := taskIDForWorktree(cfg.Home, wt)
 		item := GCItem{Path: wt, TaskID: taskID, Bytes: workspace.DirSize(wt)}
 
@@ -236,10 +236,12 @@ func anchoredTaskDirs(jeffHome string) map[string]struct{} {
 	return out
 }
 
-// orphanWorktrees lists every worktree directory under jeffHome/worktrees. A
+// allWorktrees lists every worktree directory under jeffHome/worktrees. A
 // worktree is <worktrees>/<repo>/<branch...>/ and branches may contain slashes, so
-// a directory qualifies when it holds a .git entry.
-func orphanWorktrees(jeffHome string) []string {
+// a directory qualifies when it holds a .git entry. GC filters these down to
+// orphans; teardown uses the same enumeration to discover worktrees whose
+// branch carries the closing task's id (#98).
+func allWorktrees(jeffHome string) []string {
 	root := filepath.Join(jeffHome, "worktrees")
 	var out []string
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {

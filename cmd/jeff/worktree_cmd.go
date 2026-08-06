@@ -73,6 +73,13 @@ func worktreeAddCmd() *cobra.Command {
 					store, err := openGigStore(cfg)
 					if err == nil {
 						defer store.Close()
+						// Register the repo on the task, so `jeff done` cleans this
+						// worktree up and task stats count the repo (#98).
+						if added, err := task.AddTaskRepo(store, taskID, repoName); err != nil {
+							fmt.Fprintf(os.Stderr, "Warning: register repo on %s: %v\n", taskID, err)
+						} else if added {
+							fmt.Printf("Registered %s on %s\n", repoName, taskID)
+						}
 						if err := task.RefreshClaudeMD(store, cfg, taskID, taskDir); err != nil {
 							fmt.Fprintf(os.Stderr, "Warning: refresh CLAUDE.md: %v\n", err)
 						}

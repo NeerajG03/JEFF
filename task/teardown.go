@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	jeff "github.com/NeerajG03/JEFF"
@@ -29,6 +30,10 @@ type TeardownOpts struct {
 type worktreeCleanup struct {
 	repoName string
 	wtPath   string
+	// discovered marks a worktree found by inspection (task-dir symlink or
+	// on-disk branch attribution) rather than the task's repos attribute — a
+	// repo attached mid-task that was never registered (#98).
+	discovered bool
 }
 
 // Teardown closes a task and cleans up its workspace, mirroring Pickup. It
@@ -50,13 +55,13 @@ func Teardown(store Store, cfg *jeff.Config, opts TeardownOpts) error {
 	// the task dir symlink instead of reconstructing from the task ID, which
 	// doesn't match the branch name generated during pickup.
 	td, tdErr := workspace.Open(cfg.Home, opts.TaskID)
-	var cleanups []worktreeCleanup
+	var repos []string
 	if attr, err := store.GetAttr(opts.TaskID, jeff.AttrRepos); err == nil && attr != nil {
-		var repos []string
-		if json.Unmarshal([]byte(attr.Value), &repos) == nil {
-			cleanups = resolveWorktreeCleanups(cfg.Home, opts.TaskID, repos, td, tdErr)
-		}
+		_ = json.Unmarshal([]byte(attr.Value), &repos)
 	}
+	// Resolve cleanups even when the attribute is empty or unreadable — repos
+	// attached mid-task may exist only as symlinks or on-disk worktrees (#98).
+	cleanups := resolveWorktreeCleanups(cfg.Home, opts.TaskID, repos, td, tdErr)
 
 	// 1. Dirty preflight across ALL repos before removing any.
 	if !opts.Force {
@@ -83,7 +88,11 @@ func Teardown(store Store, cfg *jeff.Config, opts TeardownOpts) error {
 			fmt.Fprintf(os.Stderr, "Warning: worktree cleanup %s: %v\n", c.wtPath, err)
 			continue
 		}
-		fmt.Fprintf(os.Stderr, "Removed worktree %s\n", c.wtPath)
+		note := ""
+		if c.discovered {
+			note = " (repo was not registered on the task — attached mid-task?)"
+		}
+		fmt.Fprintf(os.Stderr, "Removed worktree %s%s\n", c.wtPath, note)
 		if insideThis {
 			fmt.Fprintf(os.Stderr, "  You were inside it — run `cd %s`. Commits are safe on the branch:\n", cfg.Home)
 			fmt.Fprintf(os.Stderr, "    jeff worktree add %s <branch>   # to get the checkout back\n", c.repoName)
@@ -160,9 +169,20 @@ func retireWorkspace(cfg *jeff.Config, td *workspace.TaskDir, tdErr error, opts 
 }
 
 // resolveWorktreeCleanups resolves the worktree path for each repo attached to
-// the task. It prefers the task dir symlink target (via ListTaskWorktrees); if
-// that's unavailable it reconstructs the legacy branch=taskID path (matching the
-// old WorktreeRemove(jeffHome, repoName, taskID) behavior).
+// the task. Repos come from three sources, unioned (#98):
+//
+//  1. The task's repos attribute — written at pickup, extended by
+//     `jeff worktree add --task-dir`. Path preference: the task-dir symlink
+//     target (via ListTaskWorktrees), falling back to the legacy branch=taskID
+//     path (matching the old WorktreeRemove(jeffHome, repoName, taskID)
+//     behavior).
+//  2. Task-dir symlinks with no attribute entry — repos attached mid-task by
+//     binaries that predate registration on add.
+//  3. On-disk worktrees whose branch carries the task id but were never
+//     symlinked in (`jeff worktree add` without --task-dir).
+//
+// Before #98 only the attribute was consulted, so a repo added mid-task closed
+// with the task but silently kept its worktree (and branch) on disk.
 func resolveWorktreeCleanups(jeffHome, taskID string, repos []string, td *workspace.TaskDir, tdErr error) []worktreeCleanup {
 	// Build repo → resolved worktree path from the live symlinks.
 	linked := map[string]string{}
@@ -174,13 +194,48 @@ func resolveWorktreeCleanups(jeffHome, taskID string, repos []string, td *worksp
 		}
 	}
 
-	cleanups := make([]worktreeCleanup, 0, len(repos))
+	var cleanups []worktreeCleanup
+	seen := map[string]bool{} // canonical worktree path → already queued
+	add := func(repoName, wtPath string, discovered bool) {
+		key := canonical(wtPath)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		cleanups = append(cleanups, worktreeCleanup{repoName: repoName, wtPath: wtPath, discovered: discovered})
+	}
+
+	// 1. Repos registered on the task.
+	inAttr := map[string]bool{}
 	for _, repoName := range repos {
+		inAttr[repoName] = true
 		wtPath := linked[repoName]
 		if wtPath == "" {
 			wtPath = filepath.Join(jeffHome, "worktrees", repoName, taskID)
 		}
-		cleanups = append(cleanups, worktreeCleanup{repoName: repoName, wtPath: wtPath})
+		add(repoName, wtPath, false)
+	}
+
+	// 2. Repos symlinked into the task dir but missing from the attribute.
+	linkedNames := make([]string, 0, len(linked))
+	for repoName := range linked {
+		linkedNames = append(linkedNames, repoName)
+	}
+	sort.Strings(linkedNames) // deterministic cleanup (and output) order
+	for _, repoName := range linkedNames {
+		if !inAttr[repoName] {
+			add(repoName, linked[repoName], true)
+		}
+	}
+
+	// 3. On-disk worktrees whose branch carries this task's id. Attribution is
+	// exact (taskIDForWorktree scopes the match to the branch portion), so a
+	// subtask's worktree (gig-ab12.1) never rides along with its parent's
+	// teardown (gig-ab12).
+	for _, wt := range allWorktrees(jeffHome) {
+		if taskIDForWorktree(jeffHome, wt) == taskID {
+			add(repoNameForWorktree(jeffHome, wt), wt, true)
+		}
 	}
 	return cleanups
 }

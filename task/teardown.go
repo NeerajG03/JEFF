@@ -10,6 +10,7 @@ import (
 
 	jeff "github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/crew"
+	"github.com/NeerajG03/JEFF/hooks"
 	"github.com/NeerajG03/JEFF/workspace"
 )
 
@@ -149,6 +150,7 @@ func retireWorkspace(cfg *jeff.Config, td *workspace.TaskDir, tdErr error, opts 
 			fmt.Fprintf(os.Stderr, "Warning: --purge is deleting %s, which you are currently inside.\n", td.Path)
 			fmt.Fprintf(os.Stderr, "  Hooks and shell commands in this session will fail until you: cd %s\n", cfg.Home)
 		}
+		hooks.UninstallAllFromDir(td.Path)
 		if err := workspace.Remove(cfg.Home, opts.TaskID); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: remove workspace: %v\n", err)
 		} else {

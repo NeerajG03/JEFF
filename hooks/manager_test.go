@@ -160,3 +160,63 @@ func TestInstallNotFound(t *testing.T) {
 		t.Fatal("expected error for missing hook")
 	}
 }
+
+func TestUninstallAll(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(testRegistry())
+	ctx := HookContext{JeffHome: dir, TargetDir: dir}
+
+	enabled := map[string]bool{"hook-a": true, "hook-b": true, "hook-c": true}
+	if err := mgr.Sync(dir, enabled, "claude", ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	installed := mgr.Installed(dir, "claude")
+	if len(installed) != 3 {
+		t.Fatalf("precondition: installed = %v, want 3 hooks", installed)
+	}
+
+	mgr.UninstallAll(dir)
+
+	installed = mgr.Installed(dir, "claude")
+	if len(installed) != 0 {
+		t.Fatalf("after UninstallAll: installed = %v, want empty", installed)
+	}
+
+	for _, name := range []string{"hook-a", "hook-b", "hook-c"} {
+		if _, err := os.Stat(scriptPath(dir, name)); !os.IsNotExist(err) {
+			t.Errorf("script %s should be removed after UninstallAll", name)
+		}
+	}
+
+	settings, err := readSettingsFile(settingsPath(dir))
+	if err != nil {
+		t.Fatalf("read settings: %v", err)
+	}
+	if _, ok := settings["hooks"]; ok {
+		t.Error("settings.json should have no hooks key after UninstallAll")
+	}
+}
+
+func TestUninstallAllFromDir(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(testRegistry())
+	ctx := HookContext{JeffHome: dir, TargetDir: dir}
+
+	enabled := map[string]bool{"hook-a": true}
+	mgr.Sync(dir, enabled, "claude", ctx)
+
+	UninstallAllFromDir(dir)
+
+	if len(mgr.Installed(dir, "claude")) != 0 {
+		t.Error("UninstallAllFromDir should remove all hooks")
+	}
+}
+
+func TestUninstallAllEmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(testRegistry())
+
+	// Should not panic or error on an empty directory.
+	mgr.UninstallAll(dir)
+}

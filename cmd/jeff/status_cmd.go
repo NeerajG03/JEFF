@@ -23,7 +23,7 @@ func statusCmd() *cobra.Command {
 			}
 			defer store.Close()
 
-			dirs, err := workspace.ListActive(cfg.Home)
+			dirs, err := workspace.ListActive(cfg.Home, store.Prefix())
 			if err != nil {
 				return fmt.Errorf("list workspaces: %w", err)
 			}

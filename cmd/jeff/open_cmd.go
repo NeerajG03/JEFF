@@ -106,7 +106,7 @@ func openableTaskCompletion(cmd *cobra.Command, args []string, toComplete string
 	if cfg == nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	dirs, err := workspace.ListActive(cfg.Home)
+	dirs, err := workspace.ListActive(cfg.Home, gigTaskPrefix(cfg))
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

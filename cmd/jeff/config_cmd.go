@@ -287,7 +287,7 @@ func configHooksSyncCmd() *cobra.Command {
 				return err
 			}
 			if syncTasks {
-				for _, ws := range taskWorkspaces(cfg.Home) {
+				for _, ws := range taskWorkspaces(cfg.Home, gigTaskPrefix(cfg)) {
 					personaName := task.DetectPersona(ws.Dir)
 					repos := task.DetectRepos(ws.Dir)
 					syncTaskHooks(cfg, ws.Dir, ws.TaskID, personaName, repos, "")

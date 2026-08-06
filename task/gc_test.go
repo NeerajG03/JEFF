@@ -248,8 +248,55 @@ func TestTaskIDForWorktree(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := taskIDForWorktree(home, tt.path); got != tt.want {
+			if got := taskIDForWorktree(home, tt.path, ""); got != tt.want {
 				t.Errorf("taskIDForWorktree(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestTaskIDForWorktreeCustomPrefix pins #97: the attribution pattern must be
+// built from the store's configured prefix, not a package-level "gig-" literal.
+// The old literal failed safe — an unmatched path yields an empty id and the
+// worktree is skipped — so nothing was wrongly deleted, but orphaned worktrees
+// under a custom prefix were never collected.
+func TestTaskIDForWorktreeCustomPrefix(t *testing.T) {
+	home := filepath.FromSlash("/home/.jeff")
+	tests := []struct {
+		name   string
+		path   string
+		prefix string
+		want   string
+	}{
+		{
+			name:   "custom prefix branch",
+			path:   filepath.Join(home, "worktrees", "frontend", "cbx-ab12-some-slug"),
+			prefix: "cbx",
+			want:   "cbx-ab12",
+		},
+		{
+			name:   "custom prefix subtask id",
+			path:   filepath.Join(home, "worktrees", "backend", "cbx-ab12.3-sub"),
+			prefix: "cbx",
+			want:   "cbx-ab12.3",
+		},
+		{
+			name:   "branch under a different prefix is not attributed",
+			path:   filepath.Join(home, "worktrees", "frontend", "gig-ab12-some-slug"),
+			prefix: "cbx",
+			want:   "",
+		},
+		{
+			name:   "repo name must NOT win over the branch",
+			path:   filepath.Join(home, "worktrees", "cbx-app", "jeff", "cbx-b222-real-task"),
+			prefix: "cbx",
+			want:   "cbx-b222",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := taskIDForWorktree(home, tt.path, tt.prefix); got != tt.want {
+				t.Errorf("taskIDForWorktree(%q, prefix=%q) = %q, want %q", tt.path, tt.prefix, got, tt.want)
 			}
 		})
 	}

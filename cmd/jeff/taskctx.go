@@ -58,8 +58,12 @@ func resolveTaskID(args []string) (taskID string, taskDir string, err error) {
 	rel, _ := filepath.Rel(matchTasksDir, matchCwd)
 	slug := strings.SplitN(rel, sep, 2)[0]
 
-	taskID = workspace.ExtractTaskID(slug)
-	if !strings.HasPrefix(taskID, "gig-") {
+	// Match against the store's configured prefix, not a hardcoded "gig-":
+	// with a custom prefix the old literal made every no-arg `jeff done`/
+	// `work`/`ship` fail from inside a valid workspace (#97).
+	prefix := gigTaskPrefix(cfg)
+	taskID = workspace.ExtractTaskID(slug, prefix)
+	if !strings.HasPrefix(taskID, prefix+"-") {
 		return "", "", fmt.Errorf("not inside a task workspace — provide a task ID")
 	}
 

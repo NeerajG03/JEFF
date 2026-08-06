@@ -9,6 +9,11 @@ import (
 	"strings"
 )
 
+// DefaultTaskIDPrefix is gig's default task-ID prefix. gig treats the prefix as
+// configuration (`gig config set prefix`), so parsing code must never assume
+// this value — it is only the fallback when no prefix is supplied (#97).
+const DefaultTaskIDPrefix = "gig"
+
 // TaskDir represents an active task workspace.
 type TaskDir struct {
 	Path   string // absolute path to task directory
@@ -75,8 +80,10 @@ func Remove(jeffHome, taskID string) error {
 	return os.RemoveAll(td.Path)
 }
 
-// List returns all task workspaces.
-func List(jeffHome string) ([]*TaskDir, error) {
+// List returns all task workspaces. prefix is the gig store's configured
+// task-ID prefix ("" means DefaultTaskIDPrefix); it is needed to recover each
+// dir's TaskID from its slug.
+func List(jeffHome, prefix string) ([]*TaskDir, error) {
 	tasksDir := filepath.Join(jeffHome, "tasks")
 	entries, err := os.ReadDir(tasksDir)
 	if err != nil {
@@ -92,7 +99,7 @@ func List(jeffHome string) ([]*TaskDir, error) {
 			continue
 		}
 		// Extract task ID: everything before the first dash after the prefix pattern.
-		taskID := ExtractTaskID(e.Name())
+		taskID := ExtractTaskID(e.Name(), prefix)
 		dirs = append(dirs, &TaskDir{
 			Path:   filepath.Join(tasksDir, e.Name()),
 			TaskID: taskID,
@@ -108,8 +115,8 @@ func List(jeffHome string) ([]*TaskDir, error) {
 // no longer means "the task is live". Anything presenting workspaces as current
 // work — status, completions, hook sync — must filter on this rather than on List,
 // or closed tasks keep showing up as active.
-func ListActive(jeffHome string) ([]*TaskDir, error) {
-	all, err := List(jeffHome)
+func ListActive(jeffHome, prefix string) ([]*TaskDir, error) {
+	all, err := List(jeffHome, prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -144,11 +151,19 @@ func makeSlug(taskID, title string) string {
 
 // ExtractTaskID pulls the gig task ID from a slug or full path
 // (e.g., "gig-ab12-some-title" → "gig-ab12", "/path/to/tasks/gig-ab12-foo" → "gig-ab12").
-func ExtractTaskID(slugOrPath string) string {
+// prefix is the gig store's configured task-ID prefix; "" means
+// DefaultTaskIDPrefix. It must be threaded from the store's config, not
+// hardcoded: a custom prefix ("cbx-ab12-some-title") otherwise falls through to
+// the whole slug and every store lookup fails (#97).
+// Returns the slug unchanged when no ID matches.
+func ExtractTaskID(slugOrPath, prefix string) string {
+	if prefix == "" {
+		prefix = DefaultTaskIDPrefix
+	}
 	// Use just the base name if a full path is given.
 	slug := filepath.Base(slugOrPath)
-	// Match gig-XXXX or gig-XXXX.N patterns at the start.
-	re := regexp.MustCompile(`^(gig-[a-z0-9]+(?:\.[0-9]+)*)`)
+	// Match <prefix>-XXXX or <prefix>-XXXX.N patterns at the start.
+	re := regexp.MustCompile(`^(` + regexp.QuoteMeta(prefix) + `-[a-z0-9]+(?:\.[0-9]+)*)`)
 	m := re.FindString(slug)
 	if m != "" {
 		return m

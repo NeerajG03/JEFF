@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	jeff "github.com/NeerajG03/JEFF"
+	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/NeerajG03/gig"
 )
 
@@ -19,6 +20,25 @@ func resolveGigHome(cfg *jeff.Config) string {
 		return cfg.GigHome
 	}
 	return gig.DefaultGigHome()
+}
+
+// gigTaskPrefix returns the task-ID prefix the gig store generates IDs with —
+// the prefix every path-parsing site (taskctx, hook sync, worktree GC) must
+// match against instead of a hardcoded "gig-" (#97).
+//
+// The source of truth is gig.yaml in the resolved gig home: that is the value
+// openGigStore opens the store with, so it is what task IDs actually carry.
+// jeff.json's gig_prefix is only the value recorded at init time and is
+// consulted only when gig.yaml cannot be read.
+func gigTaskPrefix(cfg *jeff.Config) string {
+	gigHome := resolveGigHome(cfg)
+	if gigCfg, err := gig.LoadConfig(filepath.Join(gigHome, "gig.yaml")); err == nil && gigCfg.Prefix != "" {
+		return gigCfg.Prefix
+	}
+	if cfg != nil && cfg.GigPrefix != "" {
+		return cfg.GigPrefix
+	}
+	return workspace.DefaultTaskIDPrefix
 }
 
 // isGigStoreInitialized returns true if gig.yaml exists in the resolved gig home.

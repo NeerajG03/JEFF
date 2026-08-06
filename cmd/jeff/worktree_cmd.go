@@ -68,7 +68,7 @@ func worktreeAddCmd() *cobra.Command {
 				if abs, err := filepath.Abs(taskDir); err == nil {
 					idSource = abs
 				}
-				taskID := workspace.ExtractTaskID(idSource)
+				taskID := workspace.ExtractTaskID(idSource, gigTaskPrefix(cfg))
 				if taskID != "" {
 					store, err := openGigStore(cfg)
 					if err == nil {

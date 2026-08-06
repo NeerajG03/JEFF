@@ -20,6 +20,11 @@ func setupTaskCtxTest(t *testing.T) (string, func()) {
 	// Write a minimal jeff.json so LoadConfig works.
 	os.WriteFile(filepath.Join(home, "jeff.json"), []byte(`{"agent":"claude","repos":{}}`+"\n"), 0o644)
 
+	// Pin the gig home so gigTaskPrefix reads a hermetic config (default prefix
+	// when no gig.yaml is written) instead of the developer's real ~/.gig,
+	// whose prefix would change what resolveTaskID accepts.
+	t.Setenv("GIG_HOME", filepath.Join(home, "gighome"))
+
 	// Set the global cfg.
 	oldCfg := cfg
 	c, _ := jeff.LoadConfig(home)
@@ -90,6 +95,38 @@ func TestResolveTaskID_FromCwdSubdir(t *testing.T) {
 	expected := filepath.Join(home, "tasks", "gig-ab12-test-task")
 	if dir != expected {
 		t.Errorf("expected %s, got %s", expected, dir)
+	}
+}
+
+// TestResolveTaskID_FromCwdCustomPrefix pins #97: with `gig config set prefix`
+// in effect, resolveTaskID must accept workspaces named under that prefix. The
+// old hardcoded "gig-" guard made every no-arg `jeff done`/`work`/`ship` fail
+// with "not inside a task workspace" from inside a perfectly valid one.
+func TestResolveTaskID_FromCwdCustomPrefix(t *testing.T) {
+	home, cleanup := setupTaskCtxTest(t)
+	defer cleanup()
+
+	// Configure a non-default task-ID prefix, as `gig config set prefix` does.
+	gigHome := filepath.Join(home, "gighome")
+	os.MkdirAll(gigHome, 0o755)
+	os.WriteFile(filepath.Join(gigHome, "gig.yaml"), []byte("prefix: cbx\n"), 0o644)
+
+	taskDir := filepath.Join(home, "tasks", "cbx-ab12-test-task")
+	os.MkdirAll(taskDir, 0o755)
+
+	oldCwd, _ := os.Getwd()
+	os.Chdir(taskDir)
+	defer os.Chdir(oldCwd)
+
+	taskID, dir, err := resolveTaskID(nil)
+	if err != nil {
+		t.Fatalf("resolveTaskID under custom prefix: %v", err)
+	}
+	if taskID != "cbx-ab12" {
+		t.Errorf("expected cbx-ab12, got %q", taskID)
+	}
+	if dir != taskDir {
+		t.Errorf("expected %s, got %s", taskDir, dir)
 	}
 }
 

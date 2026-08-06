@@ -20,6 +20,11 @@ import "github.com/NeerajG03/gig"
 // EnsureAttrs is deliberately absent: it registers attribute definitions and is
 // a *gig.Store-only concern, so callers invoke it before Pickup.
 type Store interface {
+	// Prefix is the task-ID prefix this store generates IDs with (gig default:
+	// "gig"). Anything recovering a task ID from a path or slug must match
+	// against it rather than a hardcoded literal — a custom `gig config set
+	// prefix` otherwise breaks task resolution (#97).
+	Prefix() string
 	Get(id string) (*gig.Task, error)
 	GetFull(id string) (*gig.Task, error)
 	Claim(id, assignee string) (*gig.ClaimResult, error)

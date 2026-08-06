@@ -3,9 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	jeff "github.com/NeerajG03/JEFF"
 )
 
 // --- parseVersion ---
@@ -511,4 +515,37 @@ func TestGetDoctorDeps_TmuxNotRequired(t *testing.T) {
 		}
 	}
 	t.Fatal("tmux not found in doctor deps")
+}
+
+// --- checkGigPrefix (#97) ---
+
+func TestCheckGigPrefix(t *testing.T) {
+	gigHome := t.TempDir()
+	if err := os.WriteFile(filepath.Join(gigHome, "gig.yaml"), []byte("prefix: cbx\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIG_HOME", gigHome)
+
+	// jeff.json agrees with the store → ok, and the non-default prefix is
+	// surfaced instead of staying invisible.
+	c := checkGigPrefix(&jeff.Config{GigPrefix: "cbx"})
+	if c.Status != envOK {
+		t.Errorf("matching prefixes: status = %q, want ok (%+v)", c.Status, c)
+	}
+	if !strings.Contains(c.Detail, `"cbx"`) {
+		t.Errorf("matching prefixes: Detail %q should surface the resolved prefix", c.Detail)
+	}
+
+	// jeff.json records a stale value → warn; parsing follows the store, so
+	// this is drift to report, not breakage.
+	c = checkGigPrefix(&jeff.Config{GigPrefix: "old"})
+	if c.Status != envWarn {
+		t.Errorf("drifted prefixes: status = %q, want warn (%+v)", c.Status, c)
+	}
+
+	// No recorded value in jeff.json → nothing to disagree with.
+	c = checkGigPrefix(&jeff.Config{})
+	if c.Status != envOK {
+		t.Errorf("unset gig_prefix: status = %q, want ok (%+v)", c.Status, c)
+	}
 }

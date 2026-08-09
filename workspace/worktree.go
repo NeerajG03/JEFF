@@ -150,11 +150,19 @@ func isConfiguredRemote(repoDir, name string) bool {
 // ref (e.g. local branch "origin/shared" vs. remote "origin"'s "shared").
 // Left as baseBranch unchanged otherwise, including when it isn't a branch
 // at all (a tag, a SHA, a bare remote-tracking ref with no local sibling).
+//
+// When the ambiguity is genuine (both refs exist), which one wins is
+// printed rather than chosen silently — WorktreeAdd's hotfix-prefix
+// inference (gig-0459) always prints its rename for the same reason: a
+// silent choice here would be inconsistent with that standard.
 func resolveBaseRef(repoDir, baseBranch string) string {
-	if _, err := gitutil.Output(repoDir, "rev-parse", "--verify", "--quiet", "refs/heads/"+baseBranch); err == nil {
-		return "refs/heads/" + baseBranch
+	if _, err := gitutil.Output(repoDir, "rev-parse", "--verify", "--quiet", "refs/heads/"+baseBranch); err != nil {
+		return baseBranch // no local branch of this literal name
 	}
-	return baseBranch
+	if _, err := gitutil.Output(repoDir, "rev-parse", "--verify", "--quiet", "refs/remotes/"+baseBranch); err == nil {
+		fmt.Fprintf(os.Stderr, "base %q is ambiguous (matches both a local branch and a remote-tracking ref) -- using the local branch\n", baseBranch)
+	}
+	return "refs/heads/" + baseBranch
 }
 
 // ReadBaseBranch reads the base branch from a worktree's .jeff-base file.

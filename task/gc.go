@@ -27,7 +27,6 @@ import (
 
 	jeff "github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/crew"
-	"github.com/NeerajG03/JEFF/hooks"
 	"github.com/NeerajG03/JEFF/workspace"
 )
 
@@ -194,7 +193,6 @@ func GC(store Store, cfg *jeff.Config, opts GCOpts) (*GCResult, error) {
 		}
 
 		if !opts.DryRun {
-			hooks.UninstallAllFromDir(td.Path)
 			if err := os.RemoveAll(td.Path); err != nil {
 				item.Reason = fmt.Sprintf("remove failed: %v", err)
 				res.SkippedOpen = append(res.SkippedOpen, item)

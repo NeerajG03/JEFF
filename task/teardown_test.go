@@ -148,43 +148,6 @@ func TestTeardown_PurgeRemovesWorkspace(t *testing.T) {
 	}
 }
 
-// TestTeardown_PurgeDeregistersHooks verifies that --purge removes hook entries
-// from settings.json before deleting the workspace (#102). This prevents stale
-// hook references from surviving in agent sessions that re-read settings.
-func TestTeardown_PurgeDeregistersHooks(t *testing.T) {
-	store, cfg, repo := fixture(t, true)
-	task := newOpenTask(t, store, "Teardown purge hooks")
-
-	res, err := Pickup(store, cfg, PickupOpts{TaskID: task.ID, Repos: []string{repo}})
-	if err != nil {
-		t.Fatalf("Pickup: %v", err)
-	}
-
-	hookScript := filepath.Join(res.TaskDir, "hooks", "test-hook.sh")
-	if err := os.MkdirAll(filepath.Dir(hookScript), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(hookScript, []byte("#!/bin/bash\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	settingsFile := filepath.Join(res.TaskDir, ".claude", "settings.json")
-	if err := os.MkdirAll(filepath.Dir(settingsFile), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	settingsJSON := `{"hooks":{"Stop":[{"matcher":"*","hooks":[{"type":"command","command":"` + hookScript + `","timeout":10}]}]}}`
-	if err := os.WriteFile(settingsFile, []byte(settingsJSON), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := Teardown(store, cfg, TeardownOpts{TaskID: task.ID, Reason: "done", Purge: true}); err != nil {
-		t.Fatalf("Teardown: %v", err)
-	}
-
-	if _, err := os.Stat(res.TaskDir); !os.IsNotExist(err) {
-		t.Errorf("--purge should delete the workspace, stat err: %v", err)
-	}
-}
-
 // TestTeardown_DropsDanglingRepoSymlink: the worktree is reclaimed, so the symlink
 // pointing at it would dangle. Retirement removes it rather than leaving a broken
 // link for tooling and humans to trip over.

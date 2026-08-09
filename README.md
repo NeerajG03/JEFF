@@ -112,22 +112,58 @@ Two defaults worth knowing up front:
 
 ## How It Works
 
+### Architecture at a glance
+
+JEFF sits between you and one or more AI agents. Task state lives in gig, crew state lives in SQLite, code lives in git worktrees — JEFF wires them together and hands the agent a ready-to-code workspace.
+
+```mermaid
+flowchart TB
+    subgraph human["You"]
+        gig["gig CLI<br/><i>task tracking</i>"]
+        jeff["jeff CLI<br/><i>workspaces + crews</i>"]
+        tui["jeff dashboard<br/><i>TUI</i>"]
+    end
+
+    subgraph core["JEFF"]
+        task["task lifecycle<br/><i>pickup · ship · done</i>"]
+        crew["crew<br/><i>SQLite + tmux</i>"]
+        ws["workspaces<br/><i>task dirs + git worktrees</i>"]
+        skills["skills<br/><i>auto-injected</i>"]
+        hooks["hooks<br/><i>16 built-in</i>"]
+        memory["memory<br/><i>propose → curate</i>"]
+        personas["personas<br/><i>6 embedded</i>"]
+    end
+
+    gigdb[("gig DB<br/><i>all task state</i>")]
+    agent["Agent CLI<br/><i>Claude Code · opencode · Gemini</i>"]
+
+    gig --> gigdb
+    jeff --> task
+    tui --> crew
+    task --> ws & skills & hooks & memory & personas
+    task -.reads/writes.-> gigdb
+    task -->|launches| agent
+    crew -->|one tmux window each| agent
 ```
-  You ──► gig create "fix auth bug"
-                  │
-                  ▼
-  jeff pickup myapp-7c1e --persona jenko --repos backend
-        │
-        ├── Claims task in gig
-        ├── Creates task workspace under ~/.jeff/tasks/
-        ├── Creates git worktree (branch from origin/main)
-        ├── Injects matching skills via symlinks
-        ├── Writes CLAUDE.md (persona + task context)
-        ├── Aliases .gemini/skills and .opencode/skills to .claude/skills
-        └── Launches agent in workspace
-                  │
-                  ▼
-  Agent works ──► jeff checkpoint ──► jeff ship ──► jeff done
+
+### Task lifecycle
+
+```mermaid
+flowchart LR
+    create["gig create<br/>'fix auth bug'"] --> p1
+
+    subgraph pickup["jeff pickup"]
+        direction TB
+        p1["claim task in gig"] --> p2["create workspace<br/>~/.jeff/tasks/"]
+        p2 --> p3["create git worktree<br/>branch off origin/main"]
+        p3 --> p4["inject skills +<br/>write CLAUDE.md"]
+        p4 --> p5["launch agent"]
+    end
+
+    p5 --> work["agent works<br/>jeff checkpoint"]
+    work --> ship["jeff ship<br/>push + open PRs"]
+    ship --> done["jeff done<br/>close + clean up"]
+    work --> work
 ```
 
 Task directories are ephemeral — gig is the source of truth, so a workspace can be destroyed and rebuilt from the task's checkpoints at any time.
@@ -142,6 +178,24 @@ jeff-work (tmux session)
 ├── tab 2: myapp-abc1    ← worker 1 (jenko, implementing)
 ├── tab 3: myapp-def2    ← worker 2 (eric, researching)
 └── tab 4: myapp-ghi3    ← worker 3 (hardy, reviewing)
+```
+
+The orchestrator and workers communicate through durable messages (logged in SQLite, delivered to tmux panes, replayed on session start if a worker was down):
+
+```mermaid
+flowchart TB
+    orch["Orchestrator<br/><i>tmux window · dickson</i>"]
+
+    w1["Worker myapp-abc1<br/><i>jenko · backend worktree</i>"]
+    w2["Worker myapp-def2<br/><i>eric · frontend worktree</i>"]
+    w3["Worker myapp-ghi3<br/><i>hardy · backend worktree</i>"]
+
+    db[("jeff.db<br/><i>sessions · messages</i>")]
+
+    orch -->|"crew send"| w1 & w2 & w3
+    w1 & w2 & w3 -->|"crew ask · signals"| orch
+    orch -.state.-> db
+    w1 & w2 & w3 -.heartbeat.-> db
 ```
 
 ### Start an orchestrator
@@ -289,6 +343,14 @@ JEFF maintains persistent memory across sessions:
 - **Scratchpad** (`scratchpad.md` in the task dir) — raw observations during a session
 
 Agents call `jeff memory propose` to capture an observation. Promotion is deliberate: you run `jeff memory curate` (marlowe) to consolidate proposals into canonical memory. Nothing auto-promotes.
+
+```mermaid
+flowchart LR
+    worker["Worker agent<br/><i>scratchpad.md</i>"] -->|"jeff memory propose"| proposals["Proposals<br/><i>pending review</i>"]
+    proposals -->|"jeff memory curate<br/>(human-triggered)"| marlowe["marlowe<br/><i>dedupe · enrich · reject</i>"]
+    marlowe -->|writes| canonical["Canonical memory<br/><i>persona + repo scoped</i>"]
+    canonical -.injected on pickup.-> worker
+```
 
 ## JEFF_HOME
 

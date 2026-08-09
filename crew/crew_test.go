@@ -1,6 +1,7 @@
 package crew
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1073,5 +1074,39 @@ func TestConcurrentWrites(t *testing.T) {
 
 	for err := range errs {
 		t.Errorf("concurrent write failed: %v", err)
+	}
+}
+
+// TestWorkerIsLive pins the re-probe rules behind the orchestrator-rm guard
+// (gig-1d9d.20). Every unknown resolves to LIVE on purpose: callers use this to
+// gate a destructive action, so refusing wrongly is recoverable via --force while
+// removing wrongly orphans real workers.
+func TestWorkerIsLive(t *testing.T) {
+	alive := func(string) (bool, error) { return false, nil }
+	dead := func(string) (bool, error) { return true, nil }
+	broken := func(string) (bool, error) { return false, errors.New("tmux: server not ready") }
+
+	tests := []struct {
+		name  string
+		sess  *Session
+		probe func(string) (bool, error)
+		want  bool
+	}{
+		{"running with a live pane", &Session{Status: "running", TmuxPane: "%1"}, alive, true},
+		{"starting with a live pane", &Session{Status: "starting", TmuxPane: "%1"}, alive, true},
+		{"running but the pane is dead — the stale row this fixes", &Session{Status: "running", TmuxPane: "%1"}, dead, false},
+		{"probe error is NOT death", &Session{Status: "running", TmuxPane: "%1"}, broken, true},
+		{"no pane recorded — cannot disprove liveness", &Session{Status: "running"}, dead, true},
+		{"terminal status is never live", &Session{Status: "done", TmuxPane: "%1"}, alive, false},
+		{"failed is never live", &Session{Status: "failed", TmuxPane: "%1"}, alive, false},
+		{"stopped is never live", &Session{Status: "stopped", TmuxPane: "%1"}, alive, false},
+		{"nil session", nil, alive, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := WorkerIsLive(tt.sess, tt.probe); got != tt.want {
+				t.Errorf("WorkerIsLive = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

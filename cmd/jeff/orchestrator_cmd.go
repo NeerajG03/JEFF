@@ -612,14 +612,6 @@ func identityFileForOrchestrator(o *crew.Orchestrator) (string, bool) {
 	return "", false
 }
 
-// isLiveWorkerStatus reports whether a worker session status means the
-// worker may still be running (mirrors crew's unexported isActiveStatus;
-// duplicated locally rather than exporting across the crew/lifecycle.go
-// ownership boundary for one predicate).
-func isLiveWorkerStatus(status string) bool {
-	return status == "running" || status == "starting"
-}
-
 func orchestratorRmCmd() *cobra.Command {
 	var force bool
 
@@ -653,11 +645,25 @@ This does not stop a running orchestrator or its workers; use
 			if err != nil {
 				return fmt.Errorf("list workers: %w", err)
 			}
-			var liveTaskIDs []string
+			// Re-probe rather than trusting sess.Status. A row only becomes
+			// accurate when something reconciles it, and those are all separate
+			// human-triggered commands — so a worker whose pane died can sit at
+			// "running" indefinitely and block rm forever (gig-1d9d.20).
+			var liveTaskIDs, staleTaskIDs []string
 			for _, w := range workers {
-				if isLiveWorkerStatus(w.Status) {
-					liveTaskIDs = append(liveTaskIDs, w.TaskID)
+				if !crew.IsLiveWorkerStatus(w.Status) {
+					continue
 				}
+				if crew.WorkerIsLive(w, crew.PaneIsDead) {
+					liveTaskIDs = append(liveTaskIDs, w.TaskID)
+				} else {
+					staleTaskIDs = append(staleTaskIDs, w.TaskID)
+				}
+			}
+			if len(staleTaskIDs) > 0 {
+				fmt.Fprintf(os.Stderr, "Note: %d bound worker(s) still recorded as running but no longer alive: %s\n",
+					len(staleTaskIDs), strings.Join(staleTaskIDs, ", "))
+				fmt.Fprintln(os.Stderr, "  Their rows are stale; `jeff cleanup` reconciles them.")
 			}
 			if len(liveTaskIDs) > 0 && !force {
 				return fmt.Errorf("orchestrator %s has %d live worker(s) bound: %s\nRemoving it would orphan them. Re-run with --force to remove anyway",

@@ -103,6 +103,181 @@ func TestWorktreeAddMissingRepo(t *testing.T) {
 	}
 }
 
+// addFileRemote configures repoDir's "origin" remote to point at a second
+// local repo seeded with the given branches (each branched off one initial
+// commit, with distinct content per branch when supplied via branchContent),
+// so tests can exercise the real `git fetch` path without network access.
+func addFileRemote(t *testing.T, repoDir string) (remoteDir string, run func(dir string, args ...string) string) {
+	t.Helper()
+	remoteDir = t.TempDir()
+	run = func(dir string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v (in %s): %v\n%s", args, dir, err, out)
+		}
+		return string(out)
+	}
+	run(remoteDir, "init", "-q", "-b", "main")
+	run(remoteDir, "config", "user.email", "t@example.com")
+	run(remoteDir, "config", "user.name", "T")
+	if err := os.WriteFile(filepath.Join(remoteDir, "f"), []byte("main\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	run(remoteDir, "add", ".")
+	run(remoteDir, "commit", "-q", "-m", "init")
+	run(repoDir, "remote", "add", "origin", remoteDir)
+	return remoteDir, run
+}
+
+// TestWorktreeAddSlashedLocalBase is the regression test for gig-1553: a
+// local branch whose name happens to contain a "/" (a routine naming
+// convention: "cb-15329/propagation-in-publish", "feature/x", ...) must not
+// be treated as "<remote>/<branch>" when no remote of that name exists.
+// Before the fix, WorktreeAdd always ran `git fetch <first-segment>`, which
+// fails when "cb-15329" is not a configured remote and aborts the whole
+// worktree creation.
+func TestWorktreeAddSlashedLocalBase(t *testing.T) {
+	home := testutil.TempHome(t, "tasks")
+	repoDir := setupGitRepo(t, home, "repo1")
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("branch", "cb-15329/propagation-in-publish")
+
+	wtDir, err := WorktreeAdd(WorktreeOpts{
+		JeffHome:   home,
+		RepoName:   "repo1",
+		Branch:     "new-work",
+		BaseBranch: "cb-15329/propagation-in-publish",
+	})
+	if err != nil {
+		t.Fatalf("WorktreeAdd: %v", err)
+	}
+	if _, err := os.Stat(wtDir); err != nil {
+		t.Errorf("worktree not created: %v", err)
+	}
+}
+
+// TestWorktreeAddRemoteQualifiedBaseStillFetches confirms a genuine
+// "origin/<branch>" base still triggers `git fetch origin` and resolves
+// against the fetched remote-tracking ref, not a stale local one.
+func TestWorktreeAddRemoteQualifiedBaseStillFetches(t *testing.T) {
+	home := testutil.TempHome(t, "tasks")
+	repoDir := setupGitRepo(t, home, "repo1")
+	remoteDir, run := addFileRemote(t, repoDir)
+	run(remoteDir, "checkout", "-q", "-b", "release")
+	if err := os.WriteFile(filepath.Join(remoteDir, "f"), []byte("release\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	run(remoteDir, "commit", "-q", "-am", "release commit")
+
+	wtDir, err := WorktreeAdd(WorktreeOpts{
+		JeffHome:   home,
+		RepoName:   "repo1",
+		Branch:     "new-work",
+		BaseBranch: "origin/release",
+	})
+	if err != nil {
+		t.Fatalf("WorktreeAdd: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(wtDir, "f"))
+	if err != nil {
+		t.Fatalf("read f: %v", err)
+	}
+	if string(got) != "release\n" {
+		t.Errorf("worktree did not branch from fetched origin/release; f = %q", got)
+	}
+}
+
+// TestWorktreeAddTwoSlashBase confirms a base with two slashes
+// ("origin/feature/x") still resolves: only the first segment is checked
+// against the remote list.
+func TestWorktreeAddTwoSlashBase(t *testing.T) {
+	home := testutil.TempHome(t, "tasks")
+	repoDir := setupGitRepo(t, home, "repo1")
+	remoteDir, run := addFileRemote(t, repoDir)
+	run(remoteDir, "checkout", "-q", "-b", "feature/x")
+	if err := os.WriteFile(filepath.Join(remoteDir, "f"), []byte("feature-x\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	run(remoteDir, "commit", "-q", "-am", "feature/x commit")
+
+	wtDir, err := WorktreeAdd(WorktreeOpts{
+		JeffHome:   home,
+		RepoName:   "repo1",
+		Branch:     "new-work",
+		BaseBranch: "origin/feature/x",
+	})
+	if err != nil {
+		t.Fatalf("WorktreeAdd: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(wtDir, "f"))
+	if err != nil {
+		t.Fatalf("read f: %v", err)
+	}
+	if string(got) != "feature-x\n" {
+		t.Errorf("worktree did not branch from origin/feature/x; f = %q", got)
+	}
+}
+
+// TestWorktreeAddLocalBranchPrecedenceOverRemoteName pins the documented
+// ambiguity rule: when a local branch's literal name equals a remote-
+// qualified ref (a local branch named "origin/shared" vs. remote "origin"'s
+// "shared" branch, both resolvable as "origin/shared"), the local branch
+// wins. Without disambiguation, `git worktree add` refuses outright with
+// "ambiguous object name" instead of picking one — the fix resolves
+// "origin/shared" against refs/heads/ first. The remote is still fetched
+// (it IS a configured remote), but ref resolution prefers the local branch.
+func TestWorktreeAddLocalBranchPrecedenceOverRemoteName(t *testing.T) {
+	home := testutil.TempHome(t, "tasks")
+	repoDir := setupGitRepo(t, home, "repo1")
+	remoteDir, run := addFileRemote(t, repoDir)
+	run(remoteDir, "checkout", "-q", "-b", "shared")
+	if err := os.WriteFile(filepath.Join(remoteDir, "f"), []byte("remote-shared\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	run(remoteDir, "commit", "-q", "-am", "remote shared commit")
+
+	localRun := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	localRun("checkout", "-q", "-b", "origin/shared")
+	if err := os.WriteFile(filepath.Join(repoDir, "f"), []byte("local-shared\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	localRun("add", "f")
+	localRun("commit", "-q", "-m", "local origin/shared commit")
+	localRun("checkout", "-q", "main")
+
+	wtDir, err := WorktreeAdd(WorktreeOpts{
+		JeffHome:   home,
+		RepoName:   "repo1",
+		Branch:     "new-work",
+		BaseBranch: "origin/shared",
+	})
+	if err != nil {
+		t.Fatalf("WorktreeAdd: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(wtDir, "f"))
+	if err != nil {
+		t.Fatalf("read f: %v", err)
+	}
+	if string(got) != "local-shared\n" {
+		t.Errorf("expected local branch 'origin/shared' to take precedence, got f = %q", got)
+	}
+}
+
 func TestReadBaseBranch_Default(t *testing.T) {
 	dir := t.TempDir()
 	got := ReadBaseBranch(dir)

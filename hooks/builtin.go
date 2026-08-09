@@ -530,7 +530,16 @@ INPUT=$(cat)
 SENTINEL="$(pwd)/.heartbeat"
 if [ -f "$SENTINEL" ]; then
   NOW=$(date +%s)
-  LAST=$(stat -f %m "$SENTINEL" 2>/dev/null || stat -c %Y "$SENTINEL" 2>/dev/null || echo 0)
+  # BSD stat wants -f %m, GNU stat wants -c %Y. They cannot be chained with a
+  # bare ||: GNU's -f means --file-system and takes no argument, so "%m" is read
+  # as a FILENAME — that fails (running the fallback) but still prints the
+  # sentinel's filesystem info to stdout first, so LAST ends up as that text
+  # CONCATENATED with the fallback's epoch. $((NOW - LAST)) then makes bash
+  # evaluate "File" as a variable and set -u aborts the hook. Validate that each
+  # result is actually numeric instead of trusting exit status.
+  LAST=$(stat -f %m "$SENTINEL" 2>/dev/null) || LAST=""
+  case "$LAST" in ''|*[!0-9]*) LAST=$(stat -c %Y "$SENTINEL" 2>/dev/null) || LAST="" ;; esac
+  case "$LAST" in ''|*[!0-9]*) LAST=0 ;; esac
   if [ $((NOW - LAST)) -lt 60 ]; then
     echo '{}'
     exit 0

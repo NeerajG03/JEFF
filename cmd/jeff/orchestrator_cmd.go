@@ -612,14 +612,6 @@ func identityFileForOrchestrator(o *crew.Orchestrator) (string, bool) {
 	return "", false
 }
 
-// isLiveWorkerStatus reports whether a worker session status means the
-// worker may still be running (mirrors crew's unexported isActiveStatus;
-// duplicated locally rather than exporting across the crew/lifecycle.go
-// ownership boundary for one predicate).
-func isLiveWorkerStatus(status string) bool {
-	return crew.IsLiveWorkerStatus(status)
-}
-
 func orchestratorRmCmd() *cobra.Command {
 	var force bool
 

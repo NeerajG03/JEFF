@@ -90,3 +90,38 @@ func (m *Manager) Installed(targetDir, deliveryKey string) []string {
 	}
 	return d.Installed(targetDir)
 }
+
+// UninstallAll removes every installed hook from targetDir across all
+// registered delivery mechanisms. Best-effort: individual failures are
+// silently ignored so remaining hooks are still cleaned up.
+func (m *Manager) UninstallAll(targetDir string) {
+	deliveriesMu.RLock()
+	keys := make([]string, 0, len(deliveries))
+	for k := range deliveries {
+		keys = append(keys, k)
+	}
+	deliveriesMu.RUnlock()
+
+	// Collect all installed hook names before removing any. Deliveries
+	// share the hooks/ directory for script files, so one delivery's
+	// Uninstall can remove scripts that another delivery's Installed
+	// would otherwise still see.
+	names := make(map[string]bool)
+	for _, key := range keys {
+		for _, name := range m.Installed(targetDir, key) {
+			names[name] = true
+		}
+	}
+
+	for _, key := range keys {
+		for name := range names {
+			_ = m.Uninstall(name, targetDir, key)
+		}
+	}
+}
+
+// UninstallAllFromDir removes all installed hook artifacts from targetDir.
+// Convenience wrapper for callers that don't need a custom registry.
+func UninstallAllFromDir(targetDir string) {
+	NewManager(DefaultRegistry()).UninstallAll(targetDir)
+}

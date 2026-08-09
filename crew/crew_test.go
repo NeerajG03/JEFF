@@ -843,6 +843,30 @@ func TestRefreshProbeErrorNeverFails(t *testing.T) {
 	}
 }
 
+// TestRefreshProbeErrorNeverFailsEvenWithStaleHeartbeat isolates the probe-error
+// handling from the heartbeat veto: TestRefreshProbeErrorNeverFails alone is not
+// proof the error path itself is safe, because its worker also has a fresh
+// heartbeat, which would independently veto a failed transition even if a probe
+// error were (wrongly) treated as death. Here the heartbeat is stale, so if the
+// probe-error branch ever regresses to treating an error as death, this is the
+// test that catches it.
+func TestRefreshProbeErrorNeverFailsEvenWithStaleHeartbeat(t *testing.T) {
+	store := tempStore(t)
+	staleRunningSession(t, store, "gig-pe2", "jeff")
+	installCaseTmux(t, "  list-windows)\n    echo \"gig-pe2\"\n    ;;\n  display-message)\n    exit 1\n    ;;\n")
+
+	if err := Refresh(store, nil); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	s, err := store.GetSession("gig-pe2")
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if s.Status != "running" {
+		t.Errorf("status = %q, want running (a probe error must not fail a worker, even with a stale heartbeat)", s.Status)
+	}
+}
+
 // TestRefreshFreshHeartbeatVetoesFailure verifies that even when the window is
 // gone, a worker with a recent heartbeat (last_seen within the grace period) is
 // NOT failed — the fresh heartbeat proves it is alive and working.

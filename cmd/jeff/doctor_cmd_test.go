@@ -549,3 +549,39 @@ func TestCheckGigPrefix(t *testing.T) {
 		t.Errorf("unset gig_prefix: status = %q, want ok (%+v)", c.Status, c)
 	}
 }
+
+// TestGigTaskPrefix_BeforeGigInit is the #105 repro: `jeff init --gig-prefix
+// cbx` records gig_prefix in jeff.json but does not run `gig init --prefix
+// cbx`. Until that separate step runs, gig.yaml doesn't exist, and
+// gig.LoadConfig treats that as "no error, DefaultConfig" (Prefix "gig") —
+// which used to satisfy gigTaskPrefix's first branch and mask cfg.GigPrefix
+// entirely. The resolved prefix must be the one jeff.json actually recorded,
+// not gig's bare default, for the whole of that bootstrap window.
+func TestGigTaskPrefix_BeforeGigInit(t *testing.T) {
+	gigHome := t.TempDir() // no gig.yaml written — gig has not been initialized
+	t.Setenv("GIG_HOME", gigHome)
+
+	cfg := &jeff.Config{GigPrefix: "cbx"}
+	if got := gigTaskPrefix(cfg); got != "cbx" {
+		t.Errorf("gigTaskPrefix before gig init = %q, want %q", got, "cbx")
+	}
+}
+
+// TestCheckGigPrefix_BeforeGigInit is the doctor half of the #105 repro: with
+// gig_prefix "cbx" recorded but gig.yaml not yet written, the
+// gig_prefix_consistent check must not tell the user to overwrite their
+// correct jeff.json value with gig's pre-init default ("gig") — that advice,
+// if followed, destroys the correct config. The real problem (gig not
+// initialized) is already reported by the separate gig_initialized check.
+func TestCheckGigPrefix_BeforeGigInit(t *testing.T) {
+	gigHome := t.TempDir()
+	t.Setenv("GIG_HOME", gigHome)
+
+	c := checkGigPrefix(&jeff.Config{GigPrefix: "cbx"})
+	if c.Status == envWarn {
+		t.Errorf("gig not yet initialized: status = warn, want ok (backwards-advice regression, #105): %+v", c)
+	}
+	if strings.Contains(c.Fix, `"gig_prefix": "gig"`) {
+		t.Errorf("gig not yet initialized: Fix tells the user to overwrite jeff.json's correct value: %q", c.Fix)
+	}
+}

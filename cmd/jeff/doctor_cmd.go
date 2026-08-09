@@ -581,6 +581,22 @@ func checkGigInitialized(cfg *jeff.Config) envCheck {
 // means one of the two configs is stale.
 func checkGigPrefix(cfg *jeff.Config) envCheck {
 	c := envCheck{Name: "gig_prefix_consistent", Required: false}
+
+	if !isGigStoreInitialized(cfg) {
+		// gig.yaml doesn't exist yet, so gigTaskPrefix falls back to gig's bare
+		// DefaultConfig ("gig") instead of a real store — that is the bootstrap
+		// window before `gig init` has run, not drift between two configs. The
+		// real problem is already reported by gig_initialized; comparing against
+		// the default here and telling the user to overwrite jeff.json would
+		// tell them to destroy a possibly-correct gig_prefix to match a value
+		// gig itself hasn't chosen yet (#105).
+		c.Status = envOK
+		if cfg.GigPrefix != "" {
+			c.Detail = fmt.Sprintf("gig not yet initialized — once it is, run: gig init --prefix %s", cfg.GigPrefix)
+		}
+		return c
+	}
+
 	prefix := gigTaskPrefix(cfg)
 
 	if cfg.GigPrefix != "" && cfg.GigPrefix != prefix {

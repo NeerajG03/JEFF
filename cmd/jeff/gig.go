@@ -30,10 +30,18 @@ func resolveGigHome(cfg *jeff.Config) string {
 // openGigStore opens the store with, so it is what task IDs actually carry.
 // jeff.json's gig_prefix is only the value recorded at init time and is
 // consulted only when gig.yaml cannot be read.
+//
+// gig.LoadConfig treats a missing gig.yaml as "no error, DefaultConfig" —
+// Prefix "gig" — so without gating on isGigStoreInitialized, the first branch
+// below is satisfied by that default during the window between `jeff init
+// --gig-prefix <x>` and the separate `gig init --prefix <x>` that actually
+// writes gig.yaml, and cfg.GigPrefix is never reached (#105).
 func gigTaskPrefix(cfg *jeff.Config) string {
-	gigHome := resolveGigHome(cfg)
-	if gigCfg, err := gig.LoadConfig(filepath.Join(gigHome, "gig.yaml")); err == nil && gigCfg.Prefix != "" {
-		return gigCfg.Prefix
+	if isGigStoreInitialized(cfg) {
+		gigHome := resolveGigHome(cfg)
+		if gigCfg, err := gig.LoadConfig(filepath.Join(gigHome, "gig.yaml")); err == nil && gigCfg.Prefix != "" {
+			return gigCfg.Prefix
+		}
 	}
 	if cfg != nil && cfg.GigPrefix != "" {
 		return cfg.GigPrefix

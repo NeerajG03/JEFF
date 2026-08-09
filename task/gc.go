@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	jeff "github.com/NeerajG03/JEFF"
@@ -74,11 +75,32 @@ type GCResult struct {
 // path. Built from the configured prefix rather than a package-level "gig-"
 // literal: under a custom prefix the literal never matched, so orphaned
 // worktrees were never attributed and never collected (#97).
+// taskIDPatternCache memoizes the compiled pattern per prefix — the prefix is
+// effectively constant within a process (one gig store), so recompiling the
+// same pattern on every taskIDPatternFor call is pure waste (#105).
+var (
+	taskIDPatternCacheMu sync.RWMutex
+	taskIDPatternCache   = make(map[string]*regexp.Regexp)
+)
+
 func taskIDPatternFor(prefix string) *regexp.Regexp {
 	if prefix == "" {
 		prefix = workspace.DefaultTaskIDPrefix
 	}
-	return regexp.MustCompile(`(` + regexp.QuoteMeta(prefix) + `-[a-z0-9]+(?:\.[0-9]+)*)`)
+
+	taskIDPatternCacheMu.RLock()
+	re, ok := taskIDPatternCache[prefix]
+	taskIDPatternCacheMu.RUnlock()
+	if ok {
+		return re
+	}
+
+	re = regexp.MustCompile(`(` + regexp.QuoteMeta(prefix) + `-[a-z0-9]+(?:\.[0-9]+)*)`)
+
+	taskIDPatternCacheMu.Lock()
+	taskIDPatternCache[prefix] = re
+	taskIDPatternCacheMu.Unlock()
+	return re
 }
 
 // taskIDForWorktree recovers the task id a worktree belongs to, from the BRANCH

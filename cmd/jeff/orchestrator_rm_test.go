@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -220,5 +221,100 @@ func TestOrchestratorRm_UnknownID(t *testing.T) {
 	initHome(t)
 	if err := runOrchestratorRm(t, "jeff-does-not-exist"); err == nil {
 		t.Fatal("expected error for unknown orchestrator id")
+	}
+}
+
+// withFakeTmuxPaneDead puts a tmux on PATH that reports every pane as dead.
+// crew.PaneIsDead shells out to `tmux display-message -p '#{pane_dead}'`, so this
+// simulates a worker whose pane has genuinely exited while its DB row still says
+// "running".
+func withFakeTmuxPaneDead(t *testing.T, dead string) {
+	t.Helper()
+	dir := t.TempDir()
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = display-message ]; then printf '%s\\n' '" + dead + "'; exit 0; fi\n" +
+		"exit 0\n"
+	if err := os.WriteFile(filepath.Join(dir, "tmux"), []byte(script), 0o755); err != nil {
+		t.Fatalf("create fake tmux: %v", err)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+}
+
+// TestOrchestratorRm_StaleRunningRowDoesNotBlockForever is the repro for
+// gig-1d9d.20 (found by review of #110).
+//
+// The live-worker guard trusts sess.Status from the DB. Nothing re-probes tmux
+// before it runs, and the reconcilers that would fix a stale row (jeff crew list
+// / cleanup / the TUI / jeff done) are all separate, human-triggered actions. So
+// a worker whose pane died can sit at "running" indefinitely, and rm refuses
+// forever — reporting a "live worker" that has not been alive in hours. That
+// partially re-creates #86's own "cannot be removed" complaint.
+func TestOrchestratorRm_StaleRunningRowDoesNotBlockForever(t *testing.T) {
+	home := initHome(t)
+	project := t.TempDir()
+	defer chdir(t, project)()
+
+	if err := runOrchestratorInit(t); err != nil {
+		t.Fatalf("orchestrator init: %v", err)
+	}
+	id, err := identity.Read(identity.ProjectFilePath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cs, err := crew.Open(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A row that still SAYS running, with a recorded pane that is actually dead.
+	if err := cs.PutSession(&crew.Session{
+		TaskID: "gig-stale1", OrchestratorID: id.ID, Status: "running",
+		TmuxSession: "jeff", WindowName: "gig-stale1", TmuxPane: "%99",
+		StartedAt: time.Now().UTC().Add(-3 * time.Hour),
+		LastSeen:  time.Now().UTC().Add(-3 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cs.Close()
+
+	withFakeTmuxPaneDead(t, "1") // every pane reports dead
+
+	if err := runOrchestratorRm(t, id.ID); err != nil {
+		t.Fatalf("rm refused because of a STALE running row whose pane is dead: %v\n"+
+			"The guard must re-probe rather than trust sess.Status, or rm can never succeed "+
+			"until someone happens to run an unrelated reconciling command.", err)
+	}
+}
+
+// TestOrchestratorRm_GenuinelyLiveWorkerStillRefuses is the other direction: the
+// re-probe must not weaken the guard. A row that says running whose pane really
+// is alive must still block rm.
+func TestOrchestratorRm_GenuinelyLiveWorkerStillRefuses(t *testing.T) {
+	home := initHome(t)
+	project := t.TempDir()
+	defer chdir(t, project)()
+
+	if err := runOrchestratorInit(t); err != nil {
+		t.Fatalf("orchestrator init: %v", err)
+	}
+	id, _ := identity.Read(identity.ProjectFilePath(project))
+
+	cs, err := crew.Open(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cs.PutSession(&crew.Session{
+		TaskID: "gig-live2", OrchestratorID: id.ID, Status: "running",
+		TmuxSession: "jeff", WindowName: "gig-live2", TmuxPane: "%42",
+		StartedAt: time.Now().UTC(), LastSeen: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cs.Close()
+
+	withFakeTmuxPaneDead(t, "0") // pane alive
+
+	if err := runOrchestratorRm(t, id.ID); err == nil {
+		t.Fatal("rm removed an orchestrator with a GENUINELY live worker — the re-probe must not weaken the guard")
 	}
 }

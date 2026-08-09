@@ -545,6 +545,39 @@ func DeriveDurableOrchestratorStatus(o *Orchestrator, paneIsDead func(target str
 	return OrchStatusRunning
 }
 
+// IsLiveWorkerStatus reports whether a session's stored status is one that claims
+// the worker is still working.
+func IsLiveWorkerStatus(status string) bool {
+	return status == "starting" || status == "running"
+}
+
+// WorkerIsLive reports whether a bound worker should be treated as live, by
+// RE-PROBING tmux rather than trusting the stored status.
+//
+// A session row only becomes accurate when something reconciles it — Refresh via
+// `jeff crew list` / `jeff cleanup` / the dashboard, or `jeff done`. Those are all
+// separate, human-triggered actions, so a worker whose pane died can sit at
+// "running" indefinitely. Anything that REFUSES an operation on the strength of
+// that status must re-probe, or it refuses forever (gig-1d9d.20).
+//
+// The unknown cases deliberately resolve to LIVE, because every caller uses this
+// to guard a destructive action: refusing wrongly is recoverable (pass --force),
+// removing wrongly orphans real workers. Same rule as
+// DeriveDurableOrchestratorStatus — a probe error is not evidence of death.
+func WorkerIsLive(sess *Session, paneIsDead func(target string) (bool, error)) bool {
+	if sess == nil || !IsLiveWorkerStatus(sess.Status) {
+		return false
+	}
+	if sess.TmuxPane == "" {
+		return true // nothing to probe — cannot disprove liveness
+	}
+	dead, err := paneIsDead(sess.TmuxPane)
+	if err != nil {
+		return true // unknown is not death
+	}
+	return !dead
+}
+
 // WorkersForOrchestrator returns sessions belonging to an orchestrator.
 func (s *Store) WorkersForOrchestrator(orchestratorID string) ([]*Session, error) {
 	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, COALESCE(agent, ''), COALESCE(model, ''), repos,

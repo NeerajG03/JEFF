@@ -64,7 +64,7 @@ func TestList(t *testing.T) {
 	Create(home, "gig-ab12", "Task one")
 	Create(home, "gig-cd34", "Task two")
 
-	dirs, err := List(home)
+	dirs, err := List(home, "")
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestList(t *testing.T) {
 
 func TestListEmpty(t *testing.T) {
 	home := testutil.TempHome(t, "tasks")
-	dirs, err := List(home)
+	dirs, err := List(home, "")
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -119,9 +119,56 @@ func TestExtractTaskID(t *testing.T) {
 		{".", "."},
 	}
 	for _, tt := range tests {
-		got := ExtractTaskID(tt.slug)
+		got := ExtractTaskID(tt.slug, "")
 		if got != tt.want {
 			t.Errorf("ExtractTaskID(%q) = %q, want %q", tt.slug, got, tt.want)
 		}
+	}
+}
+
+// TestExtractTaskIDCustomPrefix pins #97: the prefix is gig configuration, and
+// the old hardcoded `gig-` regex returned the ENTIRE slug (title included) for
+// any other prefix, so every store lookup on the result failed. The bare-ID row
+// is the nasty one — it worked by coincidence, making the breakage look
+// intermittent.
+func TestExtractTaskIDCustomPrefix(t *testing.T) {
+	tests := []struct {
+		slug, prefix, want string
+	}{
+		{"cbx-ab12-add-a-thing", "cbx", "cbx-ab12"},
+		{"cbx-ab12.1-subtask", "cbx", "cbx-ab12.1"},
+		{"cbx-ab12", "cbx", "cbx-ab12"},
+		{"/home/u/.jeff/tasks/cbx-ab12-add-a-thing", "cbx", "cbx-ab12"},
+		// A slug under a DIFFERENT prefix is not an ID for this store.
+		{"gig-ab12-add-a-thing", "cbx", "gig-ab12-add-a-thing"},
+		// Empty prefix falls back to the gig default.
+		{"gig-ab12-add-a-thing", "", "gig-ab12"},
+		// Regexp metacharacters in a prefix are matched literally, not compiled.
+		{"a.b-ab12-title", "a.b", "a.b-ab12"},
+		{"axb-ab12-title", "a.b", "axb-ab12-title"},
+	}
+	for _, tt := range tests {
+		got := ExtractTaskID(tt.slug, tt.prefix)
+		if got != tt.want {
+			t.Errorf("ExtractTaskID(%q, %q) = %q, want %q", tt.slug, tt.prefix, got, tt.want)
+		}
+	}
+}
+
+// TestListCustomPrefix verifies List recovers TaskIDs under a non-default
+// prefix (#97).
+func TestListCustomPrefix(t *testing.T) {
+	home := testutil.TempHome(t, "tasks")
+	Create(home, "cbx-ab12", "Task one")
+
+	dirs, err := List(home, "cbx")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(dirs) != 1 {
+		t.Fatalf("expected 1 task dir, got %d", len(dirs))
+	}
+	if dirs[0].TaskID != "cbx-ab12" {
+		t.Errorf("TaskID = %q, want %q", dirs[0].TaskID, "cbx-ab12")
 	}
 }

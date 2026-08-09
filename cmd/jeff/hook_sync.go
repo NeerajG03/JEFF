@@ -12,17 +12,22 @@ import (
 )
 
 // taskWorkspace is a task directory under <home>/tasks whose name carries a
-// gig- task ID and is therefore eligible for hook re-sync.
+// gig task ID and is therefore eligible for hook re-sync.
 type taskWorkspace struct {
 	Name   string // directory basename
 	Dir    string // absolute path
-	TaskID string // extracted gig- id
+	TaskID string // extracted gig task id
 }
 
 // taskWorkspaces walks <home>/tasks and returns every immediate subdirectory
-// whose name resolves to a gig- task ID. Files and non-gig dirs are skipped; a
-// missing tasks/ dir yields nil.
-func taskWorkspaces(home string) []taskWorkspace {
+// whose name resolves to a gig task ID. Files and non-task dirs are skipped; a
+// missing tasks/ dir yields nil. prefix is the store's configured task-ID
+// prefix ("" means the gig default) — a hardcoded "gig-" here skipped every
+// workspace under a custom prefix, so hooks were never installed (#97).
+func taskWorkspaces(home, prefix string) []taskWorkspace {
+	if prefix == "" {
+		prefix = workspace.DefaultTaskIDPrefix
+	}
 	tasksDir := filepath.Join(home, "tasks")
 	entries, err := os.ReadDir(tasksDir)
 	if err != nil {
@@ -33,8 +38,8 @@ func taskWorkspaces(home string) []taskWorkspace {
 		if !entry.IsDir() {
 			continue
 		}
-		taskID := workspace.ExtractTaskID(entry.Name())
-		if !strings.HasPrefix(taskID, "gig-") {
+		taskID := workspace.ExtractTaskID(entry.Name(), prefix)
+		if !strings.HasPrefix(taskID, prefix+"-") {
 			continue
 		}
 		// Retired workspaces are closed work kept only until `jeff cleanup`

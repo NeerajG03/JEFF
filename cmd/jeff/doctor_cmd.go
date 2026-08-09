@@ -17,6 +17,7 @@ import (
 	"github.com/NeerajG03/JEFF/internal/homepath"
 	"github.com/NeerajG03/JEFF/persona"
 	"github.com/NeerajG03/JEFF/skill"
+	"github.com/NeerajG03/JEFF/workspace"
 	"github.com/NeerajG03/gig"
 	"github.com/spf13/cobra"
 )
@@ -547,6 +548,8 @@ func runEnvironmentChecks(cfg *jeff.Config) []envCheck {
 
 	checks = append(checks, checkGigInitialized(cfg))
 
+	checks = append(checks, checkGigPrefix(cfg))
+
 	checks = append(checks, checkAgentInstalled(cfg))
 
 	checks = append(checks, checkReposRegistered(cfg))
@@ -568,6 +571,30 @@ func checkGigInitialized(cfg *jeff.Config) envCheck {
 	}
 	store.Close()
 	return envCheck{Name: "gig_initialized", Status: envOK, Required: true}
+}
+
+// checkGigPrefix surfaces the task-ID prefix JEFF parses workspaces and
+// worktrees with, in the spirit of the home-provenance reporting: every prefix
+// bug was hard to see because the resolved value was invisible (#97). It warns
+// when jeff.json's recorded gig_prefix disagrees with the gig store's
+// configured prefix — parsing follows the store, so the drift is harmless but
+// means one of the two configs is stale.
+func checkGigPrefix(cfg *jeff.Config) envCheck {
+	c := envCheck{Name: "gig_prefix_consistent", Required: false}
+	prefix := gigTaskPrefix(cfg)
+
+	if cfg.GigPrefix != "" && cfg.GigPrefix != prefix {
+		c.Status = envWarn
+		c.Fix = fmt.Sprintf(`set "gig_prefix": %q in jeff.json`, prefix)
+		c.Detail = fmt.Sprintf("jeff.json records gig_prefix %q but the gig store uses %q — task IDs carry %q", cfg.GigPrefix, prefix, prefix)
+		return c
+	}
+
+	c.Status = envOK
+	if prefix != workspace.DefaultTaskIDPrefix {
+		c.Detail = fmt.Sprintf("task-ID prefix: %q (from gig config)", prefix)
+	}
+	return c
 }
 
 func checkAgentInstalled(cfg *jeff.Config) envCheck {

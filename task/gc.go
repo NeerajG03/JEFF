@@ -68,12 +68,21 @@ type GCResult struct {
 	BytesRecoverable int64 // what the skipped-dirty worktrees would free
 }
 
-// taskIDPattern matches a gig task id. It is applied ONLY to the branch portion of
-// a worktree path (see taskIDForWorktree) — never the whole path.
-var taskIDPattern = regexp.MustCompile(`(gig-[a-z0-9]+(?:\.[0-9]+)*)`)
+// taskIDPatternFor builds the pattern matching a gig task id under the store's
+// configured prefix ("" means the gig default). It is applied ONLY to the
+// branch portion of a worktree path (see taskIDForWorktree) — never the whole
+// path. Built from the configured prefix rather than a package-level "gig-"
+// literal: under a custom prefix the literal never matched, so orphaned
+// worktrees were never attributed and never collected (#97).
+func taskIDPatternFor(prefix string) *regexp.Regexp {
+	if prefix == "" {
+		prefix = workspace.DefaultTaskIDPrefix
+	}
+	return regexp.MustCompile(`(` + regexp.QuoteMeta(prefix) + `-[a-z0-9]+(?:\.[0-9]+)*)`)
+}
 
 // taskIDForWorktree recovers the task id a worktree belongs to, from the BRANCH
-// portion of its path only.
+// portion of its path only. prefix is the store's configured task-ID prefix.
 //
 // Scoping matters for deletion safety. Worktrees live at
 // worktrees/<repo>/<branch>/ and a branch may contain slashes, so the id can sit
@@ -82,7 +91,7 @@ var taskIDPattern = regexp.MustCompile(`(gig-[a-z0-9]+(?:\.[0-9]+)*)`)
 // worktrees/gig-app/jeff/gig-b222-real-task resolve to "gig-app". If that
 // spurious id happened to be a closed task, the GC would delete a clean worktree
 // belonging to a genuinely open one. Found in review of #96.
-func taskIDForWorktree(jeffHome, wtPath string) string {
+func taskIDForWorktree(jeffHome, wtPath, prefix string) string {
 	rel, err := filepath.Rel(filepath.Join(jeffHome, "worktrees"), wtPath)
 	if err != nil {
 		return ""
@@ -97,7 +106,19 @@ func taskIDForWorktree(jeffHome, wtPath string) string {
 		return "" // no branch portion at all — not a worktree we can attribute
 	}
 	branch := filepath.Join(parts[1:]...) // drop the <repo> segment
-	return taskIDPattern.FindString(branch)
+	return taskIDPatternFor(prefix).FindString(branch)
+}
+
+// storePrefix returns the store's configured task-ID prefix, defaulting when
+// the store is unreachable — the same conservative stance as taskIsTerminal.
+func storePrefix(store Store) string {
+	if store == nil {
+		return workspace.DefaultTaskIDPrefix
+	}
+	if p := store.Prefix(); p != "" {
+		return p
+	}
+	return workspace.DefaultTaskIDPrefix
 }
 
 // Reactivate clears a workspace's retirement marker when its task is live again.
@@ -131,9 +152,10 @@ func GC(store Store, cfg *jeff.Config, opts GCOpts) (*GCResult, error) {
 
 	res := &GCResult{}
 	anchored := anchoredTaskDirs(cfg.Home)
+	prefix := storePrefix(store)
 
 	// --- Retired task workspaces ---
-	dirs, err := workspace.List(cfg.Home)
+	dirs, err := workspace.List(cfg.Home, prefix)
 	if err != nil {
 		return nil, fmt.Errorf("list workspaces: %w", err)
 	}
@@ -183,7 +205,7 @@ func GC(store Store, cfg *jeff.Config, opts GCOpts) (*GCResult, error) {
 
 	// --- Orphaned worktrees (the expensive garbage) ---
 	for _, wt := range allWorktrees(cfg.Home) {
-		taskID := taskIDForWorktree(cfg.Home, wt)
+		taskID := taskIDForWorktree(cfg.Home, wt, prefix)
 		item := GCItem{Path: wt, TaskID: taskID, Bytes: workspace.DirSize(wt)}
 
 		if taskID == "" || !taskIsTerminal(store, taskID) {

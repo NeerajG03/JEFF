@@ -29,7 +29,7 @@ func TestTaskWorkspaces(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := taskWorkspaces(home)
+	got := taskWorkspaces(home, "")
 	if len(got) != 2 {
 		t.Fatalf("expected 2 task workspaces, got %d: %+v", len(got), got)
 	}
@@ -54,11 +54,32 @@ func TestTaskWorkspaces(t *testing.T) {
 	}
 }
 
+// TestTaskWorkspacesCustomPrefix pins #97: under `gig config set prefix`, the
+// old hardcoded "gig-" guard skipped every task workspace, so hooks were never
+// installed for any task.
+func TestTaskWorkspacesCustomPrefix(t *testing.T) {
+	home := t.TempDir()
+	tasksDir := filepath.Join(home, "tasks")
+	for _, name := range []string{"cbx-ab12-add-a-thing", "gig-abcd-other-store"} {
+		if err := os.MkdirAll(filepath.Join(tasksDir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got := taskWorkspaces(home, "cbx")
+	if len(got) != 1 {
+		t.Fatalf("expected 1 task workspace under prefix cbx, got %d: %+v", len(got), got)
+	}
+	if got[0].TaskID != "cbx-ab12" {
+		t.Errorf("TaskID = %q, want %q", got[0].TaskID, "cbx-ab12")
+	}
+}
+
 // TestTaskWorkspacesMissingDir confirms a missing tasks/ directory yields nil
 // rather than an error or panic.
 func TestTaskWorkspacesMissingDir(t *testing.T) {
 	home := t.TempDir() // no tasks/ subdir
-	if got := taskWorkspaces(home); got != nil {
+	if got := taskWorkspaces(home, ""); got != nil {
 		t.Errorf("expected nil for missing tasks dir, got %+v", got)
 	}
 }

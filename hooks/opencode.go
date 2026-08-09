@@ -52,7 +52,14 @@ func openCodeEventName(h *Hook) string {
 	if h.OpenCodeEvent != "" {
 		return h.OpenCodeEvent
 	}
-	switch h.Event {
+	return openCodeStandardEventName(h.Event)
+}
+
+// openCodeStandardEventName is openCodeEventName's mapping without the
+// per-hook OpenCodeEvent override, extracted so it can serve as
+// opencodeDelivery.EventName's plain string->string mapper.
+func openCodeStandardEventName(claudeEvent string) string {
+	switch claudeEvent {
 	case "SessionStart":
 		return "session.created"
 	case "PostToolUse":
@@ -60,7 +67,7 @@ func openCodeEventName(h *Hook) string {
 	case "Stop":
 		return "process.exit"
 	default:
-		return h.Event
+		return claudeEvent
 	}
 }
 

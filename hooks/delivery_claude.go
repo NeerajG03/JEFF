@@ -38,6 +38,12 @@ func (d *claudeDelivery) IsManaged(targetDir, name string) bool {
 	return scriptHasVersionMarker(scriptPath(targetDir, name))
 }
 
+// EventName is the identity mapping: Claude Code's own event names are the
+// canonical ones every Hook.Event is written in.
+func (d *claudeDelivery) EventName(claudeEvent string) string {
+	return claudeEvent
+}
+
 // claudeSettingsPath returns the .claude/settings.json path.
 func claudeSettingsPath(targetDir string) string {
 	return settingsPath(targetDir)

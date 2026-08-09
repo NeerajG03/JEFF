@@ -59,6 +59,10 @@ func (d *geminiDelivery) IsManaged(targetDir, name string) bool {
 	return scriptHasVersionMarker(scriptPath(targetDir, name))
 }
 
+func (d *geminiDelivery) EventName(claudeEvent string) string {
+	return geminiEventName(claudeEvent)
+}
+
 // geminiSettingsPath returns the .gemini/settings.json path.
 func geminiSettingsPath(targetDir string) string {
 	return filepath.Join(targetDir, ".gemini", "settings.json")

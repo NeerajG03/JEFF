@@ -337,11 +337,39 @@ func hookContractInputs(event string) []struct{ name, in string } {
 	}
 }
 
-// TestAllRegisteredHooksEmitValidJSON is the Part D contract test (EPIC.md rule
-// 1, gig-1d9d.16): gig-35e2 was one hook emitting empty stdout on a no-op path.
-// Nothing before this stopped the *next* one. This runs every hook in
-// DefaultRegistry() — not just PostToolUse ones — against a matching input, a
-// no-op input, and garbage, and asserts Rule 1 on every branch.
+// isPipeableBashScript reports whether content is a bash script this test
+// harness can run by writing it to a file and piping stdin to it — i.e. it
+// has a shebang. A delivery whose Scripts[key] generator returns something
+// else entirely (OpenCode's snippets are TypeScript fragments injected into a
+// combined plugin file, not standalone executables) genuinely cannot be
+// exercised this way; TestAllRegisteredHooksEmitValidJSON skips those with an
+// explicit logged reason rather than silently, so a delivery never quietly
+// falls out of coverage the way "claude" alone quietly left "gemini" out.
+func isPipeableBashScript(content string) bool {
+	return strings.HasPrefix(content, "#!")
+}
+
+// TestAllRegisteredHooksEmitValidJSON is the Part D contract test (EPIC.md
+// rule 1, gig-1d9d.16): gig-35e2 was one hook emitting empty stdout on a
+// no-op path. Nothing before this stopped the *next* one.
+//
+// Generalized after a #106 follow-up finding: this test originally only ran
+// each hook's "claude" script. bashBoth() shares one script body across
+// claude and gemini delivery, and Delivery.EventName remaps some event names
+// per delivery (Gemini's PostToolUse -> AfterTool, Stop -> AfterAgent). A
+// bashBoth() script that hardcoded a literal hookSpecificOutput.hookEventName
+// (checkpoint-nudge does exactly this today, just correctly split into two
+// delivery-specific closures instead of bashBoth) would emit valid-but-wrong
+// JSON under Gemini and nothing would catch it. So this now iterates
+// hooks.DeliveryKeys() — every REGISTERED delivery, not a hardcoded
+// claude/gemini pair — so the next delivery someone adds is covered on the
+// day it registers rather than the day someone remembers to extend this test.
+//
+// For every hook × every delivery × two contexts (populated / empty), this
+// runs a matching input, a no-op input, and garbage, and asserts:
+//  1. Rule 1 — parseable JSON on every branch.
+//  2. When hookSpecificOutput.hookEventName is present, it equals THAT
+//     delivery's EventName(h.Event), not h.Event literally.
 func TestAllRegisteredHooksEmitValidJSON(t *testing.T) {
 	requireBinaries(t, "bash", "jq")
 	stubDir := setupStubs(t)
@@ -362,21 +390,33 @@ func TestAllRegisteredHooksEmitValidJSON(t *testing.T) {
 	}
 
 	for _, h := range DefaultRegistry().All() {
-		gen, ok := h.Scripts["claude"]
-		if !ok || gen == nil {
-			t.Logf("skip %s: no claude script generator (genuinely not exercisable offline)", h.Name)
-			continue
-		}
-		for _, c := range ctxs {
-			script := gen(c.ctx)
-			if script == "" {
-				continue // e.g. OpenCode-only branch returning "" for this ctx
+		for _, key := range DeliveryKeys() {
+			gen, ok := h.Scripts[key]
+			if !ok || gen == nil {
+				t.Logf("skip %s/%s: no script generator for this delivery (genuinely not exercisable offline)", h.Name, key)
+				continue
 			}
-			for _, in := range hookContractInputs(h.Event) {
-				t.Run(h.Name+"/"+c.name+"/"+in.name, func(t *testing.T) {
-					out := runHookScript(t, script, in.in)
-					assertValidHookOutput(t, out, h.Event)
-				})
+			d := GetDelivery(key)
+			if d == nil {
+				t.Fatalf("delivery %q is in DeliveryKeys() but GetDelivery returned nil", key)
+			}
+			expectedEvent := d.EventName(h.Event)
+
+			for _, c := range ctxs {
+				script := gen(c.ctx)
+				if script == "" {
+					continue // e.g. an OpenCode-only branch returning "" for this ctx
+				}
+				if !isPipeableBashScript(script) {
+					t.Logf("skip %s/%s/%s: content is not a pipeable bash script (no shebang) — this delivery's Scripts[%q] generator produces something else (e.g. injected plugin code), so Rule 1 cannot be checked by running it standalone", h.Name, key, c.name, key)
+					continue
+				}
+				for _, in := range hookContractInputs(h.Event) {
+					t.Run(h.Name+"/"+key+"/"+c.name+"/"+in.name, func(t *testing.T) {
+						out := runHookScript(t, script, in.in)
+						assertValidHookOutput(t, out, expectedEvent)
+					})
+				}
 			}
 		}
 	}

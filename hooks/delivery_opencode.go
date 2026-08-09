@@ -43,3 +43,12 @@ func (d *opencodeDelivery) IsManaged(targetDir, name string) bool {
 	// combined plugin is fully regenerated from enabled hooks on every sync.
 	return false
 }
+
+// EventName uses the standard mapping only (openCodeStandardEventName),
+// ignoring a hook's OpenCodeEvent override — this interface method takes a
+// bare event string, not a *Hook, and OpenCode's contract test callers skip
+// this delivery anyway (its scripts are injected plugin code, not stdin-piped
+// bash), so this exists to satisfy Delivery, not for exact per-hook accuracy.
+func (d *opencodeDelivery) EventName(claudeEvent string) string {
+	return openCodeStandardEventName(claudeEvent)
+}

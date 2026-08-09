@@ -79,6 +79,9 @@ func shipCmd() *cobra.Command {
 			var results []shipResult
 			for _, wt := range worktrees {
 				fmt.Fprintf(os.Stderr, "\n── %s (branch: %s → %s)\n", wt.repo, wt.branch, wt.base)
+				if msg := hotfixMismatchWarning(wt.base, wt.branch); msg != "" {
+					fmt.Fprintf(os.Stderr, "  WARNING: %s\n", msg)
+				}
 
 				res := shipResult{repo: wt.repo}
 
@@ -236,6 +239,18 @@ func discoverWorktrees(taskDir, repoFilter string) ([]shipWorktree, error) {
 	}
 
 	return result, nil
+}
+
+// hotfixMismatchWarning returns a warning string when base implies a
+// hotfix/ branch (workspace.IsHotfixBase) but branch doesn't carry the
+// prefix — e.g. a worktree created before this inference existed, or via
+// `jeff pickup` (gig-1d9d.19 tracks adding inference there too). Returns ""
+// when there's nothing to warn about.
+func hotfixMismatchWarning(base, branch string) string {
+	if !workspace.IsHotfixBase(base) || strings.HasPrefix(branch, "hotfix/") {
+		return ""
+	}
+	return fmt.Sprintf("base %q looks production/release but branch %q doesn't start with hotfix/", base, branch)
 }
 
 // buildPRTitle generates a PR title from the task.

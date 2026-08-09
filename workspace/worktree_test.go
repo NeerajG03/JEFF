@@ -281,8 +281,8 @@ func TestWorktreeAddLocalBranchPrecedenceOverRemoteName(t *testing.T) {
 func TestReadBaseBranch_Default(t *testing.T) {
 	dir := t.TempDir()
 	got := ReadBaseBranch(dir)
-	if got != defaultBaseBranch {
-		t.Errorf("expected %q, got %q", defaultBaseBranch, got)
+	if got != DefaultBaseBranch {
+		t.Errorf("expected %q, got %q", DefaultBaseBranch, got)
 	}
 }
 
@@ -299,7 +299,7 @@ func TestReadBaseBranch_Empty(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, ".jeff-base"), []byte("\n"), 0o644)
 	got := ReadBaseBranch(dir)
-	if got != defaultBaseBranch {
+	if got != DefaultBaseBranch {
 		t.Errorf("expected default for empty file, got %q", got)
 	}
 }

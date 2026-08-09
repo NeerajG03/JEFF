@@ -334,3 +334,21 @@ func TestDiscoverWorktrees_SlashInBranchName(t *testing.T) {
 		t.Errorf("expected base main, got %q", wts[0].base)
 	}
 }
+
+func TestHotfixMismatchWarning(t *testing.T) {
+	tests := []struct {
+		base, branch string
+		wantWarn     bool
+	}{
+		{"origin/production", "gig-ab12-fix", true},
+		{"origin/hotfix/2026-03-13", "gig-ab12-fix", true},
+		{"origin/production", "hotfix/gig-ab12-fix", false},
+		{"origin/main", "gig-ab12-fix", false},
+	}
+	for _, tt := range tests {
+		got := hotfixMismatchWarning(tt.base, tt.branch)
+		if (got != "") != tt.wantWarn {
+			t.Errorf("hotfixMismatchWarning(%q, %q) = %q, wantWarn %v", tt.base, tt.branch, got, tt.wantWarn)
+		}
+	}
+}

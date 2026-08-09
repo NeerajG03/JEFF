@@ -43,7 +43,7 @@ type WorktreeOpts struct {
 	PostSetup  string // script to run after creation (optional)
 }
 
-const defaultBaseBranch = "origin/main"
+const DefaultBaseBranch = "origin/main"
 
 // WorktreeAdd creates a git worktree for the given repo and branch under
 // jeffHome/worktrees/<repo>/<branch>/, then symlinks it into the task directory.
@@ -57,7 +57,7 @@ func WorktreeAdd(opts WorktreeOpts) (string, error) {
 
 	baseBranch := opts.BaseBranch
 	if baseBranch == "" {
-		baseBranch = defaultBaseBranch
+		baseBranch = DefaultBaseBranch
 	}
 
 	wtDir := filepath.Join(opts.JeffHome, "worktrees", opts.RepoName, opts.Branch)
@@ -158,15 +158,15 @@ func resolveBaseRef(repoDir, baseBranch string) string {
 }
 
 // ReadBaseBranch reads the base branch from a worktree's .jeff-base file.
-// Returns defaultBaseBranch if the file doesn't exist.
+// Returns DefaultBaseBranch if the file doesn't exist.
 func ReadBaseBranch(wtDir string) string {
 	data, err := os.ReadFile(filepath.Join(wtDir, ".jeff-base"))
 	if err != nil {
-		return defaultBaseBranch
+		return DefaultBaseBranch
 	}
 	s := strings.TrimSpace(string(data))
 	if s == "" {
-		return defaultBaseBranch
+		return DefaultBaseBranch
 	}
 	return s
 }

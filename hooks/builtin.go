@@ -335,6 +335,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 INPUT=$(cat)
+echo "$INPUT" | jq -e . >/dev/null 2>&1 || INPUT='{}'
 
 # Extract the command from tool input.
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // ""')
@@ -451,7 +452,10 @@ INPUT=$(cat)
 # worker's pane was dead. Live-delivered messages were acked at send time, so in
 # the normal case this is empty and nothing is re-surfaced.
 PENDING=$(jeff crew inbox ` + shellQuote(taskID) + ` --count 2>/dev/null || echo "0")
-[ "$PENDING" = "0" ] && exit 0
+if [ "$PENDING" = "0" ]; then
+  echo '{}'
+  exit 0
+fi
 
 # --format agent frames + acks, so each row replays exactly once.
 MESSAGES=$(jeff crew inbox ` + shellQuote(taskID) + ` --format agent 2>/dev/null)
@@ -470,8 +474,19 @@ jq -n \
 
 // --- Signal hooks ---
 
-// workerHeartbeatHook fires after every tool use in a worker session.
-// It touches the session's last_seen timestamp as a heartbeat signal.
+// workerHeartbeatHook fires after every tool use in a worker session and
+// touches the session's last_seen timestamp as a heartbeat signal.
+//
+// Matcher stays "*" (gig-1d9d.16.2 originally narrowed it to
+// "Bash|Edit|Write"; reverted per review — hardy traced that crew.Refresh
+// already independently touches last_seen on every run for any session whose
+// pane is alive, so hasFreshHeartbeat is only ever consulted once the pane is
+// confirmed dead or the window is gone. Narrowing the matcher bought nothing
+// against that path but did remove the only signal keeping last_seen fresh
+// during a long Read/Grep-only stretch with no Refresh call in between — the
+// exact false-`failed` class W1/#104 fixed, just re-opened on a narrower
+// window. The oversampling problem itself is fully solved by the debounce
+// below, which caps the exec rate regardless of which tools trigger it).
 func workerHeartbeatHook() *Hook {
 	return &Hook{
 		Name:    "worker-heartbeat",
@@ -507,8 +522,28 @@ set -euo pipefail
 
 INPUT=$(cat)
 
-# Touch last_seen as heartbeat signal.
-# Stall detection is handled by jeff daemon, not here.
+# Debounce (gig-1d9d.16.2): skip the exec when the sentinel shows a touch
+# happened within the last 60s. A DB round-trip to check this would defeat the
+# purpose, so this uses the sentinel file's own mtime instead. Guard for the
+# file not existing (first call in this task dir, or after a stale one is
+# cleared) — that always touches.
+SENTINEL="$(pwd)/.heartbeat"
+if [ -f "$SENTINEL" ]; then
+  NOW=$(date +%s)
+  LAST=$(stat -f %m "$SENTINEL" 2>/dev/null || stat -c %Y "$SENTINEL" 2>/dev/null || echo 0)
+  if [ $((NOW - LAST)) -lt 60 ]; then
+    echo '{}'
+    exit 0
+  fi
+fi
+touch "$SENTINEL" 2>/dev/null || true
+
+# Touch last_seen as heartbeat signal. Nothing currently reads it for stall
+# detection: crew.CheckStalls existed but was reachable only via a hidden,
+# unscheduled CLI command and never fired in practice, so it was removed as
+# dead code (gig-1d9d.16.3). last_seen still feeds the hasFreshHeartbeat veto
+# in Refresh() (lifecycle.go), which is why this hook stays. A hung-but-alive
+# worker going unreported is a known, deliberately accepted gap — see gig-1d9d.18.
 jeff crew touch ` + shellQuote(taskID) + ` 2>/dev/null || true
 
 echo '{}'
@@ -580,6 +615,7 @@ echo '{}'
 set -euo pipefail
 
 INPUT=$(cat)
+echo "$INPUT" | jq -e . >/dev/null 2>&1 || INPUT='{}'
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // ""')
 
 if [ -z "$SESSION_ID" ]; then
@@ -656,7 +692,10 @@ elif [ -n "${TMUX:-}" ]; then
     ORCH_ID="$SESSION_NAME"
   fi
 fi
-[ -z "$ORCH_ID" ] && exit 0`
+if [ -z "$ORCH_ID" ]; then
+  echo '{}'
+  exit 0
+fi`
 	}
 
 	return `#!/bin/bash
@@ -674,7 +713,10 @@ INPUT=$(cat)
 # while this orchestrator's pane was dead. Live-delivered signals were acked at
 # send time, so in the normal case this is empty.
 PENDING=$(jeff crew orchestrator-inbox "$ORCH_ID" --count 2>/dev/null || echo "0")
-[ "$PENDING" = "0" ] && exit 0
+if [ "$PENDING" = "0" ]; then
+  echo '{}'
+  exit 0
+fi
 
 # --format agent frames + acks, so each row replays exactly once.
 MESSAGES=$(jeff crew orchestrator-inbox "$ORCH_ID" --format agent 2>/dev/null)

@@ -21,6 +21,16 @@ type Delivery interface {
 
 	// Installed returns names of hooks currently installed at targetDir.
 	Installed(targetDir string) []string
+
+	// IsManaged reports whether the installed artifact for name was generated
+	// by jeff (carries its version marker) as opposed to authored externally.
+	// Sync uses this to decide whether an installed hook the registry no
+	// longer declares at all is safe to remove: a hook jeff once generated and
+	// later dropped from code (orphaned) vs. a user's own hook that happens to
+	// share a name (must never be touched). Presence-only, not content-aware —
+	// see scriptHasVersionMarker's doc comment for the known limitation and
+	// why it fails safe.
+	IsManaged(targetDir, name string) bool
 }
 
 var (

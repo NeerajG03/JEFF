@@ -18,10 +18,9 @@ import (
 const DefaultPrompt = "Read your task context using `gig show` for your task ID and begin working."
 
 // DefaultStallThreshold is the idle time (now - last_seen) after which a worker
-// is considered stalled. Refresh reuses it as a heartbeat grace period: a worker
+// is considered stalled. Refresh uses it as a heartbeat grace period: a worker
 // whose window/pane looks gone is only marked failed once it has ALSO been silent
-// for longer than this — a fresh heartbeat vetoes the failed transition. This is
-// also the default for `jeff crew check-stalls --threshold`.
+// for longer than this — a fresh heartbeat vetoes the failed transition.
 const DefaultStallThreshold = 10 * time.Minute
 
 // isActiveStatus reports whether a session status means the worker may still be running.
@@ -751,55 +750,6 @@ func orchestratorSignalTarget(orch *Orchestrator) string {
 		return SessionTarget(orch.TmuxSession, orch.TmuxWindow)
 	}
 	return ""
-}
-
-// CheckStalls iterates running workers and signals their orchestrators
-// for any worker whose last_seen exceeds the given threshold.
-func CheckStalls(store *Store, threshold time.Duration) (int, error) {
-	rows, err := store.db.Query(`
-		SELECT task_id, last_seen, orchestrator_id
-		FROM sessions
-		WHERE status IN ('running', 'starting') AND orchestrator_id != ''`)
-	if err != nil {
-		return 0, fmt.Errorf("query sessions: %w", err)
-	}
-
-	type stallInfo struct {
-		taskID string
-		idle   time.Duration
-	}
-	var stalls []stallInfo
-
-	now := time.Now().UTC()
-	for rows.Next() {
-		var taskID, lastSeenStr, orchID string
-		if err := rows.Scan(&taskID, &lastSeenStr, &orchID); err != nil {
-			continue
-		}
-		lastSeen, err := time.Parse(timeLayout, lastSeenStr)
-		if err != nil {
-			continue
-		}
-		idle := now.Sub(lastSeen)
-		if idle >= threshold {
-			stalls = append(stalls, stallInfo{taskID: taskID, idle: idle})
-		}
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return 0, err
-	}
-	rows.Close() // IMPORTANT: fully drain and close before nested queries
-
-	signaled := 0
-	for _, stall := range stalls {
-		msg := fmt.Sprintf("stalled — no activity for %d minutes", int(stall.idle.Minutes()))
-		if err := SignalOrchestrator(store, stall.taskID, msg); err != nil {
-			continue
-		}
-		signaled++
-	}
-	return signaled, nil
 }
 
 // Ask sends a to_orchestrator message from a worker. It looks up the worker's

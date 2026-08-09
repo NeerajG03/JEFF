@@ -34,6 +34,10 @@ func (d *claudeDelivery) Installed(targetDir string) []string {
 	return installedClaudeHooks(targetDir)
 }
 
+func (d *claudeDelivery) IsManaged(targetDir, name string) bool {
+	return scriptHasVersionMarker(scriptPath(targetDir, name))
+}
+
 // claudeSettingsPath returns the .claude/settings.json path.
 func claudeSettingsPath(targetDir string) string {
 	return settingsPath(targetDir)

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func setupStubs(t *testing.T) string {
@@ -61,11 +62,13 @@ func TestScriptExecution(t *testing.T) {
 	for _, s := range scripts {
 		t.Run(s.name, func(t *testing.T) {
 			content := s.gen()
-			scriptPath := filepath.Join(t.TempDir(), s.name+".sh")
+			dir := t.TempDir()
+			scriptPath := filepath.Join(dir, s.name+".sh")
 			os.WriteFile(scriptPath, []byte(content), 0o755)
 
 			exec.Command("cat", "-v", scriptPath).Run()
 			cmd := exec.Command("bash", scriptPath)
+			cmd.Dir = dir // worker-heartbeat writes a $(pwd)-relative sentinel
 			cmd.Stdin = strings.NewReader(s.in)
 			out, err := cmd.CombinedOutput()
 			if err != nil {
@@ -125,13 +128,19 @@ func TestAdversarial(t *testing.T) {
 
 // runHookScript writes script to a temp file, runs it under bash feeding stdin,
 // and returns combined output. Fails the test if the script exits non-zero.
+// cmd.Dir is pinned to that same temp dir: a real hook always runs with CWD ==
+// the task/home dir, and some scripts (memory-propose-nudge's `$(pwd)/.nudged`
+// sentinel) write relative to it — leaving Dir unset would let them write into
+// this test binary's own working directory instead.
 func runHookScript(t *testing.T, script, stdin string) []byte {
 	t.Helper()
-	scriptPath := filepath.Join(t.TempDir(), "hook.sh")
+	dir := t.TempDir()
+	scriptPath := filepath.Join(dir, "hook.sh")
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command("bash", scriptPath)
+	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(stdin)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -268,6 +277,219 @@ func TestPostToolUseGeneratorsValidWithoutJq(t *testing.T) {
 			out := runHookScript(t, script, `{"tool_input": {"command": "git commit -m hi"}}`)
 			assertPostToolUseJSON(t, out)
 		})
+	}
+}
+
+// assertValidHookOutput is the general Rule-1 contract (EPIC.md rule 1): stdout
+// must always be parseable JSON, and when hookSpecificOutput.hookEventName is
+// present it must equal the hook's declared event. Other shapes with no
+// hookSpecificOutput (e.g. `{}`, or memory-propose-nudge's Stop `{"decision":
+// "block", ...}`) are valid as long as they parse — this is deliberately looser
+// than assertPostToolUseJSON, which also enforces "or empty {}" because every
+// PostToolUse hook it checks happens to use that shape.
+func assertValidHookOutput(t *testing.T, out []byte, event string) {
+	t.Helper()
+	if len(out) == 0 {
+		t.Fatalf("empty stdout is not valid JSON (%s validation would fail)", event)
+	}
+	if !json.Valid(out) {
+		t.Fatalf("output is not valid JSON: %q", out)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("unmarshal: %v (%q)", err, out)
+	}
+	hso, ok := resp["hookSpecificOutput"].(map[string]any)
+	if !ok {
+		return
+	}
+	if ev, _ := hso["hookEventName"].(string); ev != event {
+		t.Errorf("hookEventName = %q, want %q (out=%q)", ev, event, out)
+	}
+}
+
+// hookContractInputs returns representative stdin payloads for a hook's declared
+// event: one that matches whatever the hook acts on, one that matches nothing
+// (the no-op path), and garbage. Not every hook distinguishes match/no-op (a
+// SessionStart hook fires unconditionally once installed) — feeding it anyway
+// is harmless and still exercises the "matches nothing useful" branch some
+// hooks have regardless of event (e.g. PENDING=0, empty session_id).
+func hookContractInputs(event string) []struct{ name, in string } {
+	switch event {
+	case "PostToolUse":
+		return []struct{ name, in string }{
+			{"match", `{"tool_input": {"command": "git commit -m hi"}}`},
+			{"no-match", `{"tool_input": {"command": "echo hi"}}`},
+			{"empty-input", `{}`},
+			{"garbage", `not json`},
+		}
+	case "SessionStart":
+		return []struct{ name, in string }{
+			{"with-session-id", `{"session_id": "sess-abc123"}`},
+			{"empty-input", `{}`},
+			{"garbage", `not json`},
+		}
+	default: // Stop, and anything else the registry adds later
+		return []struct{ name, in string }{
+			{"empty-input", `{}`},
+			{"garbage", `not json`},
+		}
+	}
+}
+
+// TestAllRegisteredHooksEmitValidJSON is the Part D contract test (EPIC.md rule
+// 1, gig-1d9d.16): gig-35e2 was one hook emitting empty stdout on a no-op path.
+// Nothing before this stopped the *next* one. This runs every hook in
+// DefaultRegistry() — not just PostToolUse ones — against a matching input, a
+// no-op input, and garbage, and asserts Rule 1 on every branch.
+func TestAllRegisteredHooksEmitValidJSON(t *testing.T) {
+	requireBinaries(t, "bash", "jq")
+	stubDir := setupStubs(t)
+	t.Setenv("PATH", stubDir+":"+os.Getenv("PATH"))
+
+	ctxs := []struct {
+		name string
+		ctx  HookContext
+	}{
+		{"populated", HookContext{
+			TaskID:             "gig-123",
+			OrchestratorID:     "jeff-1",
+			CheckpointPatterns: []string{"git commit"},
+			Persona:            "jenko",
+			Repos:              []string{"jeff"},
+		}},
+		{"empty-context", HookContext{}},
+	}
+
+	for _, h := range DefaultRegistry().All() {
+		gen, ok := h.Scripts["claude"]
+		if !ok || gen == nil {
+			t.Logf("skip %s: no claude script generator (genuinely not exercisable offline)", h.Name)
+			continue
+		}
+		for _, c := range ctxs {
+			script := gen(c.ctx)
+			if script == "" {
+				continue // e.g. OpenCode-only branch returning "" for this ctx
+			}
+			for _, in := range hookContractInputs(h.Event) {
+				t.Run(h.Name+"/"+c.name+"/"+in.name, func(t *testing.T) {
+					out := runHookScript(t, script, in.in)
+					assertValidHookOutput(t, out, h.Event)
+				})
+			}
+		}
+	}
+}
+
+// TestInboxHooksPendingZeroEmitsJSON targets the PENDING=0 no-op branch
+// specifically: DefaultRegistry's generic ctx/input combinations in
+// TestAllRegisteredHooksEmitValidJSON never make `jeff ... --count` actually
+// print "0" (the stub jeff binary only ever writes to stderr), so that branch
+// goes unexercised there. Both inbox-replay and orchestrator-inbox had a bare
+// `exit 0` on this path — a Rule-1 violation the general contract test alone
+// could not catch, exactly the class gig-35e2 came from.
+func TestInboxHooksPendingZeroEmitsJSON(t *testing.T) {
+	requireBinaries(t, "bash", "jq")
+	dir := t.TempDir()
+	jeffStub := `#!/bin/bash
+for a in "$@"; do
+  if [ "$a" = "--count" ]; then
+    echo "0"
+    exit 0
+  fi
+done
+echo 'stub jeff' >&2
+`
+	if err := os.WriteFile(filepath.Join(dir, "jeff"), []byte(jeffStub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "gig"), []byte("#!/bin/bash\necho 'stub gig' >&2\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if jqPath, err := exec.LookPath("jq"); err == nil {
+		jqBytes, _ := os.ReadFile(jqPath)
+		os.WriteFile(filepath.Join(dir, "jq"), jqBytes, 0o755)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+
+	t.Run("inbox-replay", func(t *testing.T) {
+		script := inboxReplayHook().Scripts["claude"](HookContext{TaskID: "gig-123"})
+		out := runHookScript(t, script, `{"session_id": "sess-1"}`)
+		assertValidHookOutput(t, out, "SessionStart")
+	})
+	t.Run("orchestrator-inbox", func(t *testing.T) {
+		script := orchestratorInboxHook().Scripts["claude"](HookContext{OrchestratorID: "jeff-1"})
+		out := runHookScript(t, script, `{"session_id": "sess-1"}`)
+		assertValidHookOutput(t, out, "SessionStart")
+	})
+}
+
+// TestWorkerHeartbeatDebounce is part A(b) of gig-1d9d.16.2: the generated
+// script must skip the `jeff crew touch` exec when the sentinel's mtime shows
+// a touch happened within the last ~60s, and take it when the sentinel is
+// missing or stale. Counts actual execs via a stub `jeff` that appends to a
+// log file, run twice in the same directory (so the sentinel persists between
+// runs) to exercise both branches.
+func TestWorkerHeartbeatDebounce(t *testing.T) {
+	requireBinaries(t, "bash")
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "touch.log")
+	jeffStub := "#!/bin/bash\necho \"$*\" >> " + logFile + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "jeff"), []byte(jeffStub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+
+	script := workerHeartbeatHook().Scripts["claude"](HookContext{TaskID: "gig-123"})
+	scriptPath := filepath.Join(dir, "heartbeat.sh")
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	runIn := func(workDir string) {
+		t.Helper()
+		cmd := exec.Command("bash", scriptPath)
+		cmd.Dir = workDir
+		cmd.Stdin = strings.NewReader(`{}`)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("script failed: %v\noutput: %s", err, out)
+		}
+		if !json.Valid(out) {
+			t.Errorf("output is not valid JSON: %s", out)
+		}
+	}
+
+	// No sentinel yet: first call must touch (sentinel missing → stale).
+	runIn(dir)
+	logLines := func() []string {
+		data, _ := os.ReadFile(logFile)
+		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+		if len(lines) == 1 && lines[0] == "" {
+			return nil
+		}
+		return lines
+	}
+	if got := len(logLines()); got != 1 {
+		t.Fatalf("execs after first call = %d, want 1 (sentinel missing must touch)", got)
+	}
+
+	// Sentinel now fresh (just created): a second call right away must skip.
+	runIn(dir)
+	if got := len(logLines()); got != 1 {
+		t.Fatalf("execs after second (fresh-sentinel) call = %d, want 1 (fresh sentinel must skip)", got)
+	}
+
+	// Age the sentinel past the debounce window: the next call must touch again.
+	sentinel := filepath.Join(dir, ".heartbeat")
+	stale := time.Now().Add(-90 * time.Second)
+	if err := os.Chtimes(sentinel, stale, stale); err != nil {
+		t.Fatal(err)
+	}
+	runIn(dir)
+	if got := len(logLines()); got != 2 {
+		t.Fatalf("execs after stale-sentinel call = %d, want 2 (stale sentinel must touch)", got)
 	}
 }
 

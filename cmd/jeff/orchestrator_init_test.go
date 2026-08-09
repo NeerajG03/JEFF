@@ -77,8 +77,45 @@ func TestOrchestratorInit_WritesShapeAndRegistersRow(t *testing.T) {
 	if orch.TmuxSession != "" {
 		t.Errorf("durable identity TmuxSession = %q, want empty", orch.TmuxSession)
 	}
-	if orch.Status != "running" {
-		t.Errorf("status = %q, want running", orch.Status)
+	// #86: status must be derived from reality, not written as an intent.
+	// initHome clears TMUX/TMUX_PANE, so no process is bound to this
+	// identity — "registered" is the honest status, not "running".
+	if orch.Status != crew.OrchStatusRegistered {
+		t.Errorf("status = %q, want %q (no tmux pane bound)", orch.Status, crew.OrchStatusRegistered)
+	}
+}
+
+// TestOrchestratorInit_TmuxPaneMeansRunning is the running counterpart of
+// TestOrchestratorInit_WritesShapeAndRegistersRow: when init runs inside a
+// live tmux pane, tmuxPane is THIS process's own pane, which is
+// definitionally alive right now, so "running" is honest at write time (no
+// probe needed) — unlike the no-tmux case above, which must NOT claim it.
+func TestOrchestratorInit_TmuxPaneMeansRunning(t *testing.T) {
+	home := initHome(t)
+	project := t.TempDir()
+	defer chdir(t, project)()
+	t.Setenv("TMUX", "1")
+	t.Setenv("TMUX_PANE", "%7")
+
+	if err := runOrchestratorInit(t); err != nil {
+		t.Fatalf("orchestrator init: %v", err)
+	}
+	id, err := identity.Read(identity.ProjectFilePath(project))
+	if err != nil {
+		t.Fatalf("read identity: %v", err)
+	}
+
+	cs, err := crew.Open(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+	orch, err := cs.GetOrchestrator(id.ID)
+	if err != nil {
+		t.Fatalf("orchestrator row not registered: %v", err)
+	}
+	if orch.Status != crew.OrchStatusRunning {
+		t.Errorf("status = %q, want %q (tmux pane bound at creation)", orch.Status, crew.OrchStatusRunning)
 	}
 }
 

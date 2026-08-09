@@ -30,6 +30,7 @@ func orchestratorCmd() *cobra.Command {
 		orchestratorInfoCmd(),
 		orchestratorAttachCmd(),
 		orchestratorStopCmd(),
+		orchestratorRmCmd(),
 	)
 
 	return cmd
@@ -167,6 +168,19 @@ orchestrator.`,
 			// lives on disk; this row is only the DB-side handle. When adopting,
 			// the row already exists — don't clobber its tmux binding.
 			if adoptID == "" {
+				// Status must be derived from reality, not written as an intent
+				// (#86): `init` alone starts no process, so "running" is a lie
+				// unless we're writing this identity from inside a live tmux
+				// pane right now (tmuxPane, if set, is THIS command's own pane —
+				// definitionally alive at the moment we record it). Otherwise
+				// the honest state is "registered": an identity exists, nothing
+				// is bound to it yet. Later reads re-derive this from pane
+				// liveness (crew.DeriveDurableOrchestratorStatus) rather than
+				// trusting whatever was written here.
+				status := crew.OrchStatusRegistered
+				if tmuxPane != "" {
+					status = crew.OrchStatusRunning
+				}
 				orch := &crew.Orchestrator{
 					ID:          id.ID,
 					Dir:         dir, // record project directory for list/info visibility
@@ -174,7 +188,7 @@ orchestrator.`,
 					TmuxWindow:  "",
 					TmuxPane:    tmuxPane, // enables direct notification routing when set
 					StartedAt:   time.Now().UTC(),
-					Status:      "running",
+					Status:      status,
 				}
 				if err := cs.PutOrchestrator(orch); err != nil {
 					return fmt.Errorf("register orchestrator identity: %w", err)
@@ -340,6 +354,14 @@ func orchestratorListCmd() *cobra.Command {
 				return err
 			}
 
+			// crew.Refresh (above) reconciles tmux-session-bound orchestrators
+			// (`orchestrator start`) against HasSession, but explicitly skips
+			// durable identities (TmuxSession == "", `orchestrator init`) since
+			// they have no session to probe. Fill that gap here so a
+			// registered-but-dead-pane identity doesn't keep reading "running"
+			// forever (#86).
+			refreshDurableOrchestratorStatuses(cs, orchs, crew.PaneIsDead)
+
 			if len(orchs) == 0 {
 				fmt.Fprintln(os.Stderr, "(no orchestrator sessions)")
 				return nil
@@ -360,7 +382,17 @@ func orchestratorListCmd() *cobra.Command {
 				if dir == "" {
 					dir = "-"
 				}
-				fmt.Fprintf(os.Stdout, "%-12s %-12s %-10s %-10s %-24s %-24s %s\n", o.ID, o.TmuxSession, o.Status, agent, model, dir, started)
+				session := o.TmuxSession
+				if session == "" {
+					session = "-"
+				}
+				statusLabel := orchestratorStatusLabel(o.Status)
+				statusPad := 10 - visibleLen(statusLabel)
+				if statusPad < 0 {
+					statusPad = 0
+				}
+				fmt.Fprintf(os.Stdout, "%-12s %-12s %s%-*s %-10s %-24s %-24s %s\n",
+					o.ID, session, statusLabel, statusPad, "", agent, model, dir, started)
 			}
 			return nil
 		},
@@ -398,6 +430,7 @@ func orchestratorInfoCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("orchestrator not found: %w", err)
 			}
+			refreshDurableOrchestratorStatuses(cs, []*crew.Orchestrator{orch}, crew.PaneIsDead)
 
 			agent := orch.Agent
 			if agent == "" {
@@ -411,8 +444,12 @@ func orchestratorInfoCmd() *cobra.Command {
 			if dir == "" {
 				dir = "-"
 			}
+			session := orch.TmuxSession
+			if session == "" {
+				session = "-"
+			}
 			fmt.Fprintf(os.Stdout, "Orchestrator: %s (session: %s, status: %s, agent: %s, model: %s, dir: %s, started: %s)\n\n",
-				orch.ID, orch.TmuxSession, orch.Status, agent, model, dir, relativeTime(orch.StartedAt))
+				orch.ID, session, orchestratorStatusLabel(orch.Status), agent, model, dir, relativeTime(orch.StartedAt))
 
 			gigStore, _ := openGigStore(cfg)
 			if gigStore != nil {
@@ -514,6 +551,143 @@ func orchestratorStopCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.ValidArgsFunction = orchestratorCompletion
+	return cmd
+}
+
+// refreshDurableOrchestratorStatuses recomputes and persists the live status
+// of durable identities (TmuxSession == "") in orchs, mutating them in
+// place. See crew.DeriveDurableOrchestratorStatus for the derivation rule.
+// Session-bound orchestrators (TmuxSession != "", `orchestrator start`) are
+// left untouched here — crew.Refresh already reconciles those. paneIsDead is
+// injected (production call sites pass crew.PaneIsDead) so this is
+// unit-testable without a real tmux.
+func refreshDurableOrchestratorStatuses(cs *crew.Store, orchs []*crew.Orchestrator, paneIsDead func(string) (bool, error)) {
+	for _, o := range orchs {
+		if o.TmuxSession != "" {
+			continue
+		}
+		status := crew.DeriveDurableOrchestratorStatus(o, paneIsDead)
+		if status != o.Status {
+			if err := cs.UpdateOrchestratorStatus(o.ID, status); err == nil {
+				o.Status = status
+			}
+		}
+	}
+}
+
+// orchestratorStatusLabel returns a colored, iconed status string for
+// orchestrator identities, distinguishing registered/running/stopped at a
+// glance — the whole point of #86 is that registered and running used to be
+// indistinguishable.
+func orchestratorStatusLabel(status string) string {
+	switch status {
+	case crew.OrchStatusRunning:
+		return colorize(cGreen+cBold, "● running")
+	case crew.OrchStatusRegistered:
+		return colorize(cDim, "◌ registered")
+	case crew.OrchStatusStopped:
+		return colorize(cYellow, "■ stopped")
+	default:
+		return status
+	}
+}
+
+// identityFileForOrchestrator locates the on-disk identity file backing an
+// orchestrator row, if any. Orchestrators created by `orchestrator start`
+// have no identity file (Dir is empty); durable identities from
+// `orchestrator init` may be a per-project or a global file — rather than
+// guessing from Dir alone (a project happening to root at the JEFF home
+// would misclassify), it checks both candidate paths and confirms by
+// content: the file's own id must match.
+func identityFileForOrchestrator(o *crew.Orchestrator) (string, bool) {
+	if o.Dir == "" {
+		return "", false
+	}
+	for _, candidate := range []string{identity.ProjectFilePath(o.Dir), identity.GlobalFilePathIn(o.Dir)} {
+		if id, err := identity.Read(candidate); err == nil && id.ID == o.ID {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+// isLiveWorkerStatus reports whether a worker session status means the
+// worker may still be running (mirrors crew's unexported isActiveStatus;
+// duplicated locally rather than exporting across the crew/lifecycle.go
+// ownership boundary for one predicate).
+func isLiveWorkerStatus(status string) bool {
+	return status == "running" || status == "starting"
+}
+
+func orchestratorRmCmd() *cobra.Command {
+	var force bool
+
+	cmd := &cobra.Command{
+		Use:   "rm <orchestrator-id>",
+		Short: "Remove an orchestrator identity (identity file + DB row)",
+		Long: `Deregister an orchestrator identity: deletes its on-disk identity file
+(if any) and its DB row.
+
+Refuses when the orchestrator has live workers bound to it, since
+deregistering it would orphan them — pass --force to remove anyway.
+
+This does not stop a running orchestrator or its workers; use
+'jeff orchestrator stop' for that first if it's still live.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
+
+			cs, err := crew.Open(cfg.Home)
+			if err != nil {
+				return err
+			}
+			defer cs.Close()
+
+			orch, err := cs.GetOrchestrator(args[0])
+			if err != nil {
+				return fmt.Errorf("orchestrator not found: %w", err)
+			}
+
+			workers, err := cs.WorkersForOrchestrator(orch.ID)
+			if err != nil {
+				return fmt.Errorf("list workers: %w", err)
+			}
+			var liveTaskIDs []string
+			for _, w := range workers {
+				if isLiveWorkerStatus(w.Status) {
+					liveTaskIDs = append(liveTaskIDs, w.TaskID)
+				}
+			}
+			if len(liveTaskIDs) > 0 && !force {
+				return fmt.Errorf("orchestrator %s has %d live worker(s) bound: %s\nRemoving it would orphan them. Re-run with --force to remove anyway",
+					orch.ID, len(liveTaskIDs), strings.Join(liveTaskIDs, ", "))
+			}
+
+			removedFile := false
+			if path, ok := identityFileForOrchestrator(orch); ok {
+				if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+					fmt.Fprintf(os.Stderr, "Warning: remove identity file %s: %v\n", path, err)
+				} else {
+					removedFile = true
+				}
+			}
+
+			if err := cs.DeleteOrchestrator(orch.ID); err != nil {
+				return fmt.Errorf("remove orchestrator row: %w", err)
+			}
+
+			fmt.Printf("Removed orchestrator %s\n", orch.ID)
+			if removedFile {
+				fmt.Println("  deleted identity file")
+			}
+			if len(liveTaskIDs) > 0 {
+				fmt.Fprintf(os.Stderr, "  WARNING: orphaned %d live worker(s): %s\n", len(liveTaskIDs), strings.Join(liveTaskIDs, ", "))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&force, "force", false, "remove even if live workers are bound")
 	cmd.ValidArgsFunction = orchestratorCompletion
 	return cmd
 }

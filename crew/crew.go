@@ -495,6 +495,56 @@ func (s *Store) UpdateOrchestratorStatus(id, status string) error {
 	return err
 }
 
+// DeleteOrchestrator removes an orchestrator's row entirely (used by
+// `jeff orchestrator rm`). Callers are responsible for checking and warning
+// about bound live workers first — this only removes the DB row, it does not
+// touch sessions.orchestrator_id on any worker rows that referenced it.
+func (s *Store) DeleteOrchestrator(id string) error {
+	_, err := s.db.Exec(`DELETE FROM orchestrators WHERE id = ?`, id)
+	return err
+}
+
+// Orchestrator status values (#86: derived from reality, not stored as a
+// wish). A durable identity (TmuxSession == "", created by `orchestrator
+// init` rather than `orchestrator start`) has three honest states; a
+// tmux-session-bound orchestrator (`orchestrator start`) uses only Running/
+// Stopped, reconciled by Refresh.
+const (
+	// OrchStatusRegistered: an identity exists on disk; no process is bound
+	// to it. This is a real, useful state on its own — not a bug — for a
+	// durable identity created outside tmux (Cursor, VS Code, a plain
+	// terminal, CI) that survives shell restarts.
+	OrchStatusRegistered = "registered"
+	// OrchStatusRunning: a live tmux pane hosts it (pane probe says alive).
+	OrchStatusRunning = "running"
+	// OrchStatusStopped: it ran and its pane is gone.
+	OrchStatusStopped = "stopped"
+)
+
+// DeriveDurableOrchestratorStatus computes the live status of a durable
+// orchestrator identity — one with no bound tmux session (TmuxSession == "",
+// created by `orchestrator init` rather than `orchestrator start`; a
+// session-bound orchestrator is Refresh's territory and reconciled there).
+//
+// Mirrors the pane-probe pattern Refresh uses for workers: a probe error is
+// "unknown, not death" and never downgrades a live-looking orchestrator to
+// stopped on a single transient tmux hiccup — it returns o.Status unchanged.
+// paneIsDead is injected (pass PaneIsDead in production) so this is
+// unit-testable without a real tmux.
+func DeriveDurableOrchestratorStatus(o *Orchestrator, paneIsDead func(target string) (bool, error)) string {
+	if o.TmuxPane == "" {
+		return OrchStatusRegistered
+	}
+	dead, err := paneIsDead(o.TmuxPane)
+	if err != nil {
+		return o.Status
+	}
+	if dead {
+		return OrchStatusStopped
+	}
+	return OrchStatusRunning
+}
+
 // WorkersForOrchestrator returns sessions belonging to an orchestrator.
 func (s *Store) WorkersForOrchestrator(orchestratorID string) ([]*Session, error) {
 	query := `SELECT task_id, tmux_session, window_name, tmux_pane, task_dir, persona, COALESCE(agent, ''), COALESCE(model, ''), repos,

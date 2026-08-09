@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // DefaultTaskIDPrefix is gig's default task-ID prefix. gig treats the prefix as
@@ -149,6 +150,31 @@ func makeSlug(taskID, title string) string {
 	return taskID + "-" + slug
 }
 
+// taskIDPatternCache memoizes the compiled pattern per prefix. ExtractTaskID
+// runs once per directory entry in List/ListActive/taskWorkspaces, and the
+// prefix is effectively constant within a process (one gig store), so
+// recompiling the same pattern on every call is pure waste (#105).
+var (
+	taskIDPatternCacheMu sync.RWMutex
+	taskIDPatternCache   = make(map[string]*regexp.Regexp)
+)
+
+func taskIDPatternFor(prefix string) *regexp.Regexp {
+	taskIDPatternCacheMu.RLock()
+	re, ok := taskIDPatternCache[prefix]
+	taskIDPatternCacheMu.RUnlock()
+	if ok {
+		return re
+	}
+
+	re = regexp.MustCompile(`^(` + regexp.QuoteMeta(prefix) + `-[a-z0-9]+(?:\.[0-9]+)*)`)
+
+	taskIDPatternCacheMu.Lock()
+	taskIDPatternCache[prefix] = re
+	taskIDPatternCacheMu.Unlock()
+	return re
+}
+
 // ExtractTaskID pulls the gig task ID from a slug or full path
 // (e.g., "gig-ab12-some-title" → "gig-ab12", "/path/to/tasks/gig-ab12-foo" → "gig-ab12").
 // prefix is the gig store's configured task-ID prefix; "" means
@@ -163,8 +189,7 @@ func ExtractTaskID(slugOrPath, prefix string) string {
 	// Use just the base name if a full path is given.
 	slug := filepath.Base(slugOrPath)
 	// Match <prefix>-XXXX or <prefix>-XXXX.N patterns at the start.
-	re := regexp.MustCompile(`^(` + regexp.QuoteMeta(prefix) + `-[a-z0-9]+(?:\.[0-9]+)*)`)
-	m := re.FindString(slug)
+	m := taskIDPatternFor(prefix).FindString(slug)
 	if m != "" {
 		return m
 	}

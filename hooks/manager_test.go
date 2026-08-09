@@ -152,6 +152,52 @@ func TestSyncPreservesUnknownHooks(t *testing.T) {
 	}
 }
 
+// TestSyncRemovesOrphanedJeffManagedHook reproduces gig-1d9d.16 rule 3: a hook
+// removed from the registry (e.g. the old inbox-check.sh poll) must actually
+// disappear from a task dir on the next sync, not linger forever because
+// Sync's uninstall pass only ever considered hooks still declared by the
+// registry. TestSyncPreservesUnknownHooks (above) must keep passing alongside
+// this — a script we never generated (no version marker) is never touched.
+func TestSyncRemovesOrphanedJeffManagedHook(t *testing.T) {
+	dir := t.TempDir()
+	ctx := HookContext{JeffHome: dir, TargetDir: dir}
+
+	// Simulate a hook that used to be in the registry: install it for real
+	// (writes the script with jeff's version marker + a settings.json entry).
+	// Then sync with a registry that no longer declares it at all — exactly
+	// what removing a hook from builtinHooks() looks like on an existing dir.
+	legacy := &Hook{
+		Name:    "legacy-hook",
+		Source:  SourceTask,
+		Event:   "PostToolUse",
+		Matcher: "*",
+		Scripts: map[string]func(ctx HookContext) string{
+			"claude": func(ctx HookContext) string { return "#!/bin/bash\necho legacy" },
+		},
+	}
+	if err := installClaudeScript(legacy, dir, ctx, legacy.Scripts["claude"], claudeSettingsPath(dir)); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := NewManager(testRegistry()) // does NOT contain legacy-hook
+	enabled := map[string]bool{"hook-a": true}
+	if err := mgr.Sync(dir, enabled, "claude", ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(scriptPath(dir, "legacy-hook")); !os.IsNotExist(err) {
+		t.Error("legacy-hook script should be removed by Sync — the registry no longer declares it")
+	}
+	settings, err := readSettingsFile(claudeSettingsPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hooksMap, _ := settings["hooks"].(map[string]any)
+	if postToolUse, ok := hooksMap["PostToolUse"]; ok {
+		t.Errorf("legacy-hook settings.json entry should be removed by Sync: %v", postToolUse)
+	}
+}
+
 func TestInstallNotFound(t *testing.T) {
 	mgr := NewManager(NewRegistry())
 	ctx := HookContext{}

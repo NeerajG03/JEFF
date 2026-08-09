@@ -70,6 +70,18 @@ func TestTaskHookSources(t *testing.T) {
 	}
 }
 
+// TestWorkerHeartbeatMatcherIsNarrowed is part A(a) of gig-1d9d.16.2: the
+// heartbeat's only consumer (hasFreshHeartbeat, a 10-minute threshold) doesn't
+// need a subprocess exec after every single tool call — narrowing the matcher
+// from "*" to the tools that actually represent worker activity cuts the
+// oversampling without losing signal within the 10-minute window.
+func TestWorkerHeartbeatMatcherIsNarrowed(t *testing.T) {
+	h := workerHeartbeatHook()
+	if h.Matcher != "Bash|Edit|Write" {
+		t.Errorf("worker-heartbeat matcher = %q, want %q", h.Matcher, "Bash|Edit|Write")
+	}
+}
+
 func TestTaskContextHookIncludesTaskID(t *testing.T) {
 	ctx := HookContext{TaskID: "gig-ab12"}
 	h := taskContextHook()
@@ -259,5 +271,68 @@ func TestOrchestratorInboxIsSessionStartReplay(t *testing.T) {
 	}
 	if !strings.Contains(script, `"SessionStart"`) {
 		t.Errorf("orchestrator-inbox must emit SessionStart hookEventName:\n%s", script)
+	}
+}
+
+// TestSyncRemovesStalePostToolUseRegistration reproduces the live-home drift
+// (gig-1d9d.16.1): orchestrator-inbox.sh is registered under SessionStart
+// (correct, matching builtin.go) AND under a stale leftover PostToolUse block
+// (from an older polling-era registration this hook's own doc comment calls
+// "the double-delivery"). Re-syncing must remove the registration the registry
+// no longer declares for this hook, leaving only the correct SessionStart entry.
+func TestSyncRemovesStalePostToolUseRegistration(t *testing.T) {
+	dir := t.TempDir()
+	sp := settingsPath(dir)
+
+	staleCommand := scriptPath(dir, "orchestrator-inbox")
+	settings := map[string]any{
+		"hooks": map[string]any{
+			"SessionStart": []any{
+				map[string]any{
+					"matcher": "*",
+					"hooks": []any{
+						map[string]any{"type": "command", "command": staleCommand, "timeout": 5},
+					},
+				},
+			},
+			"PostToolUse": []any{
+				map[string]any{
+					"matcher": "*",
+					"hooks": []any{
+						map[string]any{"type": "command", "command": staleCommand, "timeout": 5},
+					},
+				},
+			},
+		},
+	}
+	if err := writeSettingsFile(sp, settings); err != nil {
+		t.Fatal(err)
+	}
+
+	reg := DefaultRegistry()
+	mgr := NewManager(reg)
+	ctx := HookContext{JeffHome: dir, TargetDir: dir, OrchestratorID: "jeff-1"}
+	enabled := EnabledForSource(nil, SourceHome, reg)
+	if err := mgr.Sync(dir, enabled, "claude", ctx); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	got, err := readSettingsFile(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hooksMap, _ := got["hooks"].(map[string]any)
+	if postToolUse, ok := hooksMap["PostToolUse"]; ok {
+		t.Errorf("stale PostToolUse registration for orchestrator-inbox survived sync-hooks: %v", postToolUse)
+	}
+	sessionStart, _ := hooksMap["SessionStart"].([]any)
+	found := false
+	for _, b := range sessionStart {
+		if blockContainsScript(b, "orchestrator-inbox.sh") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("orchestrator-inbox SessionStart registration missing after sync-hooks")
 	}
 }

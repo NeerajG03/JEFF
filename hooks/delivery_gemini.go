@@ -55,6 +55,10 @@ func (d *geminiDelivery) Installed(targetDir string) []string {
 	return installedClaudeHooks(targetDir)
 }
 
+func (d *geminiDelivery) IsManaged(targetDir, name string) bool {
+	return scriptHasVersionMarker(scriptPath(targetDir, name))
+}
+
 // geminiSettingsPath returns the .gemini/settings.json path.
 func geminiSettingsPath(targetDir string) string {
 	return filepath.Join(targetDir, ".gemini", "settings.json")

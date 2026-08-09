@@ -46,7 +46,6 @@ func crewCmd() *cobra.Command {
 		crewCleanupCmd(),
 		crewSignalOrchestratorCmd(),
 		crewWorkerStoppedCmd(),
-		crewCheckStallsCmd(),
 	)
 
 	return cmd
@@ -445,6 +444,13 @@ func crewResumeCmd() *cobra.Command {
 			if detected != "" {
 				orchestratorID = detected
 			}
+
+			// Re-sync task hooks now that the workspace is live again (gig-1d9d.16
+			// rule 3): hook scripts are generated once at pickup and never touched
+			// again on their own, so a hook removed from the registry since then
+			// stays armed in this task dir until something re-syncs it. `jeff work`
+			// already does this on its own resume path; `jeff crew resume` did not.
+			syncTaskHooks(cfg, td.Path, taskID, personaName, repos, orchestratorID)
 
 			// Build launch command via provider. Resume has no --safe flag
 			// (per plan); the safety posture always follows current config,
@@ -1330,40 +1336,6 @@ func crewWorkerStoppedCmd() *cobra.Command {
 			return crew.SignalWorkerStopped(cs, args[0])
 		},
 	}
-}
-
-func crewCheckStallsCmd() *cobra.Command {
-	var threshold string
-
-	cmd := &cobra.Command{
-		Use:   "check-stalls",
-		Short: "Check for stalled workers and signal their orchestrators",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			dur, err := time.ParseDuration(threshold)
-			if err != nil {
-				return fmt.Errorf("invalid threshold: %w", err)
-			}
-
-			cs, err := crew.Open(cfg.Home)
-			if err != nil {
-				return err
-			}
-			defer cs.Close()
-
-			n, err := crew.CheckStalls(cs, dur)
-			if err != nil {
-				return err
-			}
-
-			if n > 0 {
-				fmt.Fprintf(os.Stderr, "Signaled %d stalled worker(s)\n", n)
-			}
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&threshold, "threshold", crew.DefaultStallThreshold.String(), "Idle time before a worker is considered stalled")
-	return cmd
 }
 
 // crewStatusLabel returns a colored status string for crew sessions.

@@ -58,12 +58,21 @@ func (m *Manager) Sync(targetDir string, enabled map[string]bool, deliveryKey st
 		}
 	}
 
-	// Uninstall extra (only hooks known to our registry).
+	// Uninstall extra hooks: ones still known to the registry but disabled,
+	// and orphans — installed artifacts the registry has dropped entirely
+	// (e.g. a hook deleted from builtinHooks()). An orphan is only removed
+	// when jeff generated it (IsManaged); a genuinely external hook that
+	// happens to share a name is never touched.
 	for name := range installed {
-		if !enabled[name] && m.registry.Get(name) != nil {
-			if err := d.Uninstall(name, targetDir); err != nil {
-				return fmt.Errorf("uninstall hook %s: %w", name, err)
-			}
+		if enabled[name] {
+			continue
+		}
+		known := m.registry.Get(name) != nil
+		if !known && !d.IsManaged(targetDir, name) {
+			continue
+		}
+		if err := d.Uninstall(name, targetDir); err != nil {
+			return fmt.Errorf("uninstall hook %s: %w", name, err)
 		}
 	}
 

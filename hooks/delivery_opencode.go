@@ -37,3 +37,9 @@ func (d *opencodeDelivery) Installed(targetDir string) []string {
 	// OpenCode doesn't have individual hook files — return nil.
 	return nil
 }
+
+func (d *opencodeDelivery) IsManaged(targetDir, name string) bool {
+	// Never consulted: Installed always returns nil for OpenCode, since the
+	// combined plugin is fully regenerated from enabled hooks on every sync.
+	return false
+}

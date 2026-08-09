@@ -99,6 +99,16 @@ func addHookToSettings(settings map[string]any, event, matcher, scriptPath strin
 		hooksMap = make(map[string]any)
 	}
 
+	scriptName := filepath.Base(scriptPath)
+
+	// A hook is only ever declared under ONE event by the registry. Any
+	// registration of this script under a DIFFERENT event is stale — e.g. a
+	// leftover from a prior version of the hook that registered on a second
+	// event later dropped (gig-1d9d.16.1). Purge those before (re)installing
+	// under the current event, so re-syncing actually converges settings.json
+	// to what the registry declares instead of only ever adding to it.
+	removeScriptFromOtherEvents(hooksMap, event, scriptName)
+
 	eventRaw := hooksMap[event]
 	var eventBlocks []any
 	if arr, ok := eventRaw.([]any); ok {
@@ -111,7 +121,6 @@ func addHookToSettings(settings map[string]any, event, matcher, scriptPath strin
 	// forever, unfixable by any sync (part of #84). Refresh the command instead of
 	// returning: idempotent when the path is already right, self-healing when the
 	// home moved.
-	scriptName := filepath.Base(scriptPath)
 	if hasHook(eventBlocks, scriptName) {
 		refreshHookCommand(eventBlocks, scriptName, scriptPath)
 		hooksMap[event] = eventBlocks
@@ -132,6 +141,32 @@ func addHookToSettings(settings map[string]any, event, matcher, scriptPath strin
 	eventBlocks = append(eventBlocks, block)
 	hooksMap[event] = eventBlocks
 	settings["hooks"] = hooksMap
+}
+
+// removeScriptFromOtherEvents strips any block referencing scriptName from
+// every event key in hooksMap except keepEvent. Empty event arrays left behind
+// are removed entirely, matching removeHookFromSettings' cleanup behavior.
+func removeScriptFromOtherEvents(hooksMap map[string]any, keepEvent, scriptName string) {
+	for event, eventRaw := range hooksMap {
+		if event == keepEvent {
+			continue
+		}
+		arr, ok := eventRaw.([]any)
+		if !ok {
+			continue
+		}
+		var filtered []any
+		for _, b := range arr {
+			if !blockContainsScript(b, scriptName) {
+				filtered = append(filtered, b)
+			}
+		}
+		if len(filtered) == 0 {
+			delete(hooksMap, event)
+		} else {
+			hooksMap[event] = filtered
+		}
+	}
 }
 
 // removeHookFromSettings removes entries matching scriptName from all events.

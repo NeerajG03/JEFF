@@ -335,6 +335,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 INPUT=$(cat)
+echo "$INPUT" | jq -e . >/dev/null 2>&1 || INPUT='{}'
 
 # Extract the command from tool input.
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // ""')
@@ -451,7 +452,10 @@ INPUT=$(cat)
 # worker's pane was dead. Live-delivered messages were acked at send time, so in
 # the normal case this is empty and nothing is re-surfaced.
 PENDING=$(jeff crew inbox ` + shellQuote(taskID) + ` --count 2>/dev/null || echo "0")
-[ "$PENDING" = "0" ] && exit 0
+if [ "$PENDING" = "0" ]; then
+  echo '{}'
+  exit 0
+fi
 
 # --format agent frames + acks, so each row replays exactly once.
 MESSAGES=$(jeff crew inbox ` + shellQuote(taskID) + ` --format agent 2>/dev/null)
@@ -470,14 +474,20 @@ jq -n \
 
 // --- Signal hooks ---
 
-// workerHeartbeatHook fires after every tool use in a worker session.
-// It touches the session's last_seen timestamp as a heartbeat signal.
+// workerHeartbeatHook fires after Bash/Edit/Write tool use in a worker
+// session. It touches the session's last_seen timestamp as a heartbeat
+// signal. Narrowed from matcher "*" (gig-1d9d.16.2): last_seen only feeds a
+// 10-minute threshold (hasFreshHeartbeat), so a subprocess exec after every
+// single tool call — including read-only ones — was ~1000x oversampling.
+// Bash/Edit/Write still cover the cadence a working session naturally has
+// within that window; the script itself also debounces (see
+// buildWorkerHeartbeatScript).
 func workerHeartbeatHook() *Hook {
 	return &Hook{
 		Name:    "worker-heartbeat",
 		Source:  SourceTask,
 		Event:   "PostToolUse",
-		Matcher: "*",
+		Matcher: "Bash|Edit|Write",
 		Timeout: 3,
 		Scripts: bashBoth(
 			func(ctx HookContext) string {
@@ -507,8 +517,28 @@ set -euo pipefail
 
 INPUT=$(cat)
 
-# Touch last_seen as heartbeat signal.
-# Stall detection is handled by jeff daemon, not here.
+# Debounce (gig-1d9d.16.2): skip the exec when the sentinel shows a touch
+# happened within the last 60s. A DB round-trip to check this would defeat the
+# purpose, so this uses the sentinel file's own mtime instead. Guard for the
+# file not existing (first call in this task dir, or after a stale one is
+# cleared) — that always touches.
+SENTINEL="$(pwd)/.heartbeat"
+if [ -f "$SENTINEL" ]; then
+  NOW=$(date +%s)
+  LAST=$(stat -f %m "$SENTINEL" 2>/dev/null || stat -c %Y "$SENTINEL" 2>/dev/null || echo 0)
+  if [ $((NOW - LAST)) -lt 60 ]; then
+    echo '{}'
+    exit 0
+  fi
+fi
+touch "$SENTINEL" 2>/dev/null || true
+
+# Touch last_seen as heartbeat signal. Nothing currently reads it for stall
+# detection: crew.CheckStalls existed but was reachable only via a hidden,
+# unscheduled CLI command and never fired in practice, so it was removed as
+# dead code (gig-1d9d.16.3). last_seen still feeds the hasFreshHeartbeat veto
+# in Refresh() (lifecycle.go), which is why this hook stays. A hung-but-alive
+# worker going unreported is a known, deliberately accepted gap — see gig-1d9d.18.
 jeff crew touch ` + shellQuote(taskID) + ` 2>/dev/null || true
 
 echo '{}'
@@ -580,6 +610,7 @@ echo '{}'
 set -euo pipefail
 
 INPUT=$(cat)
+echo "$INPUT" | jq -e . >/dev/null 2>&1 || INPUT='{}'
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // ""')
 
 if [ -z "$SESSION_ID" ]; then
@@ -656,7 +687,10 @@ elif [ -n "${TMUX:-}" ]; then
     ORCH_ID="$SESSION_NAME"
   fi
 fi
-[ -z "$ORCH_ID" ] && exit 0`
+if [ -z "$ORCH_ID" ]; then
+  echo '{}'
+  exit 0
+fi`
 	}
 
 	return `#!/bin/bash
@@ -674,7 +708,10 @@ INPUT=$(cat)
 # while this orchestrator's pane was dead. Live-delivered signals were acked at
 # send time, so in the normal case this is empty.
 PENDING=$(jeff crew orchestrator-inbox "$ORCH_ID" --count 2>/dev/null || echo "0")
-[ "$PENDING" = "0" ] && exit 0
+if [ "$PENDING" = "0" ]; then
+  echo '{}'
+  exit 0
+fi
 
 # --format agent frames + acks, so each row replays exactly once.
 MESSAGES=$(jeff crew orchestrator-inbox "$ORCH_ID" --format agent 2>/dev/null)

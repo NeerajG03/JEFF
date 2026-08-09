@@ -100,3 +100,23 @@ func TaskHooksStale(dir string) bool {
 	}
 	return true
 }
+
+// scriptHasVersionMarker reports whether the file at path carries jeff's
+// "# jeff-hook-version: " marker line, i.e. jeff itself generated it at some
+// point (any version — this is an ownership check, not a staleness check).
+// A missing or unreadable file is never ours.
+func scriptHasVersionMarker(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for i := 0; i < 3 && scanner.Scan(); i++ {
+		if strings.HasPrefix(scanner.Text(), "# jeff-hook-version: ") {
+			return true
+		}
+	}
+	return false
+}

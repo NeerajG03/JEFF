@@ -159,6 +159,42 @@ Rules:
    worktree without `--force`. An unreachable gig store means "not terminal", so a
    store failure can never cause a deletion.
 
+## Matching paths — the house failure mode
+
+Four separate defects here have had one shape: **match a path coarsely, then
+mutate on the match.** Three were caught only in review, none by tests. Assume
+the fifth is in whatever you are writing now.
+
+| | Matched | Then | Consequence |
+|---|---|---|---|
+| #95 | script **basename** | rewrote the entry | silently rewrote a user's own hook |
+| #96 | gig id **anywhere in a path** | deleted the worktree | could delete a live worktree for an open task |
+| #106 | script **basename**, cross-event | deleted the block | deleted a user's hand-registered hook outright |
+| gig-0459 | `hotfix` as a **substring** | renamed the branch | would misfire on 5 real branches in our own repos |
+
+The rules, in order of how often they would have saved us:
+
+1. **Match whole path segments, never substrings.** `feature/CB-8888_workflow_status_hotfix`
+   is not a hotfix branch. `worktrees/gig-app/jeff/gig-b222-x` does not belong to
+   `gig-app`. Split on the separator and compare segments; if you find yourself
+   reaching for `strings.Contains` on a path, stop.
+2. **Scope the match to the part you mean.** A worktree path is
+   `<worktrees>/<repo>/<branch...>`; a task id lives in the *branch* portion, so
+   match there and nowhere else (`taskIDForWorktree`). Rejecting a path that
+   escapes the root matters too — `filepath.Rel` will happily hand you a `../..`
+   walk that still matches.
+3. **Before mutating something you did not write, prove you own it.**
+   `isRepairableHookRef` and `isJeffOwnedCrossEventRef` are the pattern: absolute
+   path, under our layout, and carrying our marker (or demonstrably dangling).
+   A live file someone else owns is never yours to rewrite or delete.
+4. **Prefer the failure direction that leaks over the one that loses.** Under-
+   deleting leaves garbage a later sweep collects; over-deleting destroys work.
+   When the ownership test is uncertain, do nothing.
+5. **Test the collision, not just the happy path.** Every one of the four shipped
+   with tests that passed, because the fixtures never contained a same-key
+   different-owner case. Construct one deliberately: a foreign file sharing a
+   basename, a repo named like a task id, a branch containing the keyword.
+
 ## Config (jeff.json)
 
 ```json
@@ -208,6 +244,7 @@ Each package has a `CLAUDE.md` with types, file roles, and extension patterns:
 - Don't pass `$HOME` where a JEFF home is wanted — they are different things.
 - Don't delete a task workspace on close — retire it (see above); a live session lives there.
 - Don't use `workspace.List` to show active work — use `ListActive`.
+- Don't match a path with `strings.Contains` — see "Matching paths" above.
 - Don't re-tag released versions — Go module proxy caches checksums.
 
 ## Personas

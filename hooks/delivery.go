@@ -1,6 +1,9 @@
 package hooks
 
-import "sync"
+import (
+	"sort"
+	"sync"
+)
 
 // Delivery abstracts agent-specific hook installation.
 // Each agent CLI has its own mechanism for running hooks
@@ -31,6 +34,18 @@ type Delivery interface {
 	// see scriptHasVersionMarker's doc comment for the known limitation and
 	// why it fails safe.
 	IsManaged(targetDir, name string) bool
+
+	// EventName maps a Hook's canonical (Claude Code) Event to the name this
+	// delivery's own event system uses — e.g. Gemini's PostToolUse -> AfterTool
+	// (geminiEventName). A delivery that reuses Claude's event names unchanged
+	// returns claudeEvent verbatim.
+	//
+	// This exists so a script shared across deliveries (bashBoth) can be
+	// checked generically: any hookSpecificOutput.hookEventName it embeds must
+	// equal ITS delivery's EventName(h.Event), not h.Event literally — a
+	// hardcoded literal is valid JSON but the wrong contract under any
+	// delivery whose mapping differs from Claude's (#106 follow-up).
+	EventName(claudeEvent string) string
 }
 
 var (
@@ -53,4 +68,20 @@ func GetDelivery(key string) Delivery {
 	deliveriesMu.RLock()
 	defer deliveriesMu.RUnlock()
 	return deliveries[key]
+}
+
+// DeliveryKeys returns the ScriptKeys of every registered delivery, sorted.
+// Code that must cover every delivery (e.g. a contract test) should iterate
+// this instead of a hardcoded list of names, so a newly registered delivery
+// is covered the day it registers rather than the day someone remembers to
+// update a switch statement.
+func DeliveryKeys() []string {
+	deliveriesMu.RLock()
+	defer deliveriesMu.RUnlock()
+	keys := make([]string, 0, len(deliveries))
+	for k := range deliveries {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

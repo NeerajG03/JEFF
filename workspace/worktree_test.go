@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NeerajG03/JEFF/internal/gitutil"
 	"github.com/NeerajG03/JEFF/internal/testutil"
 )
 
@@ -276,6 +278,79 @@ func TestWorktreeAddLocalBranchPrecedenceOverRemoteName(t *testing.T) {
 	if string(got) != "local-shared\n" {
 		t.Errorf("expected local branch 'origin/shared' to take precedence, got f = %q", got)
 	}
+}
+
+// TestResolveBaseRef_AmbiguityIsPrinted is hardy's PR #107 review nit: the
+// PR sets a transparency standard (hotfix-prefix inference always prints
+// its rename, gig-0459) and then picked the local-branch-vs-remote-ref
+// ambiguity winner silently — a print naming which ref won closes that gap.
+func TestResolveBaseRef_AmbiguityIsPrinted(t *testing.T) {
+	home := testutil.TempHome(t, "tasks")
+	repoDir := setupGitRepo(t, home, "repo1")
+	remoteDir, run := addFileRemote(t, repoDir)
+	run(remoteDir, "checkout", "-q", "-b", "shared")
+	run(remoteDir, "commit", "-q", "--allow-empty", "-m", "remote shared")
+
+	localRun := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	localRun("checkout", "-q", "-b", "origin/shared")
+	localRun("commit", "-q", "--allow-empty", "-m", "local origin/shared")
+	localRun("checkout", "-q", "main")
+
+	stderr := captureStderr(t, func() {
+		if err := gitutil.Run(repoDir, "fetch", "origin"); err != nil {
+			t.Fatalf("fetch: %v", err)
+		}
+		resolveBaseRef(repoDir, "origin/shared")
+	})
+	if !strings.Contains(stderr, "ambiguous") || !strings.Contains(stderr, "origin/shared") {
+		t.Errorf("expected an ambiguity message naming origin/shared, got: %q", stderr)
+	}
+}
+
+// TestResolveBaseRef_NoAmbiguitySilent guards against the print firing on
+// the common case: a local branch with no colliding remote-tracking ref
+// (e.g. a slashed local branch, gig-1553) must resolve silently.
+func TestResolveBaseRef_NoAmbiguitySilent(t *testing.T) {
+	home := testutil.TempHome(t, "tasks")
+	repoDir := setupGitRepo(t, home, "repo1")
+	cmd := exec.Command("git", "branch", "cb-15329/propagation-in-publish")
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git branch: %v\n%s", err, out)
+	}
+
+	stderr := captureStderr(t, func() {
+		resolveBaseRef(repoDir, "cb-15329/propagation-in-publish")
+	})
+	if strings.Contains(stderr, "ambiguous") {
+		t.Errorf("expected no ambiguity message for a non-colliding local branch, got: %q", stderr)
+	}
+}
+
+// captureStderr redirects os.Stderr for the duration of fn and returns what
+// was written to it.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := os.Stderr
+	os.Stderr = w
+	fn()
+	os.Stderr = orig
+	w.Close()
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatal(err)
+	}
+	return buf.String()
 }
 
 func TestReadBaseBranch_Default(t *testing.T) {

@@ -43,7 +43,7 @@ type WorktreeOpts struct {
 	PostSetup  string // script to run after creation (optional)
 }
 
-const defaultBaseBranch = "origin/main"
+const DefaultBaseBranch = "origin/main"
 
 // WorktreeAdd creates a git worktree for the given repo and branch under
 // jeffHome/worktrees/<repo>/<branch>/, then symlinks it into the task directory.
@@ -57,7 +57,7 @@ func WorktreeAdd(opts WorktreeOpts) (string, error) {
 
 	baseBranch := opts.BaseBranch
 	if baseBranch == "" {
-		baseBranch = defaultBaseBranch
+		baseBranch = DefaultBaseBranch
 	}
 
 	wtDir := filepath.Join(opts.JeffHome, "worktrees", opts.RepoName, opts.Branch)
@@ -74,14 +74,27 @@ func WorktreeAdd(opts WorktreeOpts) (string, error) {
 	}
 
 	// Fetch remote if base branch references a remote (e.g. "origin/main").
+	// The first path segment is a remote name only if it actually names a
+	// configured remote — real branch names routinely contain slashes
+	// (e.g. "cb-15329/propagation-in-publish", "feature/x"), so splitting
+	// on "/" alone cannot tell a remote-qualified ref from a local branch
+	// that happens to contain one.
 	if remote, _, ok := strings.Cut(baseBranch, "/"); ok {
-		if err := gitutil.Run(repoDir, "fetch", remote); err != nil {
-			return "", err
+		if isConfiguredRemote(repoDir, remote) {
+			if err := gitutil.Run(repoDir, "fetch", remote); err != nil {
+				return "", err
+			}
 		}
 	}
 
-	// Create worktree branching from baseBranch.
-	if err := gitutil.Run(repoDir, "worktree", "add", wtDir, "-b", opts.Branch, baseBranch); err != nil {
+	// Create worktree branching from baseBranch. If a local branch happens
+	// to share baseBranch's full literal name with a remote-tracking ref
+	// (e.g. a local branch named "origin/shared" coexisting with remote
+	// "origin"'s "shared" branch), disambiguate explicitly in favor of the
+	// local branch — otherwise `git worktree add` refuses with "ambiguous
+	// object name" instead of picking one.
+	resolvedBase := resolveBaseRef(repoDir, baseBranch)
+	if err := gitutil.Run(repoDir, "worktree", "add", wtDir, "-b", opts.Branch, resolvedBase); err != nil {
 		// Branch may already exist — try without -b.
 		if err := gitutil.Run(repoDir, "worktree", "add", wtDir, opts.Branch); err != nil {
 			return "", fmt.Errorf("git worktree add: %w", err)
@@ -117,16 +130,43 @@ func writeBaseBranch(wtDir, baseBranch string) {
 	_ = os.WriteFile(filepath.Join(wtDir, ".jeff-base"), []byte(baseBranch+"\n"), 0o644)
 }
 
+// isConfiguredRemote reports whether name is one of repoDir's configured
+// git remotes (`git remote`).
+func isConfiguredRemote(repoDir, name string) bool {
+	out, err := gitutil.Output(repoDir, "remote")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if strings.TrimSpace(line) == name {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveBaseRef disambiguates baseBranch in favor of a local branch of the
+// same literal name, when one exists alongside a same-named remote-tracking
+// ref (e.g. local branch "origin/shared" vs. remote "origin"'s "shared").
+// Left as baseBranch unchanged otherwise, including when it isn't a branch
+// at all (a tag, a SHA, a bare remote-tracking ref with no local sibling).
+func resolveBaseRef(repoDir, baseBranch string) string {
+	if _, err := gitutil.Output(repoDir, "rev-parse", "--verify", "--quiet", "refs/heads/"+baseBranch); err == nil {
+		return "refs/heads/" + baseBranch
+	}
+	return baseBranch
+}
+
 // ReadBaseBranch reads the base branch from a worktree's .jeff-base file.
-// Returns defaultBaseBranch if the file doesn't exist.
+// Returns DefaultBaseBranch if the file doesn't exist.
 func ReadBaseBranch(wtDir string) string {
 	data, err := os.ReadFile(filepath.Join(wtDir, ".jeff-base"))
 	if err != nil {
-		return defaultBaseBranch
+		return DefaultBaseBranch
 	}
 	s := strings.TrimSpace(string(data))
 	if s == "" {
-		return defaultBaseBranch
+		return DefaultBaseBranch
 	}
 	return s
 }

@@ -49,6 +49,17 @@ func worktreeAddCmd() *cobra.Command {
 				}
 				opts.PostSetup = rc.PostSetup
 			}
+			effectiveBase := opts.BaseBranch
+			if effectiveBase == "" {
+				effectiveBase = workspace.DefaultBaseBranch
+			}
+			// Infer a hotfix/ prefix when the base is production/release-facing
+			// (gig-0459). Branch names end up in other people's PRs, so this is
+			// always printed, never silent.
+			if inferred, applied := workspace.InferHotfixBranch(effectiveBase, opts.Branch); applied {
+				fmt.Printf("base %s -> naming branch %s\n", effectiveBase, inferred)
+				opts.Branch = inferred
+			}
 
 			wtDir, err := workspace.WorktreeAdd(opts)
 			if err != nil {

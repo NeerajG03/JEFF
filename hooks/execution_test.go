@@ -531,3 +531,67 @@ func TestNoJq(t *testing.T) {
 		t.Errorf("expected degraded context, got: %v", ctx)
 	}
 }
+
+// TestWorkerHeartbeatDebounceGNUStat pins the debounce against GNU coreutils
+// behaviour, which broke `main` and could not be caught by any macOS-only run.
+//
+// BSD stat takes `-f %m`; GNU stat's `-f` means --file-system and takes no
+// argument, so `%m` is read as a FILENAME. That fails — triggering the `||`
+// fallback — but GNU still prints the sentinel's filesystem info to stdout
+// first, so LAST ended up as that text concatenated with the fallback's epoch.
+// `$((NOW - LAST))` then made bash evaluate "File" as a variable and `set -u`
+// aborted the hook:
+//
+//	heartbeat.sh: line 15: File: unbound variable
+//
+// A fake GNU-shaped stat on PATH reproduces it on any platform.
+func TestWorkerHeartbeatDebounceGNUStat(t *testing.T) {
+	requireBinaries(t, "bash")
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "touch.log")
+
+	if err := os.WriteFile(filepath.Join(dir, "jeff"),
+		[]byte("#!/bin/bash\necho \"$*\" >> "+logFile+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// GNU-shaped stat: -f prints filesystem info to STDOUT and exits non-zero;
+	// -c returns the epoch. This is the combination that broke.
+	gnuStat := "#!/bin/bash\n" +
+		"if [ \"$1\" = \"-f\" ]; then echo \"  File: \\\"$3\\\"\"; echo \"    ID: 0 Namelen: 255\"; exit 1; fi\n" +
+		"if [ \"$1\" = \"-c\" ]; then date +%s; exit 0; fi\n" +
+		"exit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "stat"), []byte(gnuStat), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+
+	script := workerHeartbeatHook().Scripts["claude"](HookContext{TaskID: "gig-123"})
+	scriptPath := filepath.Join(dir, "heartbeat.sh")
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	run := func() string {
+		t.Helper()
+		cmd := exec.Command("bash", scriptPath)
+		cmd.Dir = dir
+		cmd.Stdin = strings.NewReader(`{}`)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("script failed under GNU-shaped stat: %v\noutput: %s", err, out)
+		}
+		if !json.Valid(out) {
+			t.Errorf("output is not valid JSON: %s", out)
+		}
+		return string(out)
+	}
+
+	run() // creates the sentinel
+	run() // fresh sentinel: must skip, and must not abort on a non-numeric LAST
+
+	data, _ := os.ReadFile(logFile)
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 1 || lines[0] == "" {
+		t.Errorf("execs = %v, want exactly 1 (the debounce must work under GNU stat too)", lines)
+	}
+}

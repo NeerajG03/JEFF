@@ -474,20 +474,25 @@ jq -n \
 
 // --- Signal hooks ---
 
-// workerHeartbeatHook fires after Bash/Edit/Write tool use in a worker
-// session. It touches the session's last_seen timestamp as a heartbeat
-// signal. Narrowed from matcher "*" (gig-1d9d.16.2): last_seen only feeds a
-// 10-minute threshold (hasFreshHeartbeat), so a subprocess exec after every
-// single tool call — including read-only ones — was ~1000x oversampling.
-// Bash/Edit/Write still cover the cadence a working session naturally has
-// within that window; the script itself also debounces (see
-// buildWorkerHeartbeatScript).
+// workerHeartbeatHook fires after every tool use in a worker session and
+// touches the session's last_seen timestamp as a heartbeat signal.
+//
+// Matcher stays "*" (gig-1d9d.16.2 originally narrowed it to
+// "Bash|Edit|Write"; reverted per review — hardy traced that crew.Refresh
+// already independently touches last_seen on every run for any session whose
+// pane is alive, so hasFreshHeartbeat is only ever consulted once the pane is
+// confirmed dead or the window is gone. Narrowing the matcher bought nothing
+// against that path but did remove the only signal keeping last_seen fresh
+// during a long Read/Grep-only stretch with no Refresh call in between — the
+// exact false-`failed` class W1/#104 fixed, just re-opened on a narrower
+// window. The oversampling problem itself is fully solved by the debounce
+// below, which caps the exec rate regardless of which tools trigger it).
 func workerHeartbeatHook() *Hook {
 	return &Hook{
 		Name:    "worker-heartbeat",
 		Source:  SourceTask,
 		Event:   "PostToolUse",
-		Matcher: "Bash|Edit|Write",
+		Matcher: "*",
 		Timeout: 3,
 		Scripts: bashBoth(
 			func(ctx HookContext) string {

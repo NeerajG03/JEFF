@@ -105,6 +105,17 @@ func TaskHooksStale(dir string) bool {
 // "# jeff-hook-version: " marker line, i.e. jeff itself generated it at some
 // point (any version — this is an ownership check, not a staleness check).
 // A missing or unreadable file is never ours.
+//
+// Known limitation (PR #106 review, not blocking): this is presence-only, not
+// content-aware. A user who starts from a jeff-generated script, keeps the
+// header, and rewrites the body for their own purpose is still reported as
+// jeff-owned — jeff has no way to detect that authorship changed underneath
+// an unchanged marker line. The failure direction this produces is
+// under-deletion bias: on the two paths that consult this (Sync's orphaned-hook
+// removal and removeScriptFromOtherEvents' cross-event purge), the missing- or
+// malformed-marker case already fails safe by returning false, so the only
+// risk from this limitation is a leaked/stale entry surviving longer than it
+// should — never a live, independently-authored script being deleted.
 func scriptHasVersionMarker(path string) bool {
 	f, err := os.Open(path)
 	if err != nil {

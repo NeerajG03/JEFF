@@ -27,7 +27,9 @@ type Delivery interface {
 	// Sync uses this to decide whether an installed hook the registry no
 	// longer declares at all is safe to remove: a hook jeff once generated and
 	// later dropped from code (orphaned) vs. a user's own hook that happens to
-	// share a name (must never be touched).
+	// share a name (must never be touched). Presence-only, not content-aware —
+	// see scriptHasVersionMarker's doc comment for the known limitation and
+	// why it fails safe.
 	IsManaged(targetDir, name string) bool
 }
 

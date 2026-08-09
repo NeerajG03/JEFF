@@ -1,6 +1,8 @@
 package hooks
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -70,15 +72,22 @@ func TestTaskHookSources(t *testing.T) {
 	}
 }
 
-// TestWorkerHeartbeatMatcherIsNarrowed is part A(a) of gig-1d9d.16.2: the
-// heartbeat's only consumer (hasFreshHeartbeat, a 10-minute threshold) doesn't
-// need a subprocess exec after every single tool call — narrowing the matcher
-// from "*" to the tools that actually represent worker activity cuts the
-// oversampling without losing signal within the 10-minute window.
-func TestWorkerHeartbeatMatcherIsNarrowed(t *testing.T) {
+// TestWorkerHeartbeatMatcherStaysWildcard locks in a PR #106 review reversal:
+// gig-1d9d.16.2 originally narrowed the matcher to "Bash|Edit|Write" to cut
+// the ~1000x oversampling of a subprocess exec on every tool call. hardy
+// traced that crew.Refresh() already independently touches last_seen on every
+// run for any session whose pane is alive — hasFreshHeartbeat only matters
+// once the pane is confirmed dead or gone — so narrowing the matcher bought
+// nothing against that path, while removing the only signal keeping
+// last_seen fresh during a long Read/Grep-only stretch with no Refresh call
+// in between. That is a narrower reopening of the exact false-`failed` class
+// W1/#104 fixed. The debounce alone (buildWorkerHeartbeatScript) already caps
+// the exec rate regardless of which tools trigger it, so the matcher must
+// stay "*" — do not re-narrow it without re-litigating this tradeoff.
+func TestWorkerHeartbeatMatcherStaysWildcard(t *testing.T) {
 	h := workerHeartbeatHook()
-	if h.Matcher != "Bash|Edit|Write" {
-		t.Errorf("worker-heartbeat matcher = %q, want %q", h.Matcher, "Bash|Edit|Write")
+	if h.Matcher != "*" {
+		t.Errorf("worker-heartbeat matcher = %q, want %q (must fire on read-only tools too)", h.Matcher, "*")
 	}
 }
 
@@ -334,5 +343,69 @@ func TestSyncRemovesStalePostToolUseRegistration(t *testing.T) {
 	}
 	if !found {
 		t.Error("orchestrator-inbox SessionStart registration missing after sync-hooks")
+	}
+}
+
+// TestCrossEventPurgeNeverDeletesForeignHook is hardy's PR #106 review probe,
+// promoted to a permanent regression test. removeScriptFromOtherEvents (added
+// to fix the drift above) originally matched by basename alone — a user's own
+// hook hand-registered on any event, sharing a basename with one of jeff's
+// (e.g. their own "jeff-instructions.sh"), was silently deleted the next time
+// jeff synced a hook with that name on a different event. That is worse than
+// the #95 rewrite-by-basename bug this same file already guards against for
+// refreshHookCommand (deletion vs. rewrite), and TestSyncRemovesStale... above
+// cannot catch it — it only ever duplicates the SAME script path across
+// events, never a foreign one sharing a basename.
+func TestCrossEventPurgeNeverDeletesForeignHook(t *testing.T) {
+	dir := t.TempDir()
+	sp := settingsPath(dir)
+
+	// A live, hand-authored hook living OUTSIDE jeff's hooks/ layout, whose
+	// basename collides with jeff's own "jeff-instructions" hook (SessionStart).
+	foreignDir := t.TempDir()
+	foreignScript := filepath.Join(foreignDir, "jeff-instructions.sh")
+	if err := os.WriteFile(foreignScript, []byte("#!/bin/bash\necho mine\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	settings := map[string]any{
+		"hooks": map[string]any{
+			"Notification": []any{
+				map[string]any{
+					"matcher": "*",
+					"hooks": []any{
+						map[string]any{"type": "command", "command": foreignScript, "timeout": 5},
+					},
+				},
+			},
+		},
+	}
+	if err := writeSettingsFile(sp, settings); err != nil {
+		t.Fatal(err)
+	}
+
+	reg := DefaultRegistry()
+	mgr := NewManager(reg)
+	ctx := HookContext{JeffHome: dir, TargetDir: dir}
+	enabled := EnabledForSource(nil, SourceHome, reg)
+	if err := mgr.Sync(dir, enabled, "claude", ctx); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	got, err := readSettingsFile(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hooksMap, _ := got["hooks"].(map[string]any)
+	notification, ok := hooksMap["Notification"]
+	if !ok {
+		t.Fatal("user's Notification hook was deleted entirely by the cross-event purge")
+	}
+	arr, _ := notification.([]any)
+	if len(arr) != 1 || !blockContainsScript(arr[0], "jeff-instructions.sh") {
+		t.Errorf("user's Notification registration was altered: %v", notification)
+	}
+	if _, err := os.Stat(foreignScript); err != nil {
+		t.Errorf("user's foreign script was removed from disk: %v", err)
 	}
 }

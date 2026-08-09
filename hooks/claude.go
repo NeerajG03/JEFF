@@ -143,9 +143,23 @@ func addHookToSettings(settings map[string]any, event, matcher, scriptPath strin
 	settings["hooks"] = hooksMap
 }
 
-// removeScriptFromOtherEvents strips any block referencing scriptName from
-// every event key in hooksMap except keepEvent. Empty event arrays left behind
-// are removed entirely, matching removeHookFromSettings' cleanup behavior.
+// removeScriptFromOtherEvents strips any JEFF-OWNED block referencing
+// scriptName from every event key in hooksMap except keepEvent. Empty event
+// arrays left behind are removed entirely, matching removeHookFromSettings'
+// cleanup behavior.
+//
+// Ownership is required, not just a basename match: a user can hand-register
+// their own hook on any event, and it can legitimately share a basename with
+// one of jeff's (e.g. their own "jeff-instructions.sh" on Notification). This
+// function runs during a normal install of a DIFFERENT event's hook, so
+// deleting on basename alone would silently destroy that user's live
+// registration the next time jeff synced. See blockContainsOwnedScript.
+//
+// Coarse basename matching against a path, then MUTATING on the match, is a
+// recurring failure mode in this repo (#95: rewrite by basename; #96: a gig
+// id matched anywhere in a path instead of the branch segment; gig-0459: the
+// same class in hotfix inference). This is the deletion instance of it —
+// treat any new basename-keyed mutation here with the same suspicion.
 func removeScriptFromOtherEvents(hooksMap map[string]any, keepEvent, scriptName string) {
 	for event, eventRaw := range hooksMap {
 		if event == keepEvent {
@@ -157,7 +171,7 @@ func removeScriptFromOtherEvents(hooksMap map[string]any, keepEvent, scriptName 
 		}
 		var filtered []any
 		for _, b := range arr {
-			if !blockContainsScript(b, scriptName) {
+			if !blockContainsOwnedScript(b, scriptName) {
 				filtered = append(filtered, b)
 			}
 		}
@@ -267,6 +281,57 @@ func isRepairableHookRef(token, scriptName, scriptPath string) bool {
 		return false // still exists — someone owns it; never clobber a live hook
 	}
 	return true
+}
+
+// isJeffOwnedCrossEventRef reports whether a command token is a stale
+// cross-event registration of scriptName that jeff itself generated, and is
+// therefore safe for removeScriptFromOtherEvents to delete.
+//
+// Mirrors isRepairableHookRef's ownership tests (absolute, under jeff's
+// hooks/ layout) but inverts its "doesn't exist on disk" condition: that
+// function repairs a DANGLING reference, where nothing lives at the path, so
+// nothing is lost by rewriting it. Here the reference is almost always live
+// (either jeff's own duplicate registration, or, in the adversarial case, a
+// user's own hook that happens to share a basename) — so deletion additionally
+// requires the file to exist AND carry jeff's version marker (IsManaged). A
+// live foreign script must never be touched by this path, matching the
+// guarantee refreshHookCommand already gives the repair path.
+func isJeffOwnedCrossEventRef(token, scriptName string) bool {
+	if filepath.Base(token) != scriptName {
+		return false
+	}
+	if !filepath.IsAbs(token) {
+		return false
+	}
+	if filepath.Base(filepath.Dir(token)) != "hooks" {
+		return false // not jeff's <dir>/hooks/<name>.sh layout
+	}
+	return scriptHasVersionMarker(token)
+}
+
+// blockContainsOwnedScript is blockContainsScript's counterpart for deletion:
+// it only matches a command token that isJeffOwnedCrossEventRef confirms is
+// jeff's own, so a foreign hook sharing a basename is never reported as a
+// match and therefore never removed by removeScriptFromOtherEvents.
+func blockContainsOwnedScript(block any, scriptName string) bool {
+	bMap, ok := block.(map[string]any)
+	if !ok {
+		return false
+	}
+	hooksList, _ := bMap["hooks"].([]any)
+	for _, hk := range hooksList {
+		hkMap, ok := hk.(map[string]any)
+		if !ok {
+			continue
+		}
+		cmd, _ := hkMap["command"].(string)
+		for _, p := range strings.Fields(cmd) {
+			if isJeffOwnedCrossEventRef(p, scriptName) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // hasHook checks if a script is already present in event blocks.

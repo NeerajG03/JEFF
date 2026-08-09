@@ -61,7 +61,7 @@ func Teardown(store Store, cfg *jeff.Config, opts TeardownOpts) error {
 	}
 	// Resolve cleanups even when the attribute is empty or unreadable — repos
 	// attached mid-task may exist only as symlinks or on-disk worktrees (#98).
-	cleanups := resolveWorktreeCleanups(cfg.Home, opts.TaskID, repos, td, tdErr)
+	cleanups := resolveWorktreeCleanups(cfg.Home, opts.TaskID, storePrefix(store), repos, td, tdErr)
 
 	// 1. Dirty preflight across ALL repos before removing any.
 	if !opts.Force {
@@ -183,7 +183,7 @@ func retireWorkspace(cfg *jeff.Config, td *workspace.TaskDir, tdErr error, opts 
 //
 // Before #98 only the attribute was consulted, so a repo added mid-task closed
 // with the task but silently kept its worktree (and branch) on disk.
-func resolveWorktreeCleanups(jeffHome, taskID string, repos []string, td *workspace.TaskDir, tdErr error) []worktreeCleanup {
+func resolveWorktreeCleanups(jeffHome, taskID, prefix string, repos []string, td *workspace.TaskDir, tdErr error) []worktreeCleanup {
 	// Build repo → resolved worktree path from the live symlinks.
 	linked := map[string]string{}
 	if tdErr == nil {
@@ -233,7 +233,7 @@ func resolveWorktreeCleanups(jeffHome, taskID string, repos []string, td *worksp
 	// subtask's worktree (gig-ab12.1) never rides along with its parent's
 	// teardown (gig-ab12).
 	for _, wt := range allWorktrees(jeffHome) {
-		if taskIDForWorktree(jeffHome, wt) == taskID {
+		if taskIDForWorktree(jeffHome, wt, prefix) == taskID {
 			add(repoNameForWorktree(jeffHome, wt), wt, true)
 		}
 	}

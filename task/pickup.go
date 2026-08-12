@@ -120,23 +120,33 @@ func Pickup(store Store, cfg *jeff.Config, opts PickupOpts) (*PickupResult, erro
 		fmt.Fprintf(os.Stderr, "Warning: set team_size attr: %v\n", err)
 	}
 
-	taskJSON := buildTaskJSON(store, t)
 	for _, repoName := range opts.Repos {
 		rc := cfg.Repos[repoName]
-		branch, err := resolveRepoBranch(rc, taskJSON, opts.TaskID)
+		effectiveBase := workspace.DefaultBaseBranch
+		if rc != nil && rc.BaseBranch != "" {
+			effectiveBase = rc.BaseBranch
+		}
+
+		repoTaskJSON := buildTaskJSONForRepo(store, t, repoName, effectiveBase)
+		branch, err := resolveRepoBranch(rc, repoTaskJSON, opts.TaskID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: branch name for %s: %v, using %s\n", repoName, err, opts.TaskID)
 			branch = opts.TaskID
 		}
 
+		if inferred, applied := workspace.InferHotfixBranch(effectiveBase, branch); applied {
+			fmt.Fprintf(os.Stderr, "base %s -> naming branch %s for %s\n", effectiveBase, inferred, repoName)
+			branch = inferred
+		}
+
 		wtOpts := workspace.WorktreeOpts{
-			JeffHome: cfg.Home,
-			RepoName: repoName,
-			Branch:   branch,
-			TaskDir:  td.Path,
+			JeffHome:   cfg.Home,
+			RepoName:   repoName,
+			Branch:     branch,
+			BaseBranch: effectiveBase,
+			TaskDir:    td.Path,
 		}
 		if rc != nil {
-			wtOpts.BaseBranch = rc.BaseBranch
 			wtOpts.PostSetup = rc.PostSetup
 		}
 

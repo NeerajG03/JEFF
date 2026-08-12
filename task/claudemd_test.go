@@ -882,3 +882,23 @@ func TestWriteClaudeMD_Disabled(t *testing.T) {
 		t.Error("Scratchpad section should be omitted when disabled")
 	}
 }
+
+func TestBuildTaskJSONForRepo(t *testing.T) {
+	task := &gig.Task{ID: "gig-json1", Title: "JSON test"}
+	data := buildTaskJSONForRepo(nil, task, "backend", "origin/production")
+
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("unmarshal buildTaskJSONForRepo: %v", err)
+	}
+
+	if parsed["id"] != "gig-json1" {
+		t.Errorf("expected id gig-json1, got %v", parsed["id"])
+	}
+	if parsed["repo"] != "backend" {
+		t.Errorf("expected repo backend, got %v", parsed["repo"])
+	}
+	if parsed["base_branch"] != "origin/production" {
+		t.Errorf("expected base_branch origin/production, got %v", parsed["base_branch"])
+	}
+}

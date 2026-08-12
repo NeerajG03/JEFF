@@ -199,3 +199,30 @@ func TestPickup_TerminalStatusErrors(t *testing.T) {
 		t.Errorf("expected error mentioning reopen, got: %v", err)
 	}
 }
+
+func TestPickup_HotfixBranchInference(t *testing.T) {
+	store, cfg, repo := fixture(t, true)
+	cfg.Repos[repo].BaseBranch = "production"
+
+	repoDir := filepath.Join(cfg.Home, "repos", repo)
+	cmd := exec.Command("git", "-C", repoDir, "branch", "production")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git branch production: %v\n%s", err, out)
+	}
+
+	task := newOpenTask(t, store, "Hotfix task")
+	res, err := Pickup(store, cfg, PickupOpts{TaskID: task.ID, Repos: []string{repo}})
+	if err != nil {
+		t.Fatalf("Pickup: %v", err)
+	}
+
+	wts, err := workspace.ListTaskWorktrees(res.TaskDir)
+	if err != nil || len(wts) != 1 {
+		t.Fatalf("expected 1 worktree, got %d (%v)", len(wts), err)
+	}
+
+	wantBranch := "hotfix/" + task.ID
+	if wts[0].Branch != wantBranch {
+		t.Errorf("expected hotfix branch %q, got %q", wantBranch, wts[0].Branch)
+	}
+}

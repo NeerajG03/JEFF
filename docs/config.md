@@ -149,6 +149,8 @@ The script receives JSON like:
   "title": "Add auth flow",
   "type": "feature",
   "priority": 1,
+  "repo": "backend",
+  "base_branch": "origin/production",
   "attrs": {
     "branch_prefix": "neeraj"
   }
@@ -160,9 +162,11 @@ Example script (`scripts/branch-name.sh`):
 ```bash
 #!/bin/bash
 TASK=$(cat)
-PREFIX=$(echo "$TASK" | jq -r '.attrs.branch_prefix // empty')
-if [ -z "$PREFIX" ]; then
-  PREFIX=$(echo "$TASK" | jq -r '.type // "task"')
+BASE=$(echo "$TASK" | jq -r '.base_branch // empty')
+if [[ "$BASE" == *"production"* || "$BASE" == *"release"* ]]; then
+  PREFIX="hotfix"
+else
+  PREFIX=$(echo "$TASK" | jq -r '.attrs.branch_prefix // .type // "task"')
 fi
 ID=$(echo "$TASK" | jq -r '.id')
 echo "${PREFIX}/${ID}"

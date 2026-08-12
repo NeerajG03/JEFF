@@ -186,6 +186,9 @@ func TestApplySettings_Gemini(t *testing.T) {
 	if mem["autoload"] != false {
 		t.Errorf("want memory.autoload=false, got %v", mem["autoload"])
 	}
+	if settings["allowWorkspaceSymlinks"] != true {
+		t.Errorf("want allowWorkspaceSymlinks=true, got %v", settings["allowWorkspaceSymlinks"])
+	}
 }
 
 func TestApplySettings_UnknownAgent(t *testing.T) {

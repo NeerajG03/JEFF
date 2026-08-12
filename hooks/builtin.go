@@ -547,12 +547,8 @@ if [ -f "$SENTINEL" ]; then
 fi
 touch "$SENTINEL" 2>/dev/null || true
 
-# Touch last_seen as heartbeat signal. Nothing currently reads it for stall
-# detection: crew.CheckStalls existed but was reachable only via a hidden,
-# unscheduled CLI command and never fired in practice, so it was removed as
-# dead code (gig-1d9d.16.3). last_seen still feeds the hasFreshHeartbeat veto
-# in Refresh() (lifecycle.go), which is why this hook stays. A hung-but-alive
-# worker going unreported is a known, deliberately accepted gap — see gig-1d9d.18.
+# Touch last_seen as heartbeat signal. Fed to stall detection in crew.Refresh()
+# (gig-1d9d.18) and the hasFreshHeartbeat veto in Refresh() (lifecycle.go).
 jeff crew touch ` + shellQuote(taskID) + ` 2>/dev/null || true
 
 echo '{}'

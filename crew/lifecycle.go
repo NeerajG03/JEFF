@@ -464,9 +464,11 @@ func Refresh(store *Store, isTaskClosed func(taskID string) bool) error {
 			}
 			if dead {
 				markFailed(sess, "dead pane")
-			} else {
-				if err := store.TouchSession(sess.TaskID); err != nil {
-					errs = append(errs, fmt.Errorf("touch %s: %w", sess.TaskID, err))
+			} else if sess.OrchestratorID != "" && !sess.LastSeen.IsZero() {
+				if idle := now.Sub(sess.LastSeen); idle >= DefaultStallThreshold {
+					if err := SignalWorkerStalled(store, sess.TaskID, idle); err != nil {
+						errs = append(errs, fmt.Errorf("signal stall %s: %w", sess.TaskID, err))
+					}
 				}
 			}
 			continue
@@ -660,6 +662,14 @@ func SignalOrchestrator(store *Store, taskID, message string) error {
 func SignalWorkerStopped(store *Store, taskID string) error {
 	message := "Agent has stopped working — the tmux window is still active."
 	return signalOrchestrator(store, taskID, message, "worker-stop", true)
+}
+
+// SignalWorkerStalled notifies the owning orchestrator that a worker has been
+// idle/stalled (no tool calls) past the stall threshold. De-duplicated by
+// "worker-stalled" signal type so repeated check passes never spam the orchestrator.
+func SignalWorkerStalled(store *Store, taskID string, idle time.Duration) error {
+	message := fmt.Sprintf("Worker %s appears stalled — no activity for %d minutes.", taskID, int(idle.Minutes()))
+	return signalOrchestrator(store, taskID, message, "worker-stalled", true)
 }
 
 // SignalWorkerFailed notifies the owning orchestrator that a worker has crossed

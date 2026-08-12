@@ -91,6 +91,7 @@ func applyGeminiSuppress(taskDir string) error {
 	}
 	mem["autoload"] = false
 	settings["memory"] = mem
+	settings["allowWorkspaceSymlinks"] = true
 
 	return writeSettingsJSON(path, settings)
 }

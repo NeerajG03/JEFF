@@ -396,6 +396,69 @@ func TestResolvePersona_FallsBackToDetect(t *testing.T) {
 	}
 }
 
+func TestResolveOrchestratorID(t *testing.T) {
+	store, err := gig.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := jeff.EnsureAttrs(store); err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := store.Create(gig.CreateParams{Title: "Orchestrator attr task", Type: gig.TypeTask})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAttr(task.ID, jeff.AttrOrchestratorID, "orch-123"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := ResolveOrchestratorID(store, task.ID); got != "orch-123" {
+		t.Errorf("expected orchestrator_id orch-123, got %q", got)
+	}
+}
+
+func TestRefreshClaudeMD_PreservesOrchestratorID(t *testing.T) {
+	store, err := gig.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := jeff.EnsureAttrs(store); err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := store.Create(gig.CreateParams{Title: "Orchestrator refresh task", Type: gig.TypeTask})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAttr(task.ID, jeff.AttrOrchestratorID, "orch-456"); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	cfg := &jeff.Config{Home: t.TempDir()}
+	if err := WriteClaudeMD(dir, cfg.Home, store, task, "jenko", nil, "orch-456"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Refresh and verify worker rules are preserved.
+	if err := RefreshClaudeMD(store, cfg, task.ID, dir); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "Crew Worker Communication Rules") || !strings.Contains(content, "orch-456") {
+		t.Error("RefreshClaudeMD failed to preserve worker communication rules with orchestrator ID")
+	}
+}
+
 func TestDetectPersona(t *testing.T) {
 	// No CLAUDE.md — should return "".
 	dir := t.TempDir()

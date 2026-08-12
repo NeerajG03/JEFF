@@ -35,17 +35,17 @@ type Delivery interface {
 	// why it fails safe.
 	IsManaged(targetDir, name string) bool
 
-	// EventName maps a Hook's canonical (Claude Code) Event to the name this
-	// delivery's own event system uses — e.g. Gemini's PostToolUse -> AfterTool
-	// (geminiEventName). A delivery that reuses Claude's event names unchanged
-	// returns claudeEvent verbatim.
+	// EventName maps a Hook to the name this delivery's own event system uses —
+	// e.g. Gemini's PostToolUse -> AfterTool (geminiEventName), or OpenCode's
+	// per-hook OpenCodeEvent override. A delivery that reuses Claude's event
+	// names unchanged returns h.Event verbatim.
 	//
 	// This exists so a script shared across deliveries (bashBoth) can be
 	// checked generically: any hookSpecificOutput.hookEventName it embeds must
-	// equal ITS delivery's EventName(h.Event), not h.Event literally — a
+	// equal ITS delivery's EventName(h), not h.Event literally — a
 	// hardcoded literal is valid JSON but the wrong contract under any
 	// delivery whose mapping differs from Claude's (#106 follow-up).
-	EventName(claudeEvent string) string
+	EventName(h *Hook) string
 }
 
 var (

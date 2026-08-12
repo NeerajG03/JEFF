@@ -400,7 +400,7 @@ func TestAllRegisteredHooksEmitValidJSON(t *testing.T) {
 			if d == nil {
 				t.Fatalf("delivery %q is in DeliveryKeys() but GetDelivery returned nil", key)
 			}
-			expectedEvent := d.EventName(h.Event)
+			expectedEvent := d.EventName(h)
 
 			for _, c := range ctxs {
 				script := gen(c.ctx)

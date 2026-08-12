@@ -360,3 +360,28 @@ func TestSignalOrchestratorNoopForMissingSession(t *testing.T) {
 		t.Errorf("SignalOrchestrator (no session row) = %v, want nil (no-op)", err)
 	}
 }
+
+// TestSignalOrchestratorNoopForMissingOrchestrator covers a task bound to an
+// orchestrator ID that does not exist in the orchestrators table (gig-1cf3).
+func TestSignalOrchestratorNoopForMissingOrchestrator(t *testing.T) {
+	withFakeTmux(t)
+	store := tempStore(t)
+	now := time.Now().UTC()
+
+	if err := store.PutSession(&Session{
+		TaskID:         "gig-stale-orch",
+		TmuxSession:    "jeff",
+		WindowName:     "gig-stale-orch",
+		TaskDir:        "/tmp",
+		OrchestratorID: "orch-does-not-exist",
+		Status:         "running",
+		StartedAt:      now,
+		LastSeen:       now,
+	}); err != nil {
+		t.Fatalf("put session: %v", err)
+	}
+
+	if err := SignalOrchestrator(store, "gig-stale-orch", "done"); err != nil {
+		t.Errorf("SignalOrchestrator (missing orchestrator row) = %v, want nil (no-op)", err)
+	}
+}

@@ -666,10 +666,15 @@ func SignalWorkerStopped(store *Store, taskID string) error {
 
 // SignalWorkerStalled notifies the owning orchestrator that a worker has been
 // idle/stalled (no tool calls) past the stall threshold. De-duplicated by
-// "worker-stalled" signal type so repeated check passes never spam the orchestrator.
+// "worker-stalled" signal type so repeated check passes never spam the orchestrator,
+// and resets last_seen so live orchestrators are not spammed on every Refresh pass.
 func SignalWorkerStalled(store *Store, taskID string, idle time.Duration) error {
 	message := fmt.Sprintf("Worker %s appears stalled — no activity for %d minutes.", taskID, int(idle.Minutes()))
-	return signalOrchestrator(store, taskID, message, "worker-stalled", true)
+	if err := signalOrchestrator(store, taskID, message, "worker-stalled", true); err != nil {
+		return err
+	}
+	_ = store.TouchSession(taskID)
+	return nil
 }
 
 // SignalWorkerFailed notifies the owning orchestrator that a worker has crossed

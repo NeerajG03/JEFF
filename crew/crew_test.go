@@ -798,8 +798,52 @@ func TestRefreshLiveWindowTouchesSession(t *testing.T) {
 	if s.Status != "running" {
 		t.Errorf("status = %q, want running", s.Status)
 	}
-	if !s.LastSeen.After(now.Add(-30 * time.Second)) {
-		t.Errorf("LastSeen not updated: %v", s.LastSeen)
+	if s.LastSeen.Unix() != sess.LastSeen.Unix() {
+		t.Errorf("LastSeen modified by Refresh: got %v, want %v", s.LastSeen, sess.LastSeen)
+	}
+}
+
+func TestRefreshTriggersStallSignalForIdleWorker(t *testing.T) {
+	store := tempStore(t)
+	now := time.Now().UTC()
+
+	orchID := "orch-refresh-stall"
+	durableOrchestrator(t, store, orchID)
+
+	// Session with LastSeen 20 minutes ago.
+	sess := &Session{
+		TaskID:         "gig-idle1",
+		TmuxSession:    "jeff",
+		WindowName:     "gig-idle1",
+		TaskDir:        "/tmp",
+		OrchestratorID: orchID,
+		Status:         "running",
+		StartedAt:      now.Add(-30 * time.Minute),
+		LastSeen:       now.Add(-20 * time.Minute),
+	}
+	if err := store.PutSession(sess); err != nil {
+		t.Fatalf("put session: %v", err)
+	}
+
+	installCaseTmux(t, `
+  list-windows)
+    echo "gig-idle1"
+    ;;
+  display-message)
+    echo "0"
+    ;;
+`)
+
+	if err := Refresh(store, nil); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	count, err := store.PendingCountByType("gig-idle1", "to_orchestrator", "worker-stalled")
+	if err != nil {
+		t.Fatalf("PendingCountByType: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("pending worker-stalled messages after Refresh = %d, want 1", count)
 	}
 }
 

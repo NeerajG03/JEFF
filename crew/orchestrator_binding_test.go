@@ -385,3 +385,97 @@ func TestSignalOrchestratorNoopForMissingOrchestrator(t *testing.T) {
 		t.Errorf("SignalOrchestrator (missing orchestrator row) = %v, want nil (no-op)", err)
 	}
 }
+
+// TestSignalWorkerStalledDeduplicated verifies SignalWorkerStalled creates a
+// "worker-stalled" message for the orchestrator and de-duplicates subsequent signals (gig-1d9d.18).
+func TestSignalWorkerStalledDeduplicated(t *testing.T) {
+	withFakeTmux(t)
+	store := tempStore(t)
+
+	orchID := "orch-stall-test"
+	durableOrchestrator(t, store, orchID)
+	now := time.Now().UTC()
+
+	taskID := "gig-stalled-1"
+	if err := store.PutSession(&Session{
+		TaskID:         taskID,
+		TmuxSession:    "jeff",
+		WindowName:     taskID,
+		TaskDir:        "/tmp",
+		OrchestratorID: orchID,
+		Status:         "running",
+		StartedAt:      now.Add(-20 * time.Minute),
+		LastSeen:       now.Add(-20 * time.Minute),
+	}); err != nil {
+		t.Fatalf("put session: %v", err)
+	}
+
+	// First stall signal: queues 1 unacked message.
+	if err := SignalWorkerStalled(store, taskID, 20*time.Minute); err != nil {
+		t.Fatalf("SignalWorkerStalled first call: %v", err)
+	}
+
+	count, err := store.PendingCountByType(taskID, "to_orchestrator", "worker-stalled")
+	if err != nil {
+		t.Fatalf("PendingCountByType: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("pending worker-stalled messages = %d, want 1", count)
+	}
+
+	// Second stall signal: de-duplicated (should no-op and count remains 1).
+	if err := SignalWorkerStalled(store, taskID, 21*time.Minute); err != nil {
+		t.Fatalf("SignalWorkerStalled second call: %v", err)
+	}
+
+	count2, _ := store.PendingCountByType(taskID, "to_orchestrator", "worker-stalled")
+	if count2 != 1 {
+		t.Errorf("pending worker-stalled messages after dedupe = %d, want 1", count2)
+	}
+}
+
+// TestSignalWorkerStalledLiveOrchestratorResetsLastSeen verifies that when a live
+// orchestrator receives a stall signal, TouchSession resets last_seen so that
+// subsequent Refresh passes do not immediately re-fire the stall notification.
+func TestSignalWorkerStalledLiveOrchestratorResetsLastSeen(t *testing.T) {
+	withFakeTmux(t)
+	store := tempStore(t)
+	now := time.Now().UTC()
+
+	orchID := "orch-live-stall"
+	if err := store.PutOrchestrator(&Orchestrator{
+		ID:          orchID,
+		Status:      "running",
+		TmuxSession: "jeff-orch",
+		StartedAt:   now,
+	}); err != nil {
+		t.Fatalf("put orchestrator: %v", err)
+	}
+
+	taskID := "gig-stalled-live"
+	staleTime := now.Add(-15 * time.Minute)
+	if err := store.PutSession(&Session{
+		TaskID:         taskID,
+		TmuxSession:    "jeff",
+		WindowName:     taskID,
+		TaskDir:        "/tmp",
+		OrchestratorID: orchID,
+		Status:         "running",
+		StartedAt:      staleTime,
+		LastSeen:       staleTime,
+	}); err != nil {
+		t.Fatalf("put session: %v", err)
+	}
+
+	if err := SignalWorkerStalled(store, taskID, 15*time.Minute); err != nil {
+		t.Fatalf("SignalWorkerStalled: %v", err)
+	}
+
+	sess, err := store.GetSession(taskID)
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if !sess.LastSeen.After(staleTime) {
+		t.Errorf("LastSeen not reset after SignalWorkerStalled: got %v, want > %v", sess.LastSeen, staleTime)
+	}
+}

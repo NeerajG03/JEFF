@@ -18,8 +18,25 @@ import (
 // WriteClaudeMD generates a CLAUDE.md for the task directory combining persona
 // instructions, task context, memory, workspace layout, and scratchpad guide.
 // store may be nil (the checkpoint section is then omitted).
-func WriteClaudeMD(taskDir, jeffHome string, store Store, task *gig.Task, personaName string, repos []string) error {
+func WriteClaudeMD(taskDir, jeffHome string, store Store, task *gig.Task, personaName string, repos []string, orchestratorID string) error {
 	var sb strings.Builder
+
+	// Crew worker communication rules (when running under an orchestrator).
+	if orchestratorID != "" {
+		sb.WriteString("## ⚠️ Crew Worker Communication Rules\n\n")
+		fmt.Fprintf(&sb, "You are running as an **autonomous crew worker agent** under Orchestrator `%s`.\n", orchestratorID)
+		sb.WriteString("**THERE IS NO HUMAN USER IN THIS TERMINAL SESSION.**\n\n")
+		sb.WriteString("- **DO NOT** output questions or ask for input in text chat.\n")
+		sb.WriteString("- **DO NOT** wait for human interactive responses in this terminal.\n")
+		sb.WriteString("- **IF YOU NEED CLARIFICATION, SPEC DECISIONS, OR ARE BLOCKED:**\n")
+		sb.WriteString("  You **MUST** execute the following CLI command in your bash tool:\n\n")
+		sb.WriteString("  ```bash\n")
+		sb.WriteString("  jeff crew ask \"<your concise question or blocker description>\"\n")
+		sb.WriteString("  ```\n\n")
+		fmt.Fprintf(&sb, "  *Example:* `jeff crew ask \"Should I use JWT or session tokens for auth?\"`\n\n")
+		fmt.Fprintf(&sb, "- Executing `jeff crew ask` delivers your question directly to Orchestrator `%s`'s inbox.\n\n", orchestratorID)
+		sb.WriteString("---\n\n")
+	}
 
 	// Persona section — try registry first, fall back to embedded.
 	if personaName != "" {
@@ -200,11 +217,22 @@ func RefreshClaudeMD(store Store, cfg *jeff.Config, taskID, taskDir string) erro
 	// Resolve persona: gig attr set at pickup, falling back to CLAUDE.md
 	// prefix detection for workspaces created by older binaries.
 	personaName := ResolvePersona(store, taskID, taskDir)
+	orchestratorID := ResolveOrchestratorID(store, taskID)
 
 	// Detect repos from existing worktree symlinks.
 	repos := DetectRepos(taskDir)
 
-	return WriteClaudeMD(taskDir, cfg.Home, store, task, personaName, repos)
+	return WriteClaudeMD(taskDir, cfg.Home, store, task, personaName, repos, orchestratorID)
+}
+
+// ResolveOrchestratorID returns the orchestrator_id attribute set on the task if present.
+func ResolveOrchestratorID(store Store, taskID string) string {
+	if store != nil {
+		if attr, err := store.GetAttr(taskID, jeff.AttrOrchestratorID); err == nil && attr != nil {
+			return attr.Value
+		}
+	}
+	return ""
 }
 
 // ResolvePersona returns the persona for a task: the gig attr written at

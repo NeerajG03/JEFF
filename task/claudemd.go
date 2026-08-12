@@ -280,12 +280,37 @@ func writeWorkspaceLayout(sb *strings.Builder, taskDir string) {
 // buildTaskJSON marshals a task (with attrs) to JSON for branch naming scripts.
 // Uses store.GetFull which populates the Attrs field — same output as gig show --json.
 func buildTaskJSON(store Store, task *gig.Task) []byte {
-	full, err := store.GetFull(task.ID)
-	if err != nil {
+	return buildTaskJSONForRepo(store, task, "", "")
+}
+
+// buildTaskJSONForRepo marshals a task to JSON and enriches it with the repo name
+// and base_branch fields for branch naming scripts (gig-1d9d.19).
+func buildTaskJSONForRepo(store Store, task *gig.Task, repoName, baseBranch string) []byte {
+	var full *gig.Task
+	if store != nil {
+		if f, err := store.GetFull(task.ID); err == nil {
+			full = f
+		}
+	}
+	if full == nil {
 		full = task
 	}
 	data, _ := json.Marshal(full)
-	return data
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return data
+	}
+	if repoName != "" {
+		m["repo"] = repoName
+	}
+	if baseBranch != "" {
+		m["base_branch"] = baseBranch
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		return data
+	}
+	return out
 }
 
 // appendReadonlyNote appends a warning to CLAUDE.md listing repos the agent must not modify.

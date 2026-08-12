@@ -44,7 +44,7 @@ func TestWriteClaudeMD_NoPersona(t *testing.T) {
 		Priority: gig.P1,
 	}
 
-	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -75,7 +75,7 @@ func TestWriteClaudeMD_WithPersona(t *testing.T) {
 		Priority: gig.P2,
 	}
 
-	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "jenko", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "jenko", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -98,7 +98,7 @@ func TestWriteClaudeMD_InvalidPersonaSkipped(t *testing.T) {
 		Priority: gig.P1,
 	}
 
-	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "nonexistent", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "nonexistent", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -124,7 +124,7 @@ func TestWriteClaudeMD_WithDescription(t *testing.T) {
 		ParentID:    "gig-parent",
 	}
 
-	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -147,7 +147,7 @@ func TestWriteClaudeMD_NoDescriptionOmitted(t *testing.T) {
 		Priority: gig.P2,
 	}
 
-	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -171,7 +171,7 @@ func TestWriteClaudeMD_NoWorktrees(t *testing.T) {
 		Type:     gig.TypeTask,
 	}
 
-	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -202,7 +202,7 @@ func TestWriteClaudeMD_WithWorktrees(t *testing.T) {
 		Type:     gig.TypeFeature,
 	}
 
-	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -233,7 +233,7 @@ func TestWriteClaudeMD_WorktreeAddedLater(t *testing.T) {
 	}
 
 	// First write — no worktrees.
-	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
@@ -247,7 +247,7 @@ func TestWriteClaudeMD_WorktreeAddedLater(t *testing.T) {
 	os.Symlink(wtDir, filepath.Join(dir, "api"))
 
 	// Rewrite — should now include workspace.
-	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	data, _ = os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
@@ -287,7 +287,7 @@ func TestWriteClaudeMD_CheckpointRendered(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := WriteClaudeMD(dir, t.TempDir(), store, task, "", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), store, task, "", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -317,7 +317,7 @@ func TestWriteClaudeMD_NoCheckpointNoSection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := WriteClaudeMD(dir, t.TempDir(), store, task, "", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), store, task, "", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -331,7 +331,7 @@ func TestWriteClaudeMD_NilStoreNoPanicNoSection(t *testing.T) {
 	dir := t.TempDir()
 	task := &gig.Task{ID: "gig-nn01", Title: "Nil store", Priority: gig.P1}
 
-	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -361,7 +361,7 @@ func TestResolvePersona_PrefersAttrOverDetect(t *testing.T) {
 
 	// CLAUDE.md on disk says "schmidt" — the attr must win.
 	dir := t.TempDir()
-	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "schmidt", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "schmidt", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -387,12 +387,75 @@ func TestResolvePersona_FallsBackToDetect(t *testing.T) {
 	// No AttrPersona set — mimics a workspace created by an older binary.
 
 	dir := t.TempDir()
-	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "jenko", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "jenko", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
 	if got := ResolvePersona(store, task.ID, dir); got != "jenko" {
 		t.Errorf("expected fallback DetectPersona jenko, got %q", got)
+	}
+}
+
+func TestResolveOrchestratorID(t *testing.T) {
+	store, err := gig.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := jeff.EnsureAttrs(store); err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := store.Create(gig.CreateParams{Title: "Orchestrator attr task", Type: gig.TypeTask})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAttr(task.ID, jeff.AttrOrchestratorID, "orch-123"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := ResolveOrchestratorID(store, task.ID); got != "orch-123" {
+		t.Errorf("expected orchestrator_id orch-123, got %q", got)
+	}
+}
+
+func TestRefreshClaudeMD_PreservesOrchestratorID(t *testing.T) {
+	store, err := gig.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := jeff.EnsureAttrs(store); err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := store.Create(gig.CreateParams{Title: "Orchestrator refresh task", Type: gig.TypeTask})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAttr(task.ID, jeff.AttrOrchestratorID, "orch-456"); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	cfg := &jeff.Config{Home: t.TempDir()}
+	if err := WriteClaudeMD(dir, cfg.Home, store, task, "jenko", nil, "orch-456"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Refresh and verify worker rules are preserved.
+	if err := RefreshClaudeMD(store, cfg, task.ID, dir); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "Crew Worker Communication Rules") || !strings.Contains(content, "orch-456") {
+		t.Error("RefreshClaudeMD failed to preserve worker communication rules with orchestrator ID")
 	}
 }
 
@@ -405,7 +468,7 @@ func TestDetectPersona(t *testing.T) {
 
 	// Write with persona, then detect.
 	task := &gig.Task{ID: "gig-dd44", Title: "Detect test", Priority: gig.P2, Type: gig.TypeTask}
-	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "jenko", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "jenko", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := DetectPersona(dir); got != "jenko" {
@@ -414,7 +477,7 @@ func TestDetectPersona(t *testing.T) {
 
 	// Write without persona, should return "".
 	dir2 := t.TempDir()
-	if err := WriteClaudeMD(dir2, t.TempDir(), nil, task, "", nil); err != nil {
+	if err := WriteClaudeMD(dir2, t.TempDir(), nil, task, "", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := DetectPersona(dir2); got != "" {
@@ -433,7 +496,7 @@ func TestWriteClaudeMD_LabelsAndType(t *testing.T) {
 		ParentID: "gig-parent",
 	}
 
-	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -457,7 +520,7 @@ func TestWriteClaudeMD_WithPersonaMemory(t *testing.T) {
 	os.WriteFile(filepath.Join(memory.PersonaMemoryDir(home, "jenko"), "MEMORY.md"), []byte(md), 0o644)
 
 	task := &gig.Task{ID: "gig-mm01", Title: "Memory test", Priority: gig.P1}
-	if err := WriteClaudeMD(dir, home, nil, task, "jenko", nil); err != nil {
+	if err := WriteClaudeMD(dir, home, nil, task, "jenko", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -483,7 +546,7 @@ func TestWriteClaudeMD_EmptyPersonaMemory(t *testing.T) {
 	memory.EnsurePersonaDir(home, "jenko")
 
 	task := &gig.Task{ID: "gig-mm02", Title: "Empty memory", Priority: gig.P1}
-	if err := WriteClaudeMD(dir, home, nil, task, "jenko", nil); err != nil {
+	if err := WriteClaudeMD(dir, home, nil, task, "jenko", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -508,7 +571,7 @@ func TestWriteClaudeMD_WithRepoLearnings(t *testing.T) {
 	os.WriteFile(filepath.Join(memory.RepoLearningsDir(home, "backend"), "INDEX.md"), []byte(md), 0o644)
 
 	task := &gig.Task{ID: "gig-mm03", Title: "Repo learnings test", Priority: gig.P2}
-	if err := WriteClaudeMD(dir, home, nil, task, "", []string{"backend"}); err != nil {
+	if err := WriteClaudeMD(dir, home, nil, task, "", []string{"backend"}, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -527,7 +590,7 @@ func TestWriteClaudeMD_NoPersonaNoRepos_NoScratchpad(t *testing.T) {
 	dir := t.TempDir()
 	task := &gig.Task{ID: "gig-mm04", Title: "Bare task", Priority: gig.P2}
 
-	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil); err != nil {
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -547,7 +610,7 @@ func TestWriteClaudeMD_ScratchpadHasCorrectPath(t *testing.T) {
 	home := t.TempDir()
 	task := &gig.Task{ID: "gig-mm05", Title: "Scratchpad path", Priority: gig.P1}
 
-	if err := WriteClaudeMD(dir, home, nil, task, "jenko", nil); err != nil {
+	if err := WriteClaudeMD(dir, home, nil, task, "jenko", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -566,7 +629,7 @@ func TestWriteClaudeMD_PersonaSpecificHint(t *testing.T) {
 	task := &gig.Task{ID: "gig-mm06", Title: "Persona hint", Priority: gig.P1}
 
 	// Jenko should get implementer-specific hint.
-	if err := WriteClaudeMD(dir, home, nil, task, "jenko", nil); err != nil {
+	if err := WriteClaudeMD(dir, home, nil, task, "jenko", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
@@ -580,7 +643,7 @@ func TestWriteClaudeMD_PersonaSpecificHint(t *testing.T) {
 
 	// Schmidt should get debugger-specific hint.
 	dir2 := t.TempDir()
-	if err := WriteClaudeMD(dir2, home, nil, task, "schmidt", nil); err != nil {
+	if err := WriteClaudeMD(dir2, home, nil, task, "schmidt", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	data, _ = os.ReadFile(filepath.Join(dir2, "CLAUDE.md"))
@@ -594,7 +657,7 @@ func TestWriteClaudeMD_PersonaSpecificHint(t *testing.T) {
 
 	// No persona — no hint.
 	dir3 := t.TempDir()
-	if err := WriteClaudeMD(dir3, home, nil, task, "", []string{"backend"}); err != nil {
+	if err := WriteClaudeMD(dir3, home, nil, task, "", []string{"backend"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	data, _ = os.ReadFile(filepath.Join(dir3, "CLAUDE.md"))
@@ -865,7 +928,7 @@ func TestWriteClaudeMD_Disabled(t *testing.T) {
 	t.Setenv("JEFF_MEMORY_DISABLE", "1")
 
 	task := &gig.Task{ID: "gig-disabled", Title: "Disabled test", Priority: gig.P2}
-	if err := WriteClaudeMD(dir, home, nil, task, "jenko", []string{"backend"}); err != nil {
+	if err := WriteClaudeMD(dir, home, nil, task, "jenko", []string{"backend"}, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -880,6 +943,37 @@ func TestWriteClaudeMD_Disabled(t *testing.T) {
 	}
 	if strings.Contains(content, "## Scratchpad") {
 		t.Error("Scratchpad section should be omitted when disabled")
+	}
+}
+
+func TestWriteClaudeMD_WithOrchestratorID(t *testing.T) {
+	dir := t.TempDir()
+	task := &gig.Task{
+		ID:       "gig-worker-01",
+		Title:    "Worker Task",
+		Priority: gig.P2,
+	}
+
+	if err := WriteClaudeMD(dir, t.TempDir(), nil, task, "jenko", nil, "orch-main"); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+
+	for _, want := range []string{
+		"Crew Worker Communication Rules",
+		"autonomous crew worker agent",
+		"orch-main",
+		"THERE IS NO HUMAN USER IN THIS TERMINAL SESSION",
+		"jeff crew ask",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("CLAUDE.md missing expected worker rule snippet %q", want)
+		}
 	}
 }
 

@@ -116,6 +116,11 @@ func Pickup(store Store, cfg *jeff.Config, opts PickupOpts) (*PickupResult, erro
 			fmt.Fprintf(os.Stderr, "Warning: set persona attr: %v\n", err)
 		}
 	}
+	if opts.OrchestratorID != "" {
+		if err := store.SetAttr(opts.TaskID, jeff.AttrOrchestratorID, opts.OrchestratorID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: set orchestrator_id attr: %v\n", err)
+		}
+	}
 	if err := store.SetAttr(opts.TaskID, jeff.AttrTeamSize, "1"); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: set team_size attr: %v\n", err)
 	}
@@ -179,7 +184,7 @@ func Pickup(store Store, cfg *jeff.Config, opts PickupOpts) (*PickupResult, erro
 	}
 
 	// HARD FAIL: the task CLAUDE.md is the agent's entire context.
-	if err := WriteClaudeMD(td.Path, cfg.Home, store, t, opts.Persona, allRepos); err != nil {
+	if err := WriteClaudeMD(td.Path, cfg.Home, store, t, opts.Persona, allRepos, opts.OrchestratorID); err != nil {
 		return nil, fmt.Errorf("write task CLAUDE.md: %w", err)
 	}
 

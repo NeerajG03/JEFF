@@ -285,3 +285,20 @@ func TestWorkerStopDebounceGuardFullRegistry(t *testing.T) {
 		t.Error("full registry: missing 'stopSignalled = true;'")
 	}
 }
+
+func TestOpenCodeDeliveryEventNameRespectsHookOverride(t *testing.T) {
+	d := GetDelivery("opencode")
+	if d == nil {
+		t.Fatal("opencode delivery not registered")
+	}
+
+	hStandard := &Hook{Event: "Stop"}
+	if got := d.EventName(hStandard); got != "process.exit" {
+		t.Errorf("EventName(Stop) without override = %q, want process.exit", got)
+	}
+
+	hOverride := &Hook{Event: "Stop", OpenCodeEvent: "session.idle"}
+	if got := d.EventName(hOverride); got != "session.idle" {
+		t.Errorf("EventName(Stop) with OpenCodeEvent override = %q, want session.idle", got)
+	}
+}

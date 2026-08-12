@@ -697,6 +697,10 @@ func signalOrchestrator(store *Store, taskID, message, msgType string, dedupe bo
 	}
 
 	orch, err := store.GetOrchestrator(sess.OrchestratorID)
+	if errors.Is(err, sql.ErrNoRows) {
+		// Orchestrator record no longer exists in DB — no live orchestrator to signal.
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("get orchestrator %s: %w", sess.OrchestratorID, err)
 	}

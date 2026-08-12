@@ -40,8 +40,11 @@ func (d *claudeDelivery) IsManaged(targetDir, name string) bool {
 
 // EventName is the identity mapping: Claude Code's own event names are the
 // canonical ones every Hook.Event is written in.
-func (d *claudeDelivery) EventName(claudeEvent string) string {
-	return claudeEvent
+func (d *claudeDelivery) EventName(h *Hook) string {
+	if h == nil {
+		return ""
+	}
+	return h.Event
 }
 
 // claudeSettingsPath returns the .claude/settings.json path.

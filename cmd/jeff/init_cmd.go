@@ -67,6 +67,8 @@ func initCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&opts.yes, "yes", "y", false, "Skip wizard, accept defaults (escape hatch for CI)")
 	cmd.Flags().StringVar(&opts.agent, "agent", "", "Agent CLI to use (claude, opencode, gemini)")
 	cmd.Flags().StringVar(&opts.ide, "ide", "", "IDE to use (vscode, cursor, windsurf, nvim, zed)")
+	_ = cmd.RegisterFlagCompletionFunc("agent", agentCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("ide", ideCompletion)
 	cmd.Flags().StringArrayVar(&opts.repos, "repo", nil, "Repo to add (name=url, repeatable)")
 	cmd.Flags().BoolVar(&opts.noRepos, "no-repos", false, "Skip repo setup")
 	cmd.Flags().StringVar(&opts.gigPrefix, "gig-prefix", "", "Custom gig task ID prefix")

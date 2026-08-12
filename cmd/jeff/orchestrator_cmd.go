@@ -260,6 +260,7 @@ func orchestratorStartCmd() *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "custom name suffix for the session (e.g. --name work → jeff-work)")
 	cmd.Flags().StringVar(&agentOverride, "agent", "", "Agent backend (claude, gemini, opencode; default: config agent)")
 	cmd.Flags().StringVar(&modelOverride, "model", "", "Model name; auto-routes backend (sonnet/opus/haiku/claude-* → claude, pro/flash/flash-lite/auto/gemini-* → gemini, provider/model → opencode)")
+	_ = cmd.RegisterFlagCompletionFunc("agent", agentCompletion)
 	return cmd
 }
 

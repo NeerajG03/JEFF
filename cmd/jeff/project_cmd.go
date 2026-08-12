@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	jeff "github.com/NeerajG03/JEFF"
 	"github.com/spf13/cobra"
 )
 
@@ -62,7 +63,8 @@ func projectInitCmd() *cobra.Command {
 }
 
 func projectOpenCmd() *cobra.Command {
-	return &cobra.Command{
+	var agentOverride string
+	cmd := &cobra.Command{
 		Use:               "open <name>",
 		Short:             "Open a project in the configured agent",
 		Args:              cobra.ExactArgs(1),
@@ -75,9 +77,20 @@ func projectOpenCmd() *cobra.Command {
 				return fmt.Errorf("project %q not found — run: jeff project init %s", name, name)
 			}
 
-			return launchAgent(projectDir, cfg.Agent, "", "", effectiveSkipPermissions(cfg, false))
+			agentTool := cfg.Agent
+			if agentOverride != "" {
+				agentTool = jeff.AgentTool(agentOverride)
+				if !agentTool.IsValid() {
+					return fmt.Errorf("unknown agent %q (valid: %s)", agentOverride, strings.Join(jeff.AgentTool("").ValidNames(), ", "))
+				}
+			}
+
+			return launchAgent(projectDir, agentTool, "", "", effectiveSkipPermissions(cfg, false))
 		},
 	}
+	cmd.Flags().StringVar(&agentOverride, "agent", "", "Agent backend ("+strings.Join(jeff.AgentTool("").ValidNames(), ", ")+"; default: config agent)")
+	_ = cmd.RegisterFlagCompletionFunc("agent", agentCompletion)
+	return cmd
 }
 
 func projectListCmd() *cobra.Command {

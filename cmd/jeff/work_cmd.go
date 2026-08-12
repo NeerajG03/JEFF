@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	jeff "github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/persona"
@@ -11,7 +12,10 @@ import (
 )
 
 func workCmd() *cobra.Command {
-	var safeFlag bool
+	var (
+		safeFlag      bool
+		agentOverride string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "work [gig-id]",
@@ -45,7 +49,12 @@ func workCmd() *cobra.Command {
 			// Resolve persona → agent + model, mirroring pickup.
 			personaName := task.ResolvePersona(store, taskID, taskDir)
 			agentTool := cfg.Agent
-			if personaName != "" {
+			if agentOverride != "" {
+				agentTool = jeff.AgentTool(agentOverride)
+				if !agentTool.IsValid() {
+					return fmt.Errorf("unknown agent %q (valid: %s)", agentOverride, strings.Join(jeff.AgentTool("").ValidNames(), ", "))
+				}
+			} else if personaName != "" {
 				if pa := persona.RegisteredAgent(cfg.Home, personaName); pa != "" {
 					agentTool = jeff.AgentTool(pa)
 				}
@@ -60,6 +69,8 @@ func workCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&safeFlag, "safe", false, `Launch the agent with its permission prompts enabled (pass "--safe" to override skip_permissions)`)
+	cmd.Flags().StringVar(&agentOverride, "agent", "", "Agent backend ("+strings.Join(jeff.AgentTool("").ValidNames(), ", ")+"; default: config agent)")
 	cmd.ValidArgsFunction = activeTaskCompletion
+	_ = cmd.RegisterFlagCompletionFunc("agent", agentCompletion)
 	return cmd
 }

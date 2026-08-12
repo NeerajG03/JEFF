@@ -345,6 +345,7 @@ func crewStartCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&safeFlag, "safe", false, `Launch the worker with its permission prompts enabled (pass "--safe" to override skip_permissions)`)
 	cmd.ValidArgsFunction = readyTaskCompletion
 	_ = cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("agent", agentCompletion)
 	_ = cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)
 	_ = cmd.RegisterFlagCompletionFunc("repos-readonly", repoNameCompletion)
 	_ = cmd.RegisterFlagCompletionFunc("orchestrator", orchestratorCompletion)

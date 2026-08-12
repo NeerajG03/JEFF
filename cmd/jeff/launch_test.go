@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	jeff "github.com/NeerajG03/JEFF"
+	"github.com/spf13/cobra"
 )
 
 func boolPtr(b bool) *bool { return &b }
@@ -27,6 +28,49 @@ func TestEffectiveSkipPermissions(t *testing.T) {
 			got := effectiveSkipPermissions(tc.cfg, tc.safeFlag)
 			if got != tc.want {
 				t.Errorf("effectiveSkipPermissions(cfg, %v) = %v, want %v", tc.safeFlag, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAgentCompletion(t *testing.T) {
+	comps, directive := agentCompletion(nil, nil, "")
+	if directive != cobra.ShellCompDirectiveNoFileComp {
+		t.Errorf("expected directive NoFileComp (%v), got %v", cobra.ShellCompDirectiveNoFileComp, directive)
+	}
+
+	expectedAgents := []string{"claude", "gemini", "opencode"}
+	for _, want := range expectedAgents {
+		found := false
+		for _, comp := range comps {
+			if len(comp) >= len(want) && comp[:len(want)] == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("agentCompletion missing expected agent %q in completions: %v", want, comps)
+		}
+	}
+}
+
+func TestAgentFlagValidation(t *testing.T) {
+	tests := []struct {
+		input   string
+		isValid bool
+	}{
+		{"claude", true},
+		{"opencode", true},
+		{"gemini", true},
+		{"invalid_agent", false},
+		{"", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			got := jeff.AgentTool(tc.input).IsValid()
+			if got != tc.isValid {
+				t.Errorf("AgentTool(%q).IsValid() = %v, want %v", tc.input, got, tc.isValid)
 			}
 		})
 	}

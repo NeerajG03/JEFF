@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
+	jeff "github.com/NeerajG03/JEFF"
 	"github.com/NeerajG03/JEFF/crew"
 	"github.com/NeerajG03/JEFF/persona"
 	"github.com/NeerajG03/JEFF/skill"
@@ -209,4 +210,27 @@ func ideCompletion(cmd *cobra.Command, args []string, toComplete string) ([]stri
 		"cursor\tCursor",
 		"windsurf\tWindsurf",
 	}, cobra.ShellCompDirectiveNoFileComp
+}
+
+// ── Agent completions ────────────────────────────────────────────────
+
+// agentCompletion completes supported agent CLI names.
+func agentCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	agents := jeff.RegisteredAgents()
+	var names []string
+	for _, a := range agents {
+		var desc string
+		switch a {
+		case jeff.AgentClaudeCode:
+			desc = "Claude Code CLI"
+		case jeff.AgentOpenCode:
+			desc = "OpenCode AI CLI"
+		case jeff.AgentGemini:
+			desc = "Gemini CLI"
+		default:
+			desc = string(a)
+		}
+		names = append(names, string(a)+"\t"+desc)
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
 }

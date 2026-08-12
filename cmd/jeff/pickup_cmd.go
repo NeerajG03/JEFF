@@ -15,9 +15,10 @@ import (
 
 func pickupCmd() *cobra.Command {
 	var (
-		personaName string
-		repos       []string
-		testFlag bool
+		personaName   string
+		agentOverride string
+		repos         []string
+		testFlag      bool
 	)
 
 	cmd := &cobra.Command{
@@ -32,9 +33,14 @@ starting the agent.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			taskID := args[0]
 
-			// Resolve agent from persona, fall back to global config.
+			// Resolve agent: --agent flag > persona > global config.
 			agentTool := cfg.Agent
-			if personaName != "" {
+			if agentOverride != "" {
+				agentTool = jeff.AgentTool(agentOverride)
+				if !agentTool.IsValid() {
+					return fmt.Errorf("unknown agent %q (valid: %s)", agentOverride, strings.Join(jeff.AgentTool("").ValidNames(), ", "))
+				}
+			} else if personaName != "" {
 				if pa := persona.RegisteredAgent(cfg.Home, personaName); pa != "" {
 					agentTool = jeff.AgentTool(pa)
 				}
@@ -81,10 +87,12 @@ starting the agent.`,
 	}
 
 	cmd.Flags().StringVar(&personaName, "persona", "", "Persona template to use ("+strings.Join(persona.Names(), ", ")+")")
+	cmd.Flags().StringVar(&agentOverride, "agent", "", "Agent backend ("+strings.Join(jeff.AgentTool("").ValidNames(), ", ")+"; default: config agent)")
 	cmd.Flags().StringSliceVar(&repos, "repos", nil, "Repos this task touches (creates worktrees)")
 	cmd.Flags().BoolVar(&testFlag, "test", false, "Prepare workspace, verify correctness, and skip agent launch")
 	cmd.ValidArgsFunction = readyTaskCompletion
 	_ = cmd.RegisterFlagCompletionFunc("persona", personaCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("agent", agentCompletion)
 	_ = cmd.RegisterFlagCompletionFunc("repos", repoNameCompletion)
 	return cmd
 }

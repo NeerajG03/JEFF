@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/NeerajG03/JEFF"
 	memorycmd "github.com/NeerajG03/JEFF/cmd/jeff/memory"
@@ -12,7 +13,10 @@ import (
 
 var version = "dev"
 
-var cfg *jeff.Config
+var (
+	cfg       *jeff.Config
+	agentFlag string
+)
 
 func main() {
 	rootCmd := &cobra.Command{
@@ -55,9 +59,19 @@ func main() {
 			if cfg == nil {
 				return fmt.Errorf("JEFF is not initialized. Run: jeff init")
 			}
-			return launchAgent(cfg.Home, cfg.Agent, "", "", effectiveSkipPermissions(cfg, false))
+			agentTool := cfg.Agent
+			if agentFlag != "" {
+				agentTool = jeff.AgentTool(agentFlag)
+				if !agentTool.IsValid() {
+					return fmt.Errorf("unknown agent %q (valid: %s)", agentFlag, strings.Join(jeff.AgentTool("").ValidNames(), ", "))
+				}
+			}
+			return launchAgent(cfg.Home, agentTool, "", "", effectiveSkipPermissions(cfg, false))
 		},
 	}
+
+	rootCmd.Flags().StringVarP(&agentFlag, "agent", "a", "", "Agent backend to launch ("+strings.Join(jeff.AgentTool("").ValidNames(), ", ")+"; default: config agent)")
+	_ = rootCmd.RegisterFlagCompletionFunc("agent", agentCompletion)
 
 	rootCmd.AddCommand(
 		initCmd(),

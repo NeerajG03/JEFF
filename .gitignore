@@ -1,3 +1,8 @@
 data.csv
-.claude/
+.claude/*
+!.claude/skills
+.gemini/*
+!.gemini/skills
+.codex/*
+!.codex/skills
 /jeff

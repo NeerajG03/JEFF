@@ -93,7 +93,7 @@ func TestCodexDeliveryInstallAndUninstall(t *testing.T) {
 		t.Fatalf("parse hooks.json after uninstall: %v", err)
 	}
 	hooksMapAfter, _ := parsedAfter["hooks"].(map[string]any)
-	if hooksMapAfter != nil && len(hooksMapAfter) > 0 {
+	if len(hooksMapAfter) > 0 {
 		t.Errorf("expected hooks map to be empty or nil after uninstalling all hooks, got %v", hooksMapAfter)
 	}
 }

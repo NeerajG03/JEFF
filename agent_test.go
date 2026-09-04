@@ -297,11 +297,14 @@ func TestWriteHomeDefaults(t *testing.T) {
 		if err := p.WriteHomeDefaults(home); err != nil {
 			t.Errorf("%s WriteHomeDefaults: %v", agent, err)
 		}
-		cfgFile := "settings.json"
-		if agent == AgentOpenCode {
+		var cfgFile string
+		switch agent {
+		case AgentOpenCode:
 			cfgFile = "opencode.json"
-		} else if agent == AgentCodex {
+		case AgentCodex:
 			cfgFile = "hooks.json"
+		default:
+			cfgFile = "settings.json"
 		}
 		cfgPath := filepath.Join(home, p.ConfigDir(), cfgFile)
 		if _, err := os.Stat(cfgPath); err != nil {

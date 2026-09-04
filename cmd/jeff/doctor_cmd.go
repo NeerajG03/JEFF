@@ -245,6 +245,8 @@ func getDoctorDeps() []dep {
 					installMap[""] = "npm install -g @google/gemini-cli"
 				case "opencode":
 					installMap[""] = "npm install -g @opencode/cli"
+				case "codex":
+					installMap[""] = "npm install -g @openai/codex"
 				}
 
 				base = append(base, dep{

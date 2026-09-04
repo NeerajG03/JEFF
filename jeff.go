@@ -12,6 +12,7 @@ const (
 	AgentClaudeCode AgentTool = "claude"
 	AgentOpenCode   AgentTool = "opencode"
 	AgentGemini     AgentTool = "gemini"
+	AgentCodex      AgentTool = "codex"
 )
 
 // InferBackend returns the AgentTool for a model name based on known model families.
@@ -19,6 +20,7 @@ const (
 // claude family: sonnet, opus, haiku, claude-*
 // gemini family: pro, flash, flash-lite, auto, gemini-*
 // opencode family: provider/model
+// codex family: gpt-5*, gpt-4.5*, codex-*
 func InferBackend(model string) AgentTool {
 	if model == "" {
 		return ""

@@ -11,7 +11,7 @@ Agent workspace manager built on [gig](https://github.com/NeerajG03/gig). JEFF g
 
 ## Set up with an agent
 
-JEFF has a lot of surface — repos, skills, personas, memory, hooks, crew mode. Rather than reading all of it, paste this into Claude Code, opencode, Gemini CLI, or any agent with shell access:
+JEFF has a lot of surface — repos, skills, personas, memory, hooks, crew mode. Rather than reading all of it, paste this into Claude Code, opencode, Gemini CLI, OpenAI Codex, or any agent with shell access:
 
 ```
 Set up JEFF on this machine for me.
@@ -35,7 +35,7 @@ The runbook ([`docs/agent-setup.md`](docs/agent-setup.md)) is written for agents
 |---|---|---|
 | **Required** | [gig](https://github.com/NeerajG03/gig) | The task database. JEFF stores no task state of its own. |
 | **Required** | git | Worktrees are how task isolation works. |
-| **Required** | An agent CLI: [Claude Code](https://claude.com/product/claude-code), [opencode](https://github.com/anomalyco/opencode), or [Gemini CLI](https://github.com/google-gemini/gemini-cli) | The thing JEFF launches. |
+| **Required** | An agent CLI: [Claude Code](https://claude.com/product/claude-code), [opencode](https://github.com/anomalyco/opencode), [Gemini CLI](https://github.com/google-gemini/gemini-cli), or [OpenAI Codex](https://learn.chatgpt.com/docs/cli) | The thing JEFF launches. |
 | **Required** | jq | Used by the generated hook scripts. |
 | For `jeff ship` | [`gh`](https://cli.github.com), authenticated | Pushing branches and opening PRs. |
 | For crew mode | tmux ≥ 3.0 | Each worker gets a tmux window. |
@@ -83,7 +83,7 @@ jeff init
 jeff doctor
 
 # 4. Tell JEFF which agent CLI and editor you use.
-jeff config agent claude       # claude | opencode | gemini
+jeff config agent claude       # claude | opencode | gemini | codex
 jeff config ide cursor         # vscode | cursor | windsurf | nvim
 
 # 5. Register a codebase. JEFF clones it into ~/.jeff/repos/backend.
@@ -135,7 +135,7 @@ flowchart TB
     end
 
     gigdb[("gig DB<br/><i>all task state</i>")]
-    agent["Agent CLI<br/><i>Claude Code · opencode · Gemini</i>"]
+    agent["Agent CLI<br/><i>Claude Code · opencode · Gemini · Codex</i>"]
 
     gig --> gigdb
     jeff --> task

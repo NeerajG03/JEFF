@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -236,6 +237,13 @@ func Pickup(store Store, cfg *jeff.Config, opts PickupOpts) (*PickupResult, erro
 		Persona:            opts.Persona,
 		Repos:              allRepos,
 	}
+	// Ensure config directories exist for all registered agents.
+	for _, agent := range jeff.RegisteredAgents() {
+		if p := jeff.GetProvider(agent); p != nil && p.ConfigDir() != "" {
+			_ = os.MkdirAll(filepath.Join(td.Path, p.ConfigDir()), 0o755)
+		}
+	}
+
 	// Install hooks for ALL registered agents so the workspace is ready
 	// regardless of which agent launches (same pattern as context aliases).
 	taskEnabled := hooks.EnabledForSource(cfg.Hooks, hooks.SourceTask, reg)
@@ -251,11 +259,14 @@ func Pickup(store Store, cfg *jeff.Config, opts PickupOpts) (*PickupResult, erro
 		}
 	}
 
-	// Always alias .gemini/skills → .claude/skills before injecting skills,
-	// regardless of whether the gemini agent is registered. Skills should be
-	// in sync across agents, so gemini sessions see what claude sessions get.
+	// Always alias .gemini/skills and .agents/skills → .claude/skills before injecting skills,
+	// regardless of whether the gemini or codex agent is registered. Skills should be
+	// in sync across agents, so sessions see what claude sessions get.
 	if err := jeffembed.EnsureGeminiSkillsAlias(td.Path); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: alias .gemini/skills: %v\n", err)
+	}
+	if err := jeffembed.EnsureCodexSkillsAlias(td.Path); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: alias .agents/skills: %v\n", err)
 	}
 
 	// Inject matching skills into ALL registered agent config dirs that support skills.

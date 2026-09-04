@@ -65,7 +65,7 @@ func initCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.here, "here", false, "Initialize in current directory instead of ~/.jeff/")
 	cmd.Flags().BoolVar(&update, "update", false, "Sync existing home (create missing dirs, hooks, settings)")
 	cmd.Flags().BoolVarP(&opts.yes, "yes", "y", false, "Skip wizard, accept defaults (escape hatch for CI)")
-	cmd.Flags().StringVar(&opts.agent, "agent", "", "Agent CLI to use (claude, opencode, gemini)")
+	cmd.Flags().StringVar(&opts.agent, "agent", "", "Agent CLI to use ("+strings.Join(jeff.AgentTool("").ValidNames(), ", ")+")")
 	cmd.Flags().StringVar(&opts.ide, "ide", "", "IDE to use (vscode, cursor, windsurf, nvim, zed)")
 	_ = cmd.RegisterFlagCompletionFunc("agent", agentCompletion)
 	_ = cmd.RegisterFlagCompletionFunc("ide", ideCompletion)
@@ -98,7 +98,7 @@ func detectInstalledAgents() map[jeff.AgentTool]bool {
 // Preference: claude > opencode > gemini. None found → empty (no default).
 func defaultAgentFromInstalled() jeff.AgentTool {
 	installed := detectInstalledAgents()
-	preferred := []jeff.AgentTool{jeff.AgentClaudeCode, jeff.AgentOpenCode, jeff.AgentGemini}
+	preferred := []jeff.AgentTool{jeff.AgentClaudeCode, jeff.AgentOpenCode, jeff.AgentGemini, jeff.AgentCodex}
 	for _, a := range preferred {
 		if installed[a] {
 			return a
@@ -341,10 +341,13 @@ func runInit(cmd *cobra.Command, opts *initOpts) error {
 
 	// C2: Create context file aliases for all installed agents.
 	var seededAgents int
+	var seedErrs []error
 	for _, a := range jeff.RegisteredAgents() {
 		if p := jeff.GetProvider(a); p != nil {
 			if aliases := p.ContextFileAliases(); len(aliases) > 0 {
-				_ = jeffembed.CreateContextAliases(home, aliases)
+				if err := jeffembed.CreateContextAliases(home, aliases); err != nil {
+					seedErrs = append(seedErrs, err)
+				}
 			}
 		}
 	}
@@ -352,13 +355,15 @@ func runInit(cmd *cobra.Command, opts *initOpts) error {
 	// -----------------------------------------------------------------------
 	// C5: Collect seeding failures instead of swallowing them.
 	// -----------------------------------------------------------------------
-	var seedErrs []error
 
 	if err := jeffembed.EnsureGeminiSkillsAlias(home); err != nil {
 		seedErrs = append(seedErrs, fmt.Errorf("alias .gemini/skills: %w", err))
 	}
 	if err := jeffembed.EnsureOpenCodeSkillsAlias(home); err != nil {
 		seedErrs = append(seedErrs, fmt.Errorf("alias .opencode/skills: %w", err))
+	}
+	if err := jeffembed.EnsureCodexSkillsAlias(home); err != nil {
+		seedErrs = append(seedErrs, fmt.Errorf("alias .agents/skills: %w", err))
 	}
 
 	// Count seeded agents for output.
@@ -502,7 +507,9 @@ func runUpdate() error {
 	for _, agent := range jeff.RegisteredAgents() {
 		if p := jeff.GetProvider(agent); p != nil {
 			if aliases := p.ContextFileAliases(); len(aliases) > 0 {
-				_ = jeffembed.CreateContextAliases(home, aliases)
+				if err := jeffembed.CreateContextAliases(home, aliases); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: create context aliases (%s): %v\n", agent, err)
+				}
 			}
 		}
 	}
@@ -512,6 +519,9 @@ func runUpdate() error {
 	}
 	if err := jeffembed.EnsureOpenCodeSkillsAlias(home); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: alias .opencode/skills: %v\n", err)
+	}
+	if err := jeffembed.EnsureCodexSkillsAlias(home); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: alias .agents/skills: %v\n", err)
 	}
 
 	if err := persona.SeedDefaults(home); err != nil {

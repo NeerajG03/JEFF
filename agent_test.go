@@ -23,10 +23,10 @@ func TestAllProvidersRegistered(t *testing.T) {
 
 func TestRegisteredAgents(t *testing.T) {
 	agents := RegisteredAgents()
-	if len(agents) < 3 {
-		t.Fatalf("expected at least 3 registered agents, got %d", len(agents))
+	if len(agents) < 4 {
+		t.Fatalf("expected at least 4 registered agents, got %d", len(agents))
 	}
-	for _, expected := range []AgentTool{AgentClaudeCode, AgentOpenCode, AgentGemini} {
+	for _, expected := range []AgentTool{AgentClaudeCode, AgentOpenCode, AgentGemini, AgentCodex} {
 		if !slices.Contains(agents, expected) {
 			t.Errorf("RegisteredAgents() missing %s", expected)
 		}
@@ -183,6 +183,67 @@ func TestOpenCodeProviderArgs(t *testing.T) {
 	}
 }
 
+func TestCodexProviderArgs(t *testing.T) {
+	p := GetProvider(AgentCodex)
+	if p == nil {
+		t.Fatal("no provider registered for AgentCodex")
+	}
+
+	// Safe mode (SkipPermissions: false)
+	args := p.BuildLaunchArgs(LaunchOpts{SkipPermissions: false})
+	if !slices.Contains(args, "--sandbox") || !slices.Contains(args, "workspace-write") {
+		t.Errorf("safe mode args missing sandbox: %v", args)
+	}
+	if !slices.Contains(args, "--ask-for-approval") || !slices.Contains(args, "on-request") {
+		t.Errorf("safe mode args missing ask-for-approval: %v", args)
+	}
+	if slices.Contains(args, "--dangerously-bypass-hook-trust") {
+		t.Errorf("safe mode args must not contain --dangerously-bypass-hook-trust: %v", args)
+	}
+
+	// Unattended mode (SkipPermissions: true)
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true})
+	if !slices.Contains(args, "--dangerously-bypass-hook-trust") {
+		t.Errorf("unattended mode args missing --dangerously-bypass-hook-trust: %v", args)
+	}
+	if !slices.Contains(args, "--disable") || !slices.Contains(args, "memories") {
+		t.Errorf("unattended mode args missing --disable memories: %v", args)
+	}
+
+	// Launch with model
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true, Model: "gpt-5.6-terra"})
+	if !slices.Contains(args, "-m") || !slices.Contains(args, "gpt-5.6-terra") {
+		t.Errorf("model args = %v", args)
+	}
+
+	// Launch with resume
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true, ResumeSessionID: "sess-123"})
+	if !slices.Contains(args, "resume") || !slices.Contains(args, "sess-123") {
+		t.Errorf("resume args = %v", args)
+	}
+
+	// Launch with prompt (no resume)
+	args = p.BuildLaunchArgs(LaunchOpts{SkipPermissions: true, Prompt: "fix bug"})
+	if args[len(args)-1] != "fix bug" {
+		t.Errorf("prompt args = %v", args)
+	}
+
+	// Curate args
+	curate := p.BuildCurateArgs("curate memory", LaunchOpts{})
+	if len(curate) != 9 || curate[0] != "exec" || curate[len(curate)-1] != "curate memory" {
+		t.Errorf("curate args = %v", curate)
+	}
+	if !slices.Contains(curate, "--skip-git-repo-check") {
+		t.Errorf("curate args missing --skip-git-repo-check: %v", curate)
+	}
+
+	// Context file aliases
+	aliases := p.ContextFileAliases()
+	if len(aliases) != 1 || aliases[0] != "AGENTS.md" {
+		t.Errorf("context aliases = %v", aliases)
+	}
+}
+
 func TestProviderLayout(t *testing.T) {
 	tests := []struct {
 		agent      AgentTool
@@ -194,6 +255,7 @@ func TestProviderLayout(t *testing.T) {
 		{AgentClaudeCode, ".claude", "skills", "commands", "md"},
 		{AgentOpenCode, ".opencode", "skills", "commands", "md"},
 		{AgentGemini, ".gemini", "skills", "commands", "toml"},
+		{AgentCodex, ".codex", "", "", ""},
 	}
 
 	for _, tt := range tests {
@@ -235,9 +297,14 @@ func TestWriteHomeDefaults(t *testing.T) {
 		if err := p.WriteHomeDefaults(home); err != nil {
 			t.Errorf("%s WriteHomeDefaults: %v", agent, err)
 		}
-		cfgFile := "settings.json"
-		if agent == AgentOpenCode {
+		var cfgFile string
+		switch agent {
+		case AgentOpenCode:
 			cfgFile = "opencode.json"
+		case AgentCodex:
+			cfgFile = "hooks.json"
+		default:
+			cfgFile = "settings.json"
 		}
 		cfgPath := filepath.Join(home, p.ConfigDir(), cfgFile)
 		if _, err := os.Stat(cfgPath); err != nil {
@@ -292,6 +359,9 @@ func TestAgentToolCommandViaProvider(t *testing.T) {
 	if AgentOpenCode.Command() != "opencode" {
 		t.Error("opencode Command() mismatch")
 	}
+	if AgentCodex.Command() != "codex" {
+		t.Error("codex Command() mismatch")
+	}
 }
 
 func TestInferBackend(t *testing.T) {
@@ -314,6 +384,15 @@ func TestInferBackend(t *testing.T) {
 		// Gemini full IDs
 		{"gemini-2.0-flash", AgentGemini},
 		{"gemini-3-pro-preview", AgentGemini},
+		// Codex aliases and models
+		{"terra", AgentCodex},
+		{"luna", AgentCodex},
+		{"gpt-5.6-terra", AgentCodex},
+		{"gpt-5.4", AgentCodex},
+		{"gpt-4.5-preview", AgentCodex},
+		{"codex-mini", AgentCodex},
+		{"o3", AgentCodex},
+		{"o1", AgentCodex},
 		// Unknown
 		{"bogus", ""},
 		{"gpt-4", ""},
@@ -347,6 +426,11 @@ func TestIsValidModel(t *testing.T) {
 		{AgentGemini, "opus", false},
 		{AgentGemini, "bogus", false},
 		{AgentOpenCode, "anything", false},
+		{AgentCodex, "terra", true},
+		{AgentCodex, "gpt-5.4", true},
+		{AgentCodex, "o3", true},
+		{AgentCodex, "opus", false},
+		{AgentCodex, "flash", false},
 	}
 	for _, tt := range tests {
 		got := IsValidModel(tt.agent, tt.model)

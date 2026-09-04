@@ -240,6 +240,47 @@ func TestRunUpdate_CreatesOpenCodeSkillsAlias(t *testing.T) {
 	}
 }
 
+func TestRunUpdate_SetsUpCodex(t *testing.T) {
+	home := setupJeffHome(t)
+	t.Setenv("JEFF_HOME", home)
+
+	if err := runUpdate(); err != nil {
+		t.Fatalf("runUpdate failed: %v", err)
+	}
+
+	// 1. AGENTS.md alias points to CLAUDE.md
+	agentsLink := filepath.Join(home, "AGENTS.md")
+	target, err := os.Readlink(agentsLink)
+	if err != nil {
+		t.Fatalf("AGENTS.md symlink not created: %v", err)
+	}
+	if target != "CLAUDE.md" {
+		t.Errorf("AGENTS.md target = %q, want CLAUDE.md", target)
+	}
+
+	// 2. .agents/skills points to ../.claude/skills
+	skillsLink := filepath.Join(home, ".agents", "skills")
+	target, err = os.Readlink(skillsLink)
+	if err != nil {
+		t.Fatalf(".agents/skills symlink not created: %v", err)
+	}
+	wantSkillsTarget := filepath.Join("..", ".claude", "skills")
+	if target != wantSkillsTarget {
+		t.Errorf(".agents/skills target = %q, want %q", target, wantSkillsTarget)
+	}
+
+	// 3. .codex/hooks.json exists
+	hooksPath := filepath.Join(home, ".codex", "hooks.json")
+	if _, err := os.Stat(hooksPath); err != nil {
+		t.Errorf(".codex/hooks.json not created: %v", err)
+	}
+
+	// Re-running update should be a no-op and succeed cleanly.
+	if err := runUpdate(); err != nil {
+		t.Fatalf("second runUpdate failed: %v", err)
+	}
+}
+
 func TestRunUpdate_PreservesConfig(t *testing.T) {
 	home := setupJeffHome(t)
 

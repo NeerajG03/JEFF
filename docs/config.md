@@ -45,6 +45,8 @@ The agent tool launched by `jeff pickup` and `jeff work`.
 ```bash
 jeff config agent claude     # Claude Code (default)
 jeff config agent opencode   # opencode
+jeff config agent gemini     # Gemini CLI
+jeff config agent codex      # OpenAI Codex
 
 You can also configure the default agent tool per persona in `personas.json` within your JEFF_HOME.
 ```
@@ -62,7 +64,7 @@ jeff config ide nvim         # Neovim
 
 ## Permissions
 
-By default, every agent JEFF launches (`jeff pickup`, `jeff work`, `jeff crew start`) runs with its native permission prompts disabled (Claude's `--dangerously-skip-permissions`, Gemini's `--approval-mode=yolo`, OpenCode's `--auto`) — this is the current, unchanged default.
+By default, every agent JEFF launches (`jeff pickup`, `jeff work`, `jeff crew start`) runs with its native permission prompts disabled (Claude's `--dangerously-skip-permissions`, Gemini's `--approval-mode=yolo`, OpenCode's `--auto`, Codex's `--sandbox workspace-write --dangerously-bypass-hook-trust`) — this is the current, unchanged default.
 
 Set `skip_permissions: false` in `jeff.json` to keep permission prompts enabled instead:
 

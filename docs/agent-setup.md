@@ -48,7 +48,7 @@ Run this first and keep the output; later steps branch on it.
 ```bash
 uname -s                                    # Darwin | Linux | MINGW*/MSYS*
 command -v jeff gig git tmux gh jq          # what's already here
-command -v claude opencode gemini           # which agent CLIs exist
+command -v claude opencode gemini codex           # which agent CLIs exist
 jeff --version  2>/dev/null || echo "jeff: not installed"
 gig  --version  2>/dev/null || echo "gig: not installed"
 cat ~/.config/jeff/home 2>/dev/null || echo "no JEFF home pointer"
@@ -200,20 +200,21 @@ gh auth status
 ## Step 5 — Choose the agent CLI
 
 > **ASK:** "Which agent CLI should JEFF launch? Options: `claude` (Claude Code),
-> `opencode`, `gemini`. I found these installed: `<list from Step 0>`."
+> `opencode`, `gemini`, `codex` (OpenAI Codex). I found these installed: `<list from Step 0>`."
 
 Default to `claude`. **The default in a fresh `jeff.json` is `claude` whether or not
 Claude Code is installed** — so if the human picked something else, you must set it
 explicitly:
 
 ```bash
-jeff config agent opencode      # or claude | gemini
+jeff config agent opencode      # or claude | gemini | codex
 ```
 
 If the chosen CLI is not installed:
 ```bash
 npm install -g @anthropic-ai/claude-code    # claude
 npm install -g @google/gemini-cli           # gemini
+npm install -g @openai/codex                # codex
 # opencode: follow https://github.com/anomalyco/opencode
 ```
 

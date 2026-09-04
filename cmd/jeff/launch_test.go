@@ -39,7 +39,7 @@ func TestAgentCompletion(t *testing.T) {
 		t.Errorf("expected directive NoFileComp (%v), got %v", cobra.ShellCompDirectiveNoFileComp, directive)
 	}
 
-	expectedAgents := []string{"claude", "gemini", "opencode"}
+	expectedAgents := []string{"claude", "gemini", "opencode", "codex"}
 	for _, want := range expectedAgents {
 		found := false
 		for _, comp := range comps {
@@ -62,6 +62,7 @@ func TestAgentFlagValidation(t *testing.T) {
 		{"claude", true},
 		{"opencode", true},
 		{"gemini", true},
+		{"codex", true},
 		{"invalid_agent", false},
 		{"", false},
 	}

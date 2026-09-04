@@ -10,7 +10,7 @@
     "agent": {
       "type": "string",
       "description": "Preferred agent tool.",
-      "enum": ["claude", "opencode", "gemini"],
+      "enum": ["claude", "opencode", "gemini", "codex"],
       "default": "claude"
     },
     "ide": {

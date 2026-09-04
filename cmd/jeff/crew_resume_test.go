@@ -35,6 +35,13 @@ func TestBuildResumeOpts(t *testing.T) {
 			wantModel:     "flash",
 		},
 		{
+			name:          "Codex override from DB",
+			existingAgent: "codex",
+			existingModel: "gpt-5.6-terra",
+			wantAgent:     "codex",
+			wantModel:     "gpt-5.6-terra",
+		},
+		{
 			name:          "Legacy fallback (empty DB fields)",
 			existingAgent: "",
 			existingModel: "",

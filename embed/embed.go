@@ -112,6 +112,52 @@ func EnsureOpenCodeSkillsAlias(dir string) error {
 	return os.Symlink(target, link)
 }
 
+// EnsureCodexSkillsAlias creates dir/.agents/skills as a symlink to the
+// sibling dir/.claude/skills directory. The link target is relative
+// ("../.claude/skills") so it stays valid when the workspace is moved.
+//
+// .claude/skills is the single source of truth for skill symlinks; .agents/skills
+// aliases it so codex sessions see the same skills as claude sessions.
+//
+// If .agents/skills exists as an empty directory, it is silently replaced with a
+// symlink. Non-empty directories are refused with an error.
+func EnsureCodexSkillsAlias(dir string) error {
+	claudeSkills := filepath.Join(dir, ".claude", "skills")
+	if err := os.MkdirAll(claudeSkills, 0o755); err != nil {
+		return fmt.Errorf("create .claude/skills: %w", err)
+	}
+	agentsDir := filepath.Join(dir, ".agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		return fmt.Errorf("create .agents: %w", err)
+	}
+
+	link := filepath.Join(agentsDir, "skills")
+	target := filepath.Join("..", ".claude", "skills")
+
+	if existing, err := os.Readlink(link); err == nil {
+		if existing == target {
+			return nil
+		}
+		if err := os.Remove(link); err != nil {
+			return fmt.Errorf("remove stale .agents/skills symlink: %w", err)
+		}
+	} else if fi, err := os.Lstat(link); err == nil {
+		if fi.IsDir() {
+			if empty, _ := isEmptyDir(link); empty {
+				if err := os.Remove(link); err != nil {
+					return fmt.Errorf("remove empty .agents/skills dir: %w", err)
+				}
+			} else {
+				return fmt.Errorf("%s is a non-empty directory; remove it manually", link)
+			}
+		} else {
+			return fmt.Errorf("%s exists and is not a symlink; remove it manually", link)
+		}
+	}
+
+	return os.Symlink(target, link)
+}
+
 // isEmptyDir returns true if dir exists, is a directory, and contains no entries.
 func isEmptyDir(dir string) (bool, error) {
 	f, err := os.Open(dir)

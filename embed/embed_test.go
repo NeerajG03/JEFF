@@ -185,3 +185,82 @@ func TestEnsureGeminiSkillsAlias_RelativeTargetSurvivesRename(t *testing.T) {
 		t.Errorf("resolved %q does not contain expected suffix %q", resolved, wantSuffix)
 	}
 }
+
+func TestEnsureCodexSkillsAlias_FreshDir(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := EnsureCodexSkillsAlias(dir); err != nil {
+		t.Fatalf("EnsureCodexSkillsAlias: %v", err)
+	}
+
+	link := filepath.Join(dir, ".agents", "skills")
+	target, err := os.Readlink(link)
+	if err != nil {
+		t.Fatalf("Readlink: %v", err)
+	}
+	wantTarget := filepath.Join("..", ".claude", "skills")
+	if target != wantTarget {
+		t.Errorf("target = %q, want %q", target, wantTarget)
+	}
+
+	claudeSkills := filepath.Join(dir, ".claude", "skills")
+	fi, err := os.Stat(claudeSkills)
+	if err != nil {
+		t.Fatalf("stat .claude/skills: %v", err)
+	}
+	if !fi.IsDir() {
+		t.Error(".claude/skills is not a directory")
+	}
+
+	resolved, err := filepath.EvalSymlinks(link)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	expectedResolved, _ := filepath.EvalSymlinks(claudeSkills)
+	if resolved != expectedResolved {
+		t.Errorf("symlink resolves to %q, want %q", resolved, expectedResolved)
+	}
+}
+
+func TestEnsureCodexSkillsAlias_Idempotent(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := EnsureCodexSkillsAlias(dir); err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	if err := EnsureCodexSkillsAlias(dir); err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+
+	link := filepath.Join(dir, ".agents", "skills")
+	target, err := os.Readlink(link)
+	if err != nil {
+		t.Fatalf("Readlink: %v", err)
+	}
+	wantTarget := filepath.Join("..", ".claude", "skills")
+	if target != wantTarget {
+		t.Errorf("target = %q, want %q", target, wantTarget)
+	}
+}
+
+func TestEnsureCodexSkillsAlias_ReplacesEmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	emptyDir := filepath.Join(dir, ".agents", "skills")
+	if err := os.MkdirAll(emptyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := EnsureCodexSkillsAlias(dir); err != nil {
+		t.Fatalf("EnsureCodexSkillsAlias: %v", err)
+	}
+
+	link := filepath.Join(dir, ".agents", "skills")
+	target, err := os.Readlink(link)
+	if err != nil {
+		t.Fatalf("not a symlink: %v", err)
+	}
+	wantTarget := filepath.Join("..", ".claude", "skills")
+	if target != wantTarget {
+		t.Errorf("target = %q, want %q", target, wantTarget)
+	}
+}

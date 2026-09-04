@@ -105,10 +105,10 @@ func jeffInstructionsHook() *Hook {
 // Claude Code SessionStart hook script. Uses a heredoc so backticks, single
 // quotes, and double quotes are all passed through literally.
 // bashBoth returns a Scripts map registering the same bash generator for
-// the claude and gemini deliveries (their script bodies are identical today;
+// the claude, gemini, and codex deliveries (their script bodies are identical today;
 // the gemini delivery remaps event names and timeout units at install time).
 func bashBoth(fn func(HookContext) string, opencode ...func(HookContext) string) map[string]func(HookContext) string {
-	m := map[string]func(HookContext) string{"claude": fn, "gemini": fn}
+	m := map[string]func(HookContext) string{"claude": fn, "gemini": fn, "codex": fn}
 	if len(opencode) > 0 {
 		m["opencode"] = opencode[0]
 	}
@@ -300,6 +300,9 @@ func checkpointNudgeHook() *Hook {
 			},
 			"gemini": func(ctx HookContext) string {
 				return buildCheckpointNudgeScript(ctx.CheckpointPatterns, "AfterTool")
+			},
+			"codex": func(ctx HookContext) string {
+				return buildCheckpointNudgeScript(ctx.CheckpointPatterns, "PostToolUse")
 			},
 		},
 	}

@@ -341,10 +341,13 @@ func runInit(cmd *cobra.Command, opts *initOpts) error {
 
 	// C2: Create context file aliases for all installed agents.
 	var seededAgents int
+	var seedErrs []error
 	for _, a := range jeff.RegisteredAgents() {
 		if p := jeff.GetProvider(a); p != nil {
 			if aliases := p.ContextFileAliases(); len(aliases) > 0 {
-				_ = jeffembed.CreateContextAliases(home, aliases)
+				if err := jeffembed.CreateContextAliases(home, aliases); err != nil {
+					seedErrs = append(seedErrs, err)
+				}
 			}
 		}
 	}
@@ -352,7 +355,6 @@ func runInit(cmd *cobra.Command, opts *initOpts) error {
 	// -----------------------------------------------------------------------
 	// C5: Collect seeding failures instead of swallowing them.
 	// -----------------------------------------------------------------------
-	var seedErrs []error
 
 	if err := jeffembed.EnsureGeminiSkillsAlias(home); err != nil {
 		seedErrs = append(seedErrs, fmt.Errorf("alias .gemini/skills: %w", err))
@@ -505,7 +507,9 @@ func runUpdate() error {
 	for _, agent := range jeff.RegisteredAgents() {
 		if p := jeff.GetProvider(agent); p != nil {
 			if aliases := p.ContextFileAliases(); len(aliases) > 0 {
-				_ = jeffembed.CreateContextAliases(home, aliases)
+				if err := jeffembed.CreateContextAliases(home, aliases); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: create context aliases (%s): %v\n", agent, err)
+				}
 			}
 		}
 	}

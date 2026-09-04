@@ -171,23 +171,59 @@ func isEmptyDir(dir string) (bool, error) {
 
 // CreateContextAliases creates symlinks from each alias filename to CLAUDE.md
 // in the given directory. CLAUDE.md is the single source of truth; other
-// context files (e.g. GEMINI.md) are symlinks to it.
+// context files (e.g. GEMINI.md, AGENTS.md) are symlinks to it.
+//
+// If an alias path exists as a non-symlink regular file (e.g. a pre-existing,
+// user-authored AGENTS.md), it is preserved by renaming it to <alias>.bak
+// before creating the symlink. If the .bak file already exists, it refuses to
+// overwrite and returns an error. Directories are always refused with an error.
 func CreateContextAliases(dir string, aliases []string) error {
 	for _, alias := range aliases {
 		link := filepath.Join(dir, alias)
 		target := "CLAUDE.md"
 
-		// If symlink already points to the right target, skip.
-		if existing, err := os.Readlink(link); err == nil && existing == target {
+		fi, err := os.Lstat(link)
+		if err != nil {
+			if os.IsNotExist(err) {
+				if err := os.Symlink(target, link); err != nil {
+					return fmt.Errorf("symlink %s -> %s: %w", alias, target, err)
+				}
+				continue
+			}
+			return fmt.Errorf("stat %s: %w", link, err)
+		}
+
+		// If it's a symlink, verify or refresh target.
+		if fi.Mode()&os.ModeSymlink != 0 {
+			existing, err := os.Readlink(link)
+			if err == nil && existing == target {
+				continue
+			}
+			if err := os.Remove(link); err != nil {
+				return fmt.Errorf("remove stale symlink %s: %w", link, err)
+			}
+			if err := os.Symlink(target, link); err != nil {
+				return fmt.Errorf("symlink %s -> %s: %w", alias, target, err)
+			}
 			continue
 		}
 
-		// Remove any existing file/symlink.
-		os.Remove(link)
-
-		if err := os.Symlink(target, link); err != nil {
-			return fmt.Errorf("symlink %s -> %s: %w", alias, target, err)
+		// Non-symlink: preserve regular files by backing up; refuse directories.
+		if fi.Mode().IsRegular() {
+			bak := link + ".bak"
+			if _, err := os.Lstat(bak); err == nil {
+				return fmt.Errorf("%s exists and is not a symlink, and %s already exists; remove or rename manually", link, bak)
+			}
+			if err := os.Rename(link, bak); err != nil {
+				return fmt.Errorf("backup %s -> %s: %w", link, bak, err)
+			}
+			if err := os.Symlink(target, link); err != nil {
+				return fmt.Errorf("symlink %s -> %s: %w", alias, target, err)
+			}
+			continue
 		}
+
+		return fmt.Errorf("%s exists and is not a symlink; remove it manually", link)
 	}
 	return nil
 }
